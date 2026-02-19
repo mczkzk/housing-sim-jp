@@ -37,7 +37,8 @@ class SimulationParams:
     loan_tax_deduction_years: int = 10
 
     # Living cost parameters
-    base_living_cost_monthly: float = 32.0
+    couple_living_cost_monthly: float = 27.0   # 夫婦のみの生活費
+    child_living_cost_monthly: float = 5.0     # 子1人あたりの追加生活費（食費・衣類・日用品等）
     education_cost_monthly: float = 15.0
     retirement_living_cost_ratio: float = 0.70
 

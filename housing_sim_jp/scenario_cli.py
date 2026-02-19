@@ -188,8 +188,14 @@ def main():
     parser.add_argument(
         "--living",
         type=float,
-        default=32.0,
-        help="生活費（万円/月、住居費・教育費除く）(default: 32.0)",
+        default=27.0,
+        help="夫婦の生活費（万円/月、住居費・教育費・子供分除く）(default: 27.0)",
+    )
+    parser.add_argument(
+        "--child-living",
+        type=float,
+        default=5.0,
+        help="子1人あたりの追加生活費（万円/月）(default: 5.0)",
     )
     parser.add_argument(
         "--education",
@@ -205,7 +211,8 @@ def main():
         results = run_scenarios(
             start_age=args.age, initial_savings=args.savings, income=args.income,
             child_birth_ages=child_birth_ages,
-            base_living_cost_monthly=args.living,
+            couple_living_cost_monthly=args.living,
+            child_living_cost_monthly=args.child_living,
             education_cost_monthly=args.education,
         )
     except ValueError as e:
@@ -220,7 +227,8 @@ def main():
             income=args.income,
             discipline_factors=DISCIPLINE_FACTORS,
             child_birth_ages=child_birth_ages,
-            base_living_cost_monthly=args.living,
+            couple_living_cost_monthly=args.living,
+            child_living_cost_monthly=args.child_living,
             education_cost_monthly=args.education,
         )
     except ValueError as e:

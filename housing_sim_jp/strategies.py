@@ -5,6 +5,11 @@ from typing import ClassVar
 
 from housing_sim_jp.params import SimulationParams, _calc_equal_payment
 
+# 子供の個室が必要な年齢範囲（3LDKフェーズ判定用）
+CHILD_ROOM_AGE_START = 7   # 小学校入学
+CHILD_ROOM_AGE_END = 22    # 大学卒業
+END_AGE = 80
+
 
 def _repair_reserve_multiplier(building_age: float) -> float:
     """Repair reserve multiplier for condominiums (国交省 stepped increase, final 3.6x)"""
@@ -188,20 +193,24 @@ class UrawaHouse(Strategy):
 
 
 class StrategicRental(Strategy):
-    """Strategic Rental (Downsizing Strategy)"""
+    """Strategic Rental (Downsizing Strategy)
+
+    3LDKフェーズはchild_birth_agesから動的に計算:
+    - Phase1 (2LDK): 子供が小学校入学前 or 子なし全期間
+    - Phase2 (3LDK): 最初の子が小学校入学 〜 最後の子が大学卒業
+    - Phase3 (2LDK安エリア): 子供独立後〜80歳
+    """
 
     INITIAL_COST = 105  # 敷金・礼金・仲介手数料・引越し
     RENT_PHASE1 = 18.0
     RENT_PHASE2 = 24.0
     RENT_PHASE3_BASE = 17.0
-    AGE_PHASE1_END = 45
-    AGE_PHASE2_END = 61
     RENEWAL_FEE_DIVISOR = 24
     # 75歳以上の高齢者住宅プレミアム（期待値、2026年現在価値）
     ELDERLY_PREMIUM_AGE = 75
     ELDERLY_PREMIUM_MONTHLY = 3.0
 
-    def __init__(self, initial_savings: float = 800):
+    def __init__(self, initial_savings: float = 800, child_birth_ages=None, start_age: int = 37):
         super().__init__(
             name="戦略的賃貸",
             initial_savings=initial_savings,
@@ -212,25 +221,36 @@ class StrategicRental(Strategy):
         )
         self.senior_rent_inflated = None
 
+        if child_birth_ages:
+            self.age_phase2_start = min(ba + CHILD_ROOM_AGE_START for ba in child_birth_ages)
+            self.age_phase2_end = max(ba + CHILD_ROOM_AGE_END for ba in child_birth_ages) + 1
+            # Phase2開始がstart_ageより前なら、最初からPhase2
+            if self.age_phase2_start < start_age:
+                self.age_phase2_start = start_age
+        else:
+            # 子なし: ずっと2LDK（Phase1）、Phase2/Phase3なし
+            self.age_phase2_start = END_AGE
+            self.age_phase2_end = END_AGE
+
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
     ) -> float:
         """Monthly rent by life stage with inflation and renewal fee"""
         years_elapsed = months_elapsed / 12
 
-        if age < self.AGE_PHASE1_END:
+        if age < self.age_phase2_start:
             base_rent = self.RENT_PHASE1
-        elif age < self.AGE_PHASE2_END:
+        elif age < self.age_phase2_end:
             base_rent = self.RENT_PHASE2
         else:
-            # Phase III: downsize to 2LDK, nominal rent fixed at 61-year-old level
+            # Phase III: downsize to 2LDK, nominal rent fixed at phase2_end level
             if self.senior_rent_inflated is None:
+                phase3_start_years = self.age_phase2_end - (age - years_elapsed)
                 self.senior_rent_inflated = self.RENT_PHASE3_BASE * (
-                    (1 + params.inflation_rate) ** years_elapsed
+                    (1 + params.inflation_rate) ** phase3_start_years
                 )
             base_rent = self.senior_rent_inflated
             cost = base_rent + base_rent / self.RENEWAL_FEE_DIVISOR
-            # 75歳以上: 高齢者住宅プレミアム（保証高度プラン/サ高住/UR等の期待値）
             if age >= self.ELDERLY_PREMIUM_AGE:
                 cost += self.ELDERLY_PREMIUM_MONTHLY * (
                     (1 + params.inflation_rate) ** years_elapsed
@@ -239,6 +259,11 @@ class StrategicRental(Strategy):
 
         cost = base_rent * ((1 + params.inflation_rate) ** years_elapsed)
         cost += cost / self.RENEWAL_FEE_DIVISOR
+        # 75歳以上: 高齢者住宅プレミアム（全フェーズ共通）
+        if age >= self.ELDERLY_PREMIUM_AGE:
+            cost += self.ELDERLY_PREMIUM_MONTHLY * (
+                (1 + params.inflation_rate) ** years_elapsed
+            )
         return cost
 
 

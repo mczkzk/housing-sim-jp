@@ -8,6 +8,7 @@ from housing_sim_jp.strategies import Strategy
 # Simulation age limits
 MIN_START_AGE = 20  # 婚姻可能年齢
 MAX_START_AGE = 45  # 出産可能上限
+MAX_CHILDREN = 2    # 3LDKの部屋数制約（子供部屋最大2つ）
 
 # Loan screening constants (銀行審査基準)
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
@@ -145,6 +146,9 @@ def _calc_monthly_income(
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
 EDUCATION_CHILD_AGE_END = 22    # 大学卒業
 
+# 子供が同居する期間（生活費計算用）
+CHILD_HOME_AGE_END = 22  # 大学卒業で独立
+
 
 def _calc_expenses(
     month: int,
@@ -155,6 +159,7 @@ def _calc_expenses(
     one_time_expenses: Dict[int, float],
     monthly_moving_cost: float,
     education_ranges: list[tuple[int, int]],
+    child_home_ranges: list[tuple[int, int]],
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
@@ -168,9 +173,14 @@ def _calc_expenses(
         if start <= age <= end
     )
 
-    base_living = params.base_living_cost_monthly * (
-        (1 + params.inflation_rate) ** years_elapsed
+    num_children_at_home = sum(
+        1 for start, end in child_home_ranges
+        if start <= age <= end
     )
+    base_living = (
+        params.couple_living_cost_monthly
+        + num_children_at_home * params.child_living_cost_monthly
+    ) * ((1 + params.inflation_rate) ** years_elapsed)
     living_cost = base_living * (
         params.retirement_living_cost_ratio if age >= 70 else 1.0
     )
@@ -274,6 +284,11 @@ def simulate_strategy(
             if a + EDUCATION_CHILD_AGE_END >= start_age
         ]
     else:
+        if len(child_birth_ages) > MAX_CHILDREN:
+            raise ValueError(
+                f"子供の人数{len(child_birth_ages)}人は上限{MAX_CHILDREN}人を超えています"
+                f"（3LDKの部屋数制約）"
+            )
         for birth_age in child_birth_ages:
             if birth_age + EDUCATION_CHILD_AGE_END < start_age:
                 raise ValueError(
@@ -295,6 +310,11 @@ def simulate_strategy(
     education_ranges = [
         (age + EDUCATION_CHILD_AGE_START, age + EDUCATION_CHILD_AGE_END)
         for age in child_birth_ages
+    ]
+
+    child_home_ranges = [
+        (birth_age, birth_age + CHILD_HOME_AGE_END)
+        for birth_age in child_birth_ages
     ]
 
     MOVING_COST_PER_TIME = 40
@@ -344,7 +364,7 @@ def simulate_strategy(
 
         housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
             month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
-            education_ranges,
+            education_ranges, child_home_ranges,
         )
 
         investable = (
