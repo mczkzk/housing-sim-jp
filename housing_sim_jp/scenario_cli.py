@@ -177,8 +177,8 @@ def main():
     parser.add_argument(
         "--children",
         type=str,
-        default="38",
-        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 38)",
+        default="39",
+        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 39)",
     )
     parser.add_argument(
         "--no-child",

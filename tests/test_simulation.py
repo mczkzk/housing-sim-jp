@@ -69,19 +69,19 @@ class TestSnapshotAge37:
 
     def test_mansion(self):
         r = simulate_strategy(UrawaMansion(800), self.params, start_age=37)
-        assert r["after_tax_net_assets"] == pytest.approx(17928.876473, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(18625.858733, abs=0.01)
 
     def test_house(self):
         r = simulate_strategy(UrawaHouse(800), self.params, start_age=37)
-        assert r["after_tax_net_assets"] == pytest.approx(24414.177405, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(25111.159665, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800), self.params, start_age=37)
-        assert r["after_tax_net_assets"] == pytest.approx(22188.306337, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(22885.288598, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, start_age=37)
-        assert r["after_tax_net_assets"] == pytest.approx(10767.307076, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(11464.289336, abs=0.01)
 
 
 class TestSnapshotDetails:
@@ -92,7 +92,7 @@ class TestSnapshotDetails:
         self.r = simulate_strategy(UrawaMansion(800), params, start_age=37)
 
     def test_nisa_balance(self):
-        assert self.r["nisa_balance"] == pytest.approx(15780.596524, abs=0.01)
+        assert self.r["nisa_balance"] == pytest.approx(16477.578784, abs=0.01)
 
     def test_land_value(self):
         assert self.r["land_value_80"] == pytest.approx(2348.279949, abs=0.01)
@@ -113,14 +113,14 @@ class TestEdgeAges:
     def test_age_25(self):
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800), params, start_age=25)
-        assert r["after_tax_net_assets"] == pytest.approx(115748.558030, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(116326.162497, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
-        """Default child_birth_ages=[38] kept for start_age=45 (child age 7-15 during sim)."""
+        """Default child_birth_ages=[39] kept for start_age=45 (child age 6-16 during sim)."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800), params, start_age=45)
-        assert r["after_tax_net_assets"] == pytest.approx(475.407347, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(1172.389607, abs=0.01)
         assert r["bankrupt_age"] is None
 
 
@@ -138,7 +138,7 @@ class TestDisciplineFactor:
         r_full = simulate_strategy(StrategicRental(800), params, start_age=37, discipline_factor=1.0)
         r_reduced = simulate_strategy(StrategicRental(800), params, start_age=37, discipline_factor=0.8)
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(17810.429978, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(18268.875842, abs=0.01)
 
 
 class TestChildBirthAges:
@@ -170,10 +170,10 @@ class TestChildBirthAges:
         assert r_one["after_tax_net_assets"] > r_two["after_tax_net_assets"]
 
     def test_none_uses_default(self):
-        """child_birth_ages=None should use DEFAULT_CHILD_BIRTH_AGES=[38]."""
+        """child_birth_ages=None should use DEFAULT_CHILD_BIRTH_AGES=[39]."""
         params = SimulationParams()
         r_none = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=None)
-        r_explicit = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=[38])
+        r_explicit = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=[39])
         assert r_none["after_tax_net_assets"] == pytest.approx(r_explicit["after_tax_net_assets"], abs=0.001)
 
     def test_existing_child_works(self):

@@ -53,7 +53,7 @@ def run_scenarios(
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
-    child_birth_ages: list of parent's age at each child's birth. None=default [38]. []=no children.
+    child_birth_ages: list of parent's age at each child's birth. None=default [39]. []=no children.
     """
     all_results = {}
 
