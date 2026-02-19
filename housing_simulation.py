@@ -410,15 +410,25 @@ def simulate_strategy(strategy: Strategy, params: SimulationParams, start_age: i
     EDUCATION_END_AGE = 60
     EDUCATION_COST_MONTHLY = 15.0
 
-    # One-time expenses by age (base price, inflated at runtime)
-    ONE_TIME_EXPENSES = {
-        # 47: 1st exterior paint + equipment, 60: 2nd exterior + roof cover + plumbing, 75: 3rd exterior + water fixtures 2nd + misc
-        "浦和一戸建て": {47: 180, 60: 500, 75: 300},
+    # One-time expenses by building age (base price, inflated at runtime)
+    # Keys are building age (築年数), converted to owner age at runtime
+    ONE_TIME_EXPENSES_BY_BUILDING_AGE = {
+        # 築17: 1st exterior paint + equipment, 築30: 2nd exterior + roof cover + plumbing, 築45: 3rd exterior + water fixtures 2nd + misc
+        "浦和一戸建て": {17: 180, 30: 500, 45: 300},
         # 専有部のみ（共用部は管理修繕費でカバー）
-        # 47: 給湯器+エアコン, 57: ユニットバス, 67: エアコン2回目+壁紙
-        # 75: 建替えリスク期待値 (10%×2,200万 + 12%×1,250万 = 370万)
-        "浦和マンション": {47: 40, 57: 100, 67: 80, 75: 370},
+        # 築20: 給湯器+エアコン, 築30: ユニットバス, 築40: エアコン2回目+壁紙
+        # 築48: 建替えリスク期待値 (10%×2,200万 + 12%×1,250万 = 370万)
+        "浦和マンション": {20: 40, 30: 100, 40: 80, 48: 370},
     }
+
+    # Convert building-age milestones to owner-age for this simulation
+    one_time_expenses: Dict[int, float] = {}
+    if strategy.name in ONE_TIME_EXPENSES_BY_BUILDING_AGE:
+        purchase_building_age = getattr(strategy, "PURCHASE_AGE_OF_BUILDING", 0)
+        for building_age, cost in ONE_TIME_EXPENSES_BY_BUILDING_AGE[strategy.name].items():
+            owner_age = start_age + (building_age - purchase_building_age)
+            if start_age <= owner_age < END_AGE:
+                one_time_expenses[owner_age] = cost
 
     # NISA: 夫婦合計 1,800万円 × 2 = 3,600万円 (lifetime principal limit)
     NISA_LIMIT = 3600
@@ -514,13 +524,12 @@ def simulate_strategy(strategy: Strategy, params: SimulationParams, start_age: i
             loan_deduction = annual_deduction / 12
 
         one_time_expense = 0
-        if months_in_current_age == 0 and strategy.name in ONE_TIME_EXPENSES:
-            if age in ONE_TIME_EXPENSES[strategy.name]:
-                base_cost = ONE_TIME_EXPENSES[strategy.name][age]
-                years_to_inflate = age - START_AGE
-                one_time_expense = base_cost * (
-                    (1 + params.inflation_rate) ** years_to_inflate
-                )
+        if months_in_current_age == 0 and age in one_time_expenses:
+            base_cost = one_time_expenses[age]
+            years_to_inflate = age - START_AGE
+            one_time_expense = base_cost * (
+                (1 + params.inflation_rate) ** years_to_inflate
+            )
 
         utility_cost = strategy.utility_premium * (
             (1 + params.inflation_rate) ** years_elapsed
