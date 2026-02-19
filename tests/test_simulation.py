@@ -117,6 +117,7 @@ class TestEdgeAges:
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
+        """Default child_birth_ages=[38] kept for start_age=45 (child age 7-15 during sim)."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800), params, start_age=45)
         assert r["after_tax_net_assets"] == pytest.approx(635.364053, abs=0.01)
@@ -174,3 +175,18 @@ class TestChildBirthAges:
         r_none = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=None)
         r_explicit = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=[38])
         assert r_none["after_tax_net_assets"] == pytest.approx(r_explicit["after_tax_net_assets"], abs=0.001)
+
+    def test_existing_child_works(self):
+        """Child born before start_age is valid (existing child with ongoing education)."""
+        params = SimulationParams()
+        r = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=[28])
+        # Child born at 28 → education 35-50 → costs start immediately at 37
+        # vs birth at 38 → education 45-60 → 8 years of compounding before costs hit
+        r_default = simulate_strategy(StrategicRental(800), params, start_age=37, child_birth_ages=[38])
+        assert r["after_tax_net_assets"] != pytest.approx(r_default["after_tax_net_assets"], abs=1.0)
+
+    def test_graduated_child_raises(self):
+        """Child already graduated (birth_age + 22 < start_age) should raise."""
+        params = SimulationParams()
+        with pytest.raises(ValueError, match="大学卒業済み"):
+            simulate_strategy(StrategicRental(800), params, start_age=45, child_birth_ages=[20])

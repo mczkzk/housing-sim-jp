@@ -246,7 +246,17 @@ def simulate_strategy(
     child_birth_ages: list of parent's age at each child's birth. None=default [38]. []=no children.
     """
     if child_birth_ages is None:
-        child_birth_ages = list(DEFAULT_CHILD_BIRTH_AGES)
+        child_birth_ages = [
+            a for a in DEFAULT_CHILD_BIRTH_AGES
+            if a + EDUCATION_CHILD_AGE_END >= start_age
+        ]
+    else:
+        for birth_age in child_birth_ages:
+            if birth_age + EDUCATION_CHILD_AGE_END < start_age:
+                raise ValueError(
+                    f"出産年齢{birth_age}歳の子は開始年齢{start_age}歳時点で"
+                    f"{start_age - birth_age}歳（大学卒業済み）: 教育費が発生しません"
+                )
 
     validate_age(start_age)
     errors = validate_strategy(strategy, params)
