@@ -39,7 +39,10 @@ class TestScenarioSnapshots:
     """Snapshot values for standard scenario should match known values."""
 
     def setup_method(self):
-        self.results = run_scenarios(start_age=37, initial_savings=800, income=72.5)
+        self.results = run_scenarios(
+            start_age=37, initial_savings=800, income=72.5,
+            child_birth_ages=[39], education_cost_monthly=15.0,
+        )
 
     def test_low_growth_mansion(self):
         r = self.results["低成長"][0]

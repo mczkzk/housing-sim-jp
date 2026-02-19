@@ -70,19 +70,19 @@ class TestSnapshotAge37:
         self.params = SimulationParams()
 
     def test_mansion(self):
-        r = simulate_strategy(UrawaMansion(800), self.params, start_age=37)
+        r = simulate_strategy(UrawaMansion(800), self.params, start_age=37, child_birth_ages=[39])
         assert r["after_tax_net_assets"] == pytest.approx(22415.736726, abs=0.01)
 
     def test_house(self):
-        r = simulate_strategy(UrawaHouse(800), self.params, start_age=37)
+        r = simulate_strategy(UrawaHouse(800), self.params, start_age=37, child_birth_ages=[39])
         assert r["after_tax_net_assets"] == pytest.approx(28900.516117, abs=0.01)
 
     def test_strategic_rental(self):
-        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, start_age=37)
+        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, start_age=37, child_birth_ages=[39])
         assert r["after_tax_net_assets"] == pytest.approx(26746.692111, abs=0.01)
 
     def test_normal_rental(self):
-        r = simulate_strategy(NormalRental(800), self.params, start_age=37)
+        r = simulate_strategy(NormalRental(800), self.params, start_age=37, child_birth_ages=[39])
         assert r["after_tax_net_assets"] == pytest.approx(15254.167329, abs=0.01)
 
 
@@ -91,7 +91,7 @@ class TestSnapshotDetails:
 
     def setup_method(self):
         params = SimulationParams()
-        self.r = simulate_strategy(UrawaMansion(800), params, start_age=37)
+        self.r = simulate_strategy(UrawaMansion(800), params, start_age=37, child_birth_ages=[39])
 
     def test_nisa_balance(self):
         assert self.r["nisa_balance"] == pytest.approx(20267.456777, abs=0.01)
@@ -114,14 +114,14 @@ class TestEdgeAges:
 
     def test_age_25(self):
         params = SimulationParams()
-        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, start_age=25)
+        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, start_age=25, child_birth_ages=[39])
         assert r["after_tax_net_assets"] == pytest.approx(130031.967444, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
-        """Default child_birth_ages=[39] kept for start_age=45 (child age 6-16 during sim)."""
+        """child_birth_ages=[39] for start_age=45 (child age 6-16 during sim)."""
         params = SimulationParams()
-        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, start_age=45)
+        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, start_age=45, child_birth_ages=[39])
         assert r["after_tax_net_assets"] == pytest.approx(3519.512588, abs=0.01)
         assert r["bankrupt_age"] is None
 
@@ -129,7 +129,7 @@ class TestEdgeAges:
 class TestBankruptcy:
     def test_low_income_triggers_bankruptcy(self):
         params = SimulationParams(initial_takehome_monthly=30)
-        r = simulate_strategy(NormalRental(200), params, start_age=37)
+        r = simulate_strategy(NormalRental(200), params, start_age=37, child_birth_ages=[39])
         assert r["bankrupt_age"] is not None
         assert r["bankrupt_age"] == 37
 
@@ -137,8 +137,8 @@ class TestBankruptcy:
 class TestDisciplineFactor:
     def test_lower_factor_reduces_assets(self):
         params = SimulationParams()
-        r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=1.0)
-        r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=0.8)
+        r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=1.0, child_birth_ages=[39])
+        r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
         assert r_reduced["after_tax_net_assets"] == pytest.approx(21774.079646, abs=0.01)
 
@@ -172,10 +172,10 @@ class TestChildBirthAges:
         assert r_one["after_tax_net_assets"] > r_two["after_tax_net_assets"]
 
     def test_none_uses_default(self):
-        """child_birth_ages=None should use DEFAULT_CHILD_BIRTH_AGES=[39]."""
+        """child_birth_ages=None should use DEFAULT_CHILD_BIRTH_AGES=[33]."""
         params = SimulationParams()
-        r_none = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, child_birth_ages=None)
-        r_explicit = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, child_birth_ages=[39])
+        r_none = simulate_strategy(StrategicRental(800, child_birth_ages=[33], start_age=37), params, start_age=37, child_birth_ages=None)
+        r_explicit = simulate_strategy(StrategicRental(800, child_birth_ages=[33], start_age=37), params, start_age=37, child_birth_ages=[33])
         assert r_none["after_tax_net_assets"] == pytest.approx(r_explicit["after_tax_net_assets"], abs=0.001)
 
     def test_existing_child_works(self):
@@ -210,21 +210,25 @@ class TestFindEarliestPurchaseAge:
         result = find_earliest_purchase_age(UrawaMansion(800), params, 37)
         assert result is None
 
-    def test_low_savings_finds_purchase_age(self):
-        """Age 30 / savings 500 / income 60 should find a feasible purchase age."""
+    def test_low_savings_house_finds_purchase_age(self):
+        """Age 30 / savings 500 / income 60: house (cheaper) should find a purchase age."""
         params = SimulationParams(initial_takehome_monthly=60.0)
-        result = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        result = find_earliest_purchase_age(UrawaHouse(500), params, 30)
         assert result is not None
         assert 31 <= result <= 45
 
-    def test_house_finds_earlier_than_mansion(self):
-        """House (cheaper) should be purchasable at or before mansion age."""
+    def test_low_savings_mansion_infeasible_with_price_inflation(self):
+        """Age 30 / savings 500 / income 60: mansion price inflates faster than income catches up."""
         params = SimulationParams(initial_takehome_monthly=60.0)
-        mansion_age = find_earliest_purchase_age(UrawaMansion(500), params, 30)
-        house_age = find_earliest_purchase_age(UrawaHouse(500), params, 30)
-        assert house_age is not None
-        assert mansion_age is not None
-        assert house_age <= mansion_age
+        result = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        assert result is None
+
+    def test_higher_income_mansion_feasible(self):
+        """Higher income can overcome price inflation for mansion."""
+        params = SimulationParams(initial_takehome_monthly=72.5)
+        result = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        assert result is not None
+        assert 31 <= result <= 45
 
     def test_very_low_income_returns_none(self):
         """Extremely low income should make purchase infeasible at any age."""
@@ -255,7 +259,7 @@ class TestDeferredPurchase:
     def test_deferred_purchase_no_bankruptcy(self):
         """Deferred purchase at detected age should not cause bankruptcy."""
         params = SimulationParams(initial_takehome_monthly=60.0)
-        purchase_age = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        purchase_age = find_earliest_purchase_age(UrawaHouse(500), params, 30)
         assert purchase_age is not None
-        r = simulate_strategy(UrawaMansion(500), params, start_age=30, purchase_age=purchase_age)
+        r = simulate_strategy(UrawaHouse(500), params, start_age=30, purchase_age=purchase_age)
         assert r["bankrupt_age"] is None

@@ -180,19 +180,19 @@ def main():
         "--age", type=int, default=None, help="開始年齢 (default: 30)"
     )
     parser.add_argument(
-        "--savings", type=float, default=None, help="初期金融資産・万円 (default: 500)"
+        "--savings", type=float, default=None, help="初期金融資産・万円 (default: 800)"
     )
     parser.add_argument(
         "--income",
         type=float,
         default=None,
-        help="現在の世帯月額手取り・万円 (default: 60.0)",
+        help="現在の世帯月額手取り・万円 (default: 62.5)",
     )
     parser.add_argument(
         "--children",
         type=str,
         default=None,
-        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 33,35)",
+        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 33)",
     )
     parser.add_argument(
         "--no-child",

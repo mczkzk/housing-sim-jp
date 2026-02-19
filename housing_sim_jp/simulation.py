@@ -82,6 +82,16 @@ PRE_PURCHASE_RENEWAL_DIVISOR = 24  # Renewal fee amortized monthly
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
 
+def _inflate_property_price(
+    strategy: Strategy, params: SimulationParams, years: float,
+) -> float:
+    """Inflate property price by land appreciation + building inflation."""
+    original = type(strategy).PROPERTY_PRICE
+    land = original * strategy.land_value_ratio * (1 + params.land_appreciation) ** years
+    building = original * (1 - strategy.land_value_ratio) * (1 + params.inflation_rate) ** years
+    return land + building
+
+
 def find_earliest_purchase_age(
     strategy: Strategy,
     params: SimulationParams,
@@ -89,6 +99,9 @@ def find_earliest_purchase_age(
     child_birth_ages: list[int] | None = None,
 ) -> int | None:
     """Find the earliest age at which the strategy passes loan screening.
+
+    Property prices are inflated each year (land by land_appreciation, building by inflation_rate)
+    so that rising prices are accounted for when projecting feasibility.
 
     Returns the purchase age if found (start_age+1 .. MAX_PURCHASE_AGE),
     or None if purchase is never feasible.
@@ -169,17 +182,24 @@ def find_earliest_purchase_age(
             savings *= (1 + monthly_return_rate)
             savings += monthly_surplus
 
-        # Check feasibility at target_age
+        # Check feasibility at target_age with inflated property price
         projected_income_at_target = projected_income * (1 + params.income_growth_rate)
         loan_months = min(35, 80 - target_age) * 12
         if loan_months <= 0:
             continue
 
+        years_to_target = target_age - start_age
+        inflated_price = _inflate_property_price(strategy, params, years_to_target)
+        original_price = type(strategy).PROPERTY_PRICE
+        price_ratio = inflated_price / original_price
+        inflated_initial_cost = type(strategy).INITIAL_COST * price_ratio
+
         test_strategy = type(strategy)(savings)
+        test_strategy.property_price = inflated_price
+        test_strategy.loan_amount = inflated_price
+        test_strategy.initial_investment = savings - inflated_initial_cost
         if loan_months != type(strategy).LOAN_MONTHS:
             test_strategy.LOAN_MONTHS = loan_months
-            # Recalculate loan payment for shorter term
-            test_strategy.loan_amount = type(strategy).PROPERTY_PRICE
 
         test_params = dataclasses.replace(
             params, initial_takehome_monthly=projected_income_at_target
@@ -384,20 +404,20 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
-DEFAULT_CHILD_BIRTH_AGES = [39]
+DEFAULT_CHILD_BIRTH_AGES = [33]
 
 
 def simulate_strategy(
     strategy: Strategy,
     params: SimulationParams,
-    start_age: int = 37,
+    start_age: int = 30,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
     purchase_age: int | None = None,
 ) -> Dict:
     """Execute simulation from start_age to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
-    child_birth_ages: list of parent's age at each child's birth. None=default [39]. []=no children.
+    child_birth_ages: list of parent's age at each child's birth. None=default [33]. []=no children.
     purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
     if child_birth_ages is None:
@@ -424,11 +444,22 @@ def simulate_strategy(
     has_pre_purchase_rental = effective_purchase_age > start_age
 
     if has_pre_purchase_rental:
-        # Validation already done in find_earliest_purchase_age; cap loan term
+        # Inflate property price to purchase year
+        years_to_purchase = effective_purchase_age - start_age
+        inflated_price = _inflate_property_price(strategy, params, years_to_purchase)
+        original_price = type(strategy).PROPERTY_PRICE
+        price_ratio = inflated_price / original_price
+        purchase_closing_cost = type(strategy).INITIAL_COST * price_ratio
+
+        strategy.property_price = inflated_price
+        strategy.loan_amount = inflated_price
+
+        # Cap loan term
         loan_months_cap = min(35, 80 - effective_purchase_age) * 12
         if loan_months_cap < type(strategy).LOAN_MONTHS:
             strategy.LOAN_MONTHS = loan_months_cap
     else:
+        purchase_closing_cost = strategy.initial_savings - strategy.initial_investment
         errors = validate_strategy(strategy, params)
         if errors:
             error_msg = f"【{strategy.name}】シミュレーション不可:\n" + "\n".join(
@@ -523,8 +554,7 @@ def simulate_strategy(
 
             # Purchase costs at the transition month
             if month == purchase_month_offset - 1:
-                # Deduct property closing costs at purchase time
-                one_time_expense = strategy.initial_savings - strategy.initial_investment
+                one_time_expense = purchase_closing_cost
         else:
             housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
                 month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
@@ -593,9 +623,7 @@ def simulate_strategy(
 
     real_estate_tax = 0
     if strategy.property_price > 0:
-        acquisition_cost = strategy.property_price + (
-            strategy.initial_savings - strategy.initial_investment
-        )
+        acquisition_cost = strategy.property_price + purchase_closing_cost
         real_estate_gain = effective_land_value - acquisition_cost
         taxable_re_gain = max(0, real_estate_gain - RESIDENCE_SPECIAL_DEDUCTION)
         real_estate_tax = taxable_re_gain * CAPITAL_GAINS_TAX_RATE

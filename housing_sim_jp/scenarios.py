@@ -49,18 +49,18 @@ DISCIPLINE_FACTORS = {
 
 
 def run_scenarios(
-    start_age: int = 37,
+    start_age: int = 30,
     initial_savings: float = 800,
-    income: float = 72.5,
+    income: float = 62.5,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
     couple_living_cost_monthly: float = 27.0,
     child_living_cost_monthly: float = 5.0,
-    education_cost_monthly: float = 15.0,
+    education_cost_monthly: float = 10.0,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
-    child_birth_ages: list of parent's age at each child's birth. None=default [39]. []=no children.
+    child_birth_ages: list of parent's age at each child's birth. None=default [33]. []=no children.
     """
     # StrategicRentalのフェーズ計算とsimulate_strategyの教育費計算を一致させるため、
     # Noneを事前に解決してから両方に渡す

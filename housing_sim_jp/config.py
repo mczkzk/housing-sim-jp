@@ -8,9 +8,9 @@ DEFAULT_CONFIG_PATH = Path("config.toml")
 
 DEFAULTS = {
     "age": 30,
-    "savings": 500.0,
-    "income": 60.0,
-    "children": "33,35",
+    "savings": 800.0,
+    "income": 62.5,
+    "children": "33",
     "no_child": False,
     "living": 27.0,
     "child_living": 5.0,
