@@ -73,6 +73,29 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
     return errors
 
 
+# 公的年金計算定数（日本年金機構 簡易版）
+KISO_PENSION_ANNUAL = 78.0    # 老齢基礎年金 万円/人/年（2024年度満額）
+KOSEI_RATE = 5.481 / 1000     # 厚生年金 報酬比例乗率
+CAREER_MONTHS = 456            # 22-60歳 = 38年加入
+CAREER_AVG_RATIO = 0.85        # ピーク月収→生涯平均 推定比率
+STANDARD_MONTHLY_CAP = 65.0    # 標準報酬月額上限 万円
+
+
+def _estimate_annual_pension(
+    peak_takehome_monthly: float, params: SimulationParams
+) -> float:
+    """Estimate annual pension from peak take-home income (公的年金+企業年金)."""
+    gross_peak = peak_takehome_monthly / TAKEHOME_TO_GROSS
+    avg_gross = gross_peak * CAREER_AVG_RATIO
+    h_ratio = params.husband_income_ratio
+    h_avg = min(avg_gross * h_ratio, STANDARD_MONTHLY_CAP)
+    w_avg = min(avg_gross * (1 - h_ratio), STANDARD_MONTHLY_CAP)
+    h_kosei = h_avg * KOSEI_RATE * CAREER_MONTHS
+    w_kosei = w_avg * KOSEI_RATE * CAREER_MONTHS
+    public = (h_kosei + KISO_PENSION_ANNUAL) + (w_kosei + KISO_PENSION_ANNUAL)
+    return public + params.corporate_pension_annual
+
+
 def _calc_monthly_income(
     month: int, start_age: int, params: SimulationParams, peak_income: float
 ) -> tuple[float, float]:
@@ -108,7 +131,8 @@ def _calc_monthly_income(
         )
     else:
         years_since_70 = age - 70
-        annual_pension = params.pension_annual * (
+        annual_pension = _estimate_annual_pension(peak_income, params)
+        annual_pension *= (
             (1 + params.inflation_rate - params.pension_real_reduction)
             ** years_since_70
         )
@@ -117,7 +141,6 @@ def _calc_monthly_income(
     return monthly_income, peak_income
 
 
-EDUCATION_COST_MONTHLY = 15.0
 # child_birth_age + offset → education cost period
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
 EDUCATION_CHILD_AGE_END = 22    # 大学卒業
@@ -140,7 +163,7 @@ def _calc_expenses(
     housing_cost = strategy.housing_cost(age, month, params)
 
     education_cost = sum(
-        EDUCATION_COST_MONTHLY
+        params.education_cost_monthly
         for start, end in education_ranges
         if start <= age <= end
     )

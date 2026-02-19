@@ -185,6 +185,18 @@ def main():
         action="store_true",
         help="子供なし（教育費ゼロ）",
     )
+    parser.add_argument(
+        "--living",
+        type=float,
+        default=32.0,
+        help="生活費（万円/月、住居費・教育費除く）(default: 32.0)",
+    )
+    parser.add_argument(
+        "--education",
+        type=float,
+        default=15.0,
+        help="教育費（万円/月/人）(default: 15.0)",
+    )
     args = parser.parse_args()
     child_birth_ages = [] if args.no_child else [int(x) for x in args.children.split(",")]
 
@@ -193,6 +205,8 @@ def main():
         results = run_scenarios(
             start_age=args.age, initial_savings=args.savings, income=args.income,
             child_birth_ages=child_birth_ages,
+            base_living_cost_monthly=args.living,
+            education_cost_monthly=args.education,
         )
     except ValueError as e:
         print(f"\n{e}\n")
@@ -206,6 +220,8 @@ def main():
             income=args.income,
             discipline_factors=DISCIPLINE_FACTORS,
             child_birth_ages=child_birth_ages,
+            base_living_cost_monthly=args.living,
+            education_cost_monthly=args.education,
         )
     except ValueError as e:
         print(f"\n{e}\n")

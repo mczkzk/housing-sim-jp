@@ -33,12 +33,28 @@ def main():
         action="store_true",
         help="子供なし（教育費ゼロ）",
     )
+    parser.add_argument(
+        "--living",
+        type=float,
+        default=32.0,
+        help="生活費（万円/月、住居費・教育費除く）(default: 32.0)",
+    )
+    parser.add_argument(
+        "--education",
+        type=float,
+        default=15.0,
+        help="教育費（万円/月/人）(default: 15.0)",
+    )
     args = parser.parse_args()
     start_age = args.age
     savings = args.savings
     child_birth_ages = [] if args.no_child else [int(x) for x in args.children.split(",")]
 
-    params = SimulationParams(initial_takehome_monthly=args.income)
+    params = SimulationParams(
+        initial_takehome_monthly=args.income,
+        base_living_cost_monthly=args.living,
+        education_cost_monthly=args.education,
+    )
     strategies = [
         UrawaMansion(savings),
         UrawaHouse(savings),

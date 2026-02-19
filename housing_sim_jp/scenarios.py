@@ -48,6 +48,8 @@ def run_scenarios(
     income: float = 72.5,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
+    base_living_cost_monthly: float = 32.0,
+    education_cost_monthly: float = 15.0,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
@@ -56,7 +58,11 @@ def run_scenarios(
     all_results = {}
 
     for scenario_name, scenario_params in SCENARIOS.items():
-        params = SimulationParams(initial_takehome_monthly=income)
+        params = SimulationParams(
+            initial_takehome_monthly=income,
+            base_living_cost_monthly=base_living_cost_monthly,
+            education_cost_monthly=education_cost_monthly,
+        )
         for key, value in scenario_params.items():
             setattr(params, key, value)
 
