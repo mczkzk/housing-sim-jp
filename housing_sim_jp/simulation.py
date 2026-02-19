@@ -1,9 +1,10 @@
 """Core simulation engine."""
 
+import dataclasses
 from typing import Dict
 
 from housing_sim_jp.params import SimulationParams, _calc_equal_payment
-from housing_sim_jp.strategies import Strategy
+from housing_sim_jp.strategies import Strategy, StrategicRental
 
 # Simulation age limits
 MIN_START_AGE = 20  # 婚姻可能年齢
@@ -72,6 +73,122 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
             )
 
     return errors
+
+
+# Purchase age auto-detection constants
+MAX_PURCHASE_AGE = 45  # 住宅ローン審査の現実的上限
+PRE_PURCHASE_RENT = 18.0  # 2LDK rent during pre-purchase phase
+PRE_PURCHASE_RENEWAL_DIVISOR = 24  # Renewal fee amortized monthly
+PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
+
+
+def find_earliest_purchase_age(
+    strategy: Strategy,
+    params: SimulationParams,
+    start_age: int,
+    child_birth_ages: list[int] | None = None,
+) -> int | None:
+    """Find the earliest age at which the strategy passes loan screening.
+
+    Returns the purchase age if found (start_age+1 .. MAX_PURCHASE_AGE),
+    or None if purchase is never feasible.
+    If the strategy is already feasible at start_age, returns None (caller uses normal flow).
+    """
+    if not validate_strategy(strategy, params):
+        return None  # Already feasible at start_age
+
+    monthly_return_rate = params.investment_return / 12
+    base_age = params.income_base_age
+
+    # Resolve child_birth_ages for education/living cost projection
+    if child_birth_ages is None:
+        child_birth_ages = [
+            a for a in DEFAULT_CHILD_BIRTH_AGES
+            if a + EDUCATION_CHILD_AGE_END >= start_age
+        ]
+
+    education_ranges = [
+        (a + EDUCATION_CHILD_AGE_START, a + EDUCATION_CHILD_AGE_END)
+        for a in child_birth_ages
+    ]
+    child_home_ranges = [
+        (ba, ba + CHILD_HOME_AGE_END)
+        for ba in child_birth_ages
+    ]
+
+    # Project savings year-by-year while living in 2LDK rental
+    savings = strategy.initial_savings - PRE_PURCHASE_INITIAL_COST
+    income = params.initial_takehome_monthly
+
+    for target_age in range(start_age + 1, MAX_PURCHASE_AGE + 1):
+        # Simulate one year of rental living
+        age = target_age - 1
+        years_from_start = age - start_age
+
+        # Income projection
+        if age < 60:
+            current_age_float = float(age)
+            if current_age_float < base_age:
+                projected_income = params.initial_takehome_monthly * (
+                    (1 + params.young_growth_rate) ** years_from_start
+                )
+            else:
+                if start_age < base_age:
+                    income_at_base = params.initial_takehome_monthly * (
+                        (1 + params.young_growth_rate) ** (base_age - start_age)
+                    )
+                    projected_income = income_at_base * (
+                        (1 + params.income_growth_rate) ** (current_age_float - base_age)
+                    )
+                else:
+                    projected_income = params.initial_takehome_monthly * (
+                        (1 + params.income_growth_rate) ** years_from_start
+                    )
+        else:
+            projected_income = params.initial_takehome_monthly * 0.6
+
+        # Monthly expenses during rental phase
+        inflation = (1 + params.inflation_rate) ** years_from_start
+        rent = PRE_PURCHASE_RENT * inflation
+        renewal = rent / PRE_PURCHASE_RENEWAL_DIVISOR
+        housing = rent + renewal
+
+        education = sum(
+            params.education_cost_monthly
+            for s, e in education_ranges if s <= age <= e
+        )
+        num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
+        living = (
+            params.couple_living_cost_monthly
+            + num_children * params.child_living_cost_monthly
+        ) * inflation
+
+        monthly_surplus = projected_income - housing - education - living
+        # Accumulate 12 months of surplus with investment returns
+        for _ in range(12):
+            savings *= (1 + monthly_return_rate)
+            savings += monthly_surplus
+
+        # Check feasibility at target_age
+        projected_income_at_target = projected_income * (1 + params.income_growth_rate)
+        loan_months = min(35, 80 - target_age) * 12
+        if loan_months <= 0:
+            continue
+
+        test_strategy = type(strategy)(savings)
+        if loan_months != type(strategy).LOAN_MONTHS:
+            test_strategy.LOAN_MONTHS = loan_months
+            # Recalculate loan payment for shorter term
+            test_strategy.loan_amount = type(strategy).PROPERTY_PRICE
+
+        test_params = dataclasses.replace(
+            params, initial_takehome_monthly=projected_income_at_target
+        )
+        errors = validate_strategy(test_strategy, test_params)
+        if not errors:
+            return target_age
+
+    return None
 
 
 # 公的年金計算定数（日本年金機構 簡易版）
@@ -160,12 +277,14 @@ def _calc_expenses(
     monthly_moving_cost: float,
     education_ranges: list[tuple[int, int]],
     child_home_ranges: list[tuple[int, int]],
+    purchase_month_offset: int = 0,
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
     months_in_current_age = month % 12
+    ownership_month = month - purchase_month_offset
 
-    housing_cost = strategy.housing_cost(age, month, params)
+    housing_cost = strategy.housing_cost(age, ownership_month, params)
 
     education_cost = sum(
         params.education_cost_monthly
@@ -186,7 +305,8 @@ def _calc_expenses(
     )
 
     loan_deduction = 0
-    if strategy.loan_amount > 0 and years_elapsed < params.loan_tax_deduction_years:
+    ownership_years = ownership_month / 12
+    if strategy.loan_amount > 0 and ownership_years >= 0 and ownership_years < params.loan_tax_deduction_years:
         annual_deduction = (
             strategy.remaining_balance * params.loan_tax_deduction_rate
         )
@@ -273,10 +393,12 @@ def simulate_strategy(
     start_age: int = 37,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
+    purchase_age: int | None = None,
 ) -> Dict:
     """Execute simulation from start_age to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
     child_birth_ages: list of parent's age at each child's birth. None=default [39]. []=no children.
+    purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
     if child_birth_ages is None:
         child_birth_ages = [
@@ -297,15 +419,26 @@ def simulate_strategy(
                 )
 
     validate_age(start_age)
-    errors = validate_strategy(strategy, params)
-    if errors:
-        error_msg = f"【{strategy.name}】シミュレーション不可:\n" + "\n".join(
-            f"  ✗ {e}" for e in errors
-        )
-        raise ValueError(error_msg)
+
+    effective_purchase_age = purchase_age if purchase_age and purchase_age > start_age else start_age
+    has_pre_purchase_rental = effective_purchase_age > start_age
+
+    if has_pre_purchase_rental:
+        # Validation already done in find_earliest_purchase_age; cap loan term
+        loan_months_cap = min(35, 80 - effective_purchase_age) * 12
+        if loan_months_cap < type(strategy).LOAN_MONTHS:
+            strategy.LOAN_MONTHS = loan_months_cap
+    else:
+        errors = validate_strategy(strategy, params)
+        if errors:
+            error_msg = f"【{strategy.name}】シミュレーション不可:\n" + "\n".join(
+                f"  ✗ {e}" for e in errors
+            )
+            raise ValueError(error_msg)
 
     END_AGE = 80
     TOTAL_MONTHS = (END_AGE - start_age) * 12
+    purchase_month_offset = (effective_purchase_age - start_age) * 12
 
     education_ranges = [
         (age + EDUCATION_CHILD_AGE_START, age + EDUCATION_CHILD_AGE_END)
@@ -329,7 +462,7 @@ def simulate_strategy(
     if strategy.ONE_TIME_EXPENSES_BY_BUILDING_AGE:
         purchase_building_age = getattr(strategy, "PURCHASE_AGE_OF_BUILDING", 0)
         for building_age, cost in strategy.ONE_TIME_EXPENSES_BY_BUILDING_AGE.items():
-            owner_age = start_age + (building_age - purchase_building_age)
+            owner_age = effective_purchase_age + (building_age - purchase_building_age)
             if start_age <= owner_age < END_AGE:
                 one_time_expenses[owner_age] = cost
 
@@ -342,8 +475,11 @@ def simulate_strategy(
         ) * MOVING_TIMES
         monthly_moving_cost = total_moving_cost / TOTAL_MONTHS
 
-    # Dual account tracking: NISA (tax-free) + taxable (特定口座)
-    initial = strategy.initial_investment
+    # Initial investment depends on whether there's a pre-purchase rental phase
+    if has_pre_purchase_rental:
+        initial = strategy.initial_savings - PRE_PURCHASE_INITIAL_COST
+    else:
+        initial = strategy.initial_investment
     nisa_deposit = min(initial, NISA_LIMIT)
     nisa_balance = nisa_deposit
     nisa_cost_basis = nisa_deposit
@@ -362,10 +498,39 @@ def simulate_strategy(
             month, start_age, params, peak_income
         )
 
-        housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
-            month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
-            education_ranges, child_home_ranges,
-        )
+        if has_pre_purchase_rental and month < purchase_month_offset:
+            # Pre-purchase rental phase: 2LDK rental costs
+            years_elapsed = month / 12
+            inflation = (1 + params.inflation_rate) ** years_elapsed
+            rent = PRE_PURCHASE_RENT * inflation
+            housing_cost = rent + rent / PRE_PURCHASE_RENEWAL_DIVISOR
+
+            education_cost = sum(
+                params.education_cost_monthly
+                for s, e in education_ranges if s <= age <= e
+            )
+            num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
+            base_living = (
+                params.couple_living_cost_monthly
+                + num_children * params.child_living_cost_monthly
+            ) * inflation
+            living_cost = base_living * (
+                params.retirement_living_cost_ratio if age >= 70 else 1.0
+            )
+            utility_cost = 0
+            loan_deduction = 0
+            one_time_expense = 0
+
+            # Purchase costs at the transition month
+            if month == purchase_month_offset - 1:
+                # Deduct property closing costs at purchase time
+                one_time_expense = strategy.initial_savings - strategy.initial_investment
+        else:
+            housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
+                month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
+                education_ranges, child_home_ranges,
+                purchase_month_offset=purchase_month_offset,
+            )
 
         investable = (
             monthly_income
@@ -407,13 +572,13 @@ def simulate_strategy(
                 }
             )
 
-    SIMULATION_YEARS = END_AGE - start_age
+    ownership_years = END_AGE - effective_purchase_age
     investment_balance = nisa_balance + taxable_balance
 
     if strategy.property_price > 0:
         land_value_initial = strategy.property_price * strategy.land_value_ratio
         land_value_final = land_value_initial * (
-            (1 + params.land_appreciation) ** SIMULATION_YEARS
+            (1 + params.land_appreciation) ** ownership_years
         )
         liquidation_cost = strategy.LIQUIDATION_COST
     else:
@@ -443,6 +608,7 @@ def simulate_strategy(
 
     return {
         "strategy": strategy.name,
+        "purchase_age": effective_purchase_age,
         "investment_balance_80": investment_balance,
         "nisa_balance": nisa_balance,
         "nisa_cost_basis": nisa_cost_basis,

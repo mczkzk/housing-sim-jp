@@ -10,6 +10,7 @@ from housing_sim_jp import (
     validate_age,
     validate_strategy,
     simulate_strategy,
+    find_earliest_purchase_age,
     MAX_CHILDREN,
 )
 
@@ -198,3 +199,63 @@ class TestChildBirthAges:
                 StrategicRental(800, child_birth_ages=[39, 41], start_age=37),
                 params, start_age=37, child_birth_ages=[39, 41, 43],
             )
+
+
+class TestFindEarliestPurchaseAge:
+    """Tests for automatic purchase age detection."""
+
+    def test_already_feasible_returns_none(self):
+        """When strategy is already feasible at start_age, returns None."""
+        params = SimulationParams()
+        result = find_earliest_purchase_age(UrawaMansion(800), params, 37)
+        assert result is None
+
+    def test_low_savings_finds_purchase_age(self):
+        """Age 30 / savings 500 / income 60 should find a feasible purchase age."""
+        params = SimulationParams(initial_takehome_monthly=60.0)
+        result = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        assert result is not None
+        assert 31 <= result <= 45
+
+    def test_house_finds_earlier_than_mansion(self):
+        """House (cheaper) should be purchasable at or before mansion age."""
+        params = SimulationParams(initial_takehome_monthly=60.0)
+        mansion_age = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        house_age = find_earliest_purchase_age(UrawaHouse(500), params, 30)
+        assert house_age is not None
+        assert mansion_age is not None
+        assert house_age <= mansion_age
+
+    def test_very_low_income_returns_none(self):
+        """Extremely low income should make purchase infeasible at any age."""
+        params = SimulationParams(initial_takehome_monthly=20.0)
+        result = find_earliest_purchase_age(UrawaMansion(100), params, 30)
+        assert result is None
+
+
+class TestDeferredPurchase:
+    """Tests for simulate_strategy with purchase_age parameter."""
+
+    def test_purchase_age_none_is_normal_flow(self):
+        """purchase_age=None should produce identical results to default."""
+        params = SimulationParams()
+        r1 = simulate_strategy(UrawaMansion(800), params, start_age=37)
+        r2 = simulate_strategy(UrawaMansion(800), params, start_age=37, purchase_age=None)
+        assert r1["after_tax_net_assets"] == pytest.approx(r2["after_tax_net_assets"], abs=0.001)
+
+    def test_deferred_purchase_returns_purchase_age(self):
+        """Result should include the effective purchase_age."""
+        params = SimulationParams(initial_takehome_monthly=60.0)
+        purchase_age = find_earliest_purchase_age(UrawaHouse(500), params, 30)
+        assert purchase_age is not None
+        r = simulate_strategy(UrawaHouse(500), params, start_age=30, purchase_age=purchase_age)
+        assert r["purchase_age"] == purchase_age
+        assert r["after_tax_net_assets"] > 0
+
+    def test_deferred_purchase_no_bankruptcy(self):
+        """Deferred purchase at detected age should not cause bankruptcy."""
+        params = SimulationParams(initial_takehome_monthly=60.0)
+        purchase_age = find_earliest_purchase_age(UrawaMansion(500), params, 30)
+        assert purchase_age is not None
+        r = simulate_strategy(UrawaMansion(500), params, start_age=30, purchase_age=purchase_age)
+        assert r["bankrupt_age"] is None

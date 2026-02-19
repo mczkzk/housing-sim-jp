@@ -42,6 +42,17 @@ def print_parameters():
     print()
 
 
+def _format_cell(r, key):
+    """Format a single result cell, handling None (unpurchasable) strategies."""
+    if r is None:
+        return f"{'---':>14} "
+    v = r[key] / 10000
+    bankrupt = r.get("bankrupt_age")
+    if bankrupt:
+        return f"{v:>10.2f}億⚠{bankrupt}歳"
+    return f"{v:>14.2f}億"
+
+
 def _print_summary_table(title: str, all_results: dict, key: str):
     """Print a scenario × strategy comparison table"""
     print("=" * 120)
@@ -54,15 +65,7 @@ def _print_summary_table(title: str, all_results: dict, key: str):
     print("-" * 120)
 
     for scenario_name in SCENARIO_ORDER:
-        cells = []
-        for i in range(4):
-            r = all_results[scenario_name][i]
-            v = r[key] / 10000
-            bankrupt = r.get("bankrupt_age")
-            if bankrupt:
-                cells.append(f"{v:>10.2f}億⚠{bankrupt}歳")
-            else:
-                cells.append(f"{v:>14.2f}億")
+        cells = [_format_cell(all_results[scenario_name][i], key) for i in range(4)]
         print(f"{scenario_name:<12} " + " ".join(cells))
 
     print("-" * 120)
@@ -87,8 +90,17 @@ def print_results(all_results):
 
         for scenario_name in SCENARIO_ORDER:
             result = all_results[scenario_name][i]
+            if result is None:
+                print(f"{scenario_name:<12}  --- 購入不可 ---")
+                continue
             bankrupt = result.get("bankrupt_age")
             suffix = f" ⚠{bankrupt}歳破綻" if bankrupt else ""
+            purchase_info = ""
+            if result.get("purchase_age") and result["purchase_age"] > 0:
+                # Check if purchase was deferred (purchase_age in result)
+                pa = result.get("purchase_age")
+                if pa and pa > result["monthly_log"][0]["age"]:
+                    purchase_info = f" ({pa}歳購入)"
             print(
                 f"{scenario_name:<12} "
                 f"{result['investment_balance_80']:>11,.0f}万 "
@@ -98,7 +110,7 @@ def print_results(all_results):
                 f"{-result['securities_tax']:>11,.0f}万 "
                 f"{result['after_tax_net_assets']:>11,.0f}万 "
                 f"({result['after_tax_net_assets']/10000:.2f}億円)"
-                f"{suffix}"
+                f"{suffix}{purchase_info}"
             )
         print()
 
@@ -135,28 +147,25 @@ def print_discipline_analysis(base_results, discipline_results):
     print("-" * 120)
 
     for scenario_name in SCENARIO_ORDER:
-        vals = [
-            discipline_results[scenario_name][i]["after_tax_net_assets"] / 10000
-            for i in range(4)
-        ]
-        base = [
-            base_results[scenario_name][i]["after_tax_net_assets"] / 10000
-            for i in range(4)
-        ]
-        diffs = [vals[i] - base[i] for i in range(4)]
-
         cells = []
+        diff_cells = []
         for i in range(4):
-            bankrupt = discipline_results[scenario_name][i].get("bankrupt_age")
+            dr = discipline_results[scenario_name][i]
+            br = base_results[scenario_name][i]
+            if dr is None or br is None:
+                cells.append(f"{'---':>14} ")
+                diff_cells.append(f"{'---':>14} ")
+                continue
+            v = dr["after_tax_net_assets"] / 10000
+            b = br["after_tax_net_assets"] / 10000
+            bankrupt = dr.get("bankrupt_age")
             if bankrupt:
-                cells.append(f"{vals[i]:>10.2f}億⚠{bankrupt}歳")
+                cells.append(f"{v:>10.2f}億⚠{bankrupt}歳")
             else:
-                cells.append(f"{vals[i]:>14.2f}億")
+                cells.append(f"{v:>14.2f}億")
+            diff_cells.append(f"{v - b:>+14.2f}億")
         print(f"{scenario_name:<12} " + " ".join(cells))
-        print(
-            f"{'  (差分)':<12} "
-            + " ".join(f"{d:>+14.2f}億" for d in diffs)
-        )
+        print(f"{'  (差分)':<12} " + " ".join(diff_cells))
 
     print("-" * 120)
     print()
@@ -216,33 +225,25 @@ def main():
     child_birth_ages = [] if r["no_child"] else [int(x) for x in str(r["children"]).split(",")]
 
     print_parameters()
-    try:
-        results = run_scenarios(
-            start_age=r["age"], initial_savings=r["savings"], income=r["income"],
-            child_birth_ages=child_birth_ages,
-            couple_living_cost_monthly=r["living"],
-            child_living_cost_monthly=r["child_living"],
-            education_cost_monthly=r["education"],
-        )
-    except ValueError as e:
-        print(f"\n{e}\n")
-        raise SystemExit(1)
+    results = run_scenarios(
+        start_age=r["age"], initial_savings=r["savings"], income=r["income"],
+        child_birth_ages=child_birth_ages,
+        couple_living_cost_monthly=r["living"],
+        child_living_cost_monthly=r["child_living"],
+        education_cost_monthly=r["education"],
+    )
     print_results(results)
 
-    try:
-        discipline_results = run_scenarios(
-            start_age=r["age"],
-            initial_savings=r["savings"],
-            income=r["income"],
-            discipline_factors=DISCIPLINE_FACTORS,
-            child_birth_ages=child_birth_ages,
-            couple_living_cost_monthly=r["living"],
-            child_living_cost_monthly=r["child_living"],
-            education_cost_monthly=r["education"],
-        )
-    except ValueError as e:
-        print(f"\n{e}\n")
-        raise SystemExit(1)
+    discipline_results = run_scenarios(
+        start_age=r["age"],
+        initial_savings=r["savings"],
+        income=r["income"],
+        discipline_factors=DISCIPLINE_FACTORS,
+        child_birth_ages=child_birth_ages,
+        couple_living_cost_monthly=r["living"],
+        child_living_cost_monthly=r["child_living"],
+        education_cost_monthly=r["education"],
+    )
     print_discipline_analysis(results, discipline_results)
 
 

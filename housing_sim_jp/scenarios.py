@@ -9,6 +9,8 @@ from housing_sim_jp.strategies import (
 )
 from housing_sim_jp.simulation import (
     simulate_strategy,
+    validate_strategy,
+    find_earliest_purchase_age,
     DEFAULT_CHILD_BIRTH_AGES,
     EDUCATION_CHILD_AGE_END,
 )
@@ -88,6 +90,16 @@ def run_scenarios(
         ]
         results = []
         for strategy in strategies:
+            purchase_age = None
+            if strategy.property_price > 0:
+                errors = validate_strategy(strategy, params)
+                if errors:
+                    purchase_age = find_earliest_purchase_age(
+                        strategy, params, start_age, child_birth_ages
+                    )
+                    if purchase_age is None:
+                        results.append(None)
+                        continue
             factor = 1.0
             if discipline_factors:
                 factor = discipline_factors.get(strategy.name, 1.0)
@@ -98,6 +110,7 @@ def run_scenarios(
                     start_age=start_age,
                     discipline_factor=factor,
                     child_birth_ages=child_birth_ages,
+                    purchase_age=purchase_age,
                 )
             )
         all_results[scenario_name] = results
