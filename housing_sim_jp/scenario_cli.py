@@ -1,7 +1,9 @@
 """CLI entry point for scenario comparison."""
 
 import argparse
+from pathlib import Path
 
+from housing_sim_jp.config import load_config, resolve
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS
 
 STRATEGY_LABELS = [
@@ -163,57 +165,64 @@ def print_discipline_analysis(base_results, discipline_results):
 def main():
     parser = argparse.ArgumentParser(description="3シナリオ比較シミュレーション")
     parser.add_argument(
-        "--age", type=int, default=37, help="開始年齢 (default: 37)"
+        "--config", type=Path, default=None, help="設定ファイルパス (default: config.toml)"
     )
     parser.add_argument(
-        "--savings", type=float, default=800, help="初期金融資産・万円 (default: 800)"
+        "--age", type=int, default=None, help="開始年齢 (default: 30)"
+    )
+    parser.add_argument(
+        "--savings", type=float, default=None, help="初期金融資産・万円 (default: 500)"
     )
     parser.add_argument(
         "--income",
         type=float,
-        default=72.5,
-        help="現在の世帯月額手取り・万円 (default: 72.5)",
+        default=None,
+        help="現在の世帯月額手取り・万円 (default: 60.0)",
     )
     parser.add_argument(
         "--children",
         type=str,
-        default="39",
-        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 39)",
+        default=None,
+        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 33,35)",
     )
     parser.add_argument(
         "--no-child",
         action="store_true",
+        default=None,
         help="子供なし（教育費ゼロ）",
     )
     parser.add_argument(
         "--living",
         type=float,
-        default=27.0,
+        default=None,
         help="夫婦の生活費（万円/月、住居費・教育費・子供分除く）(default: 27.0)",
     )
     parser.add_argument(
         "--child-living",
         type=float,
-        default=5.0,
+        default=None,
         help="子1人あたりの追加生活費（万円/月）(default: 5.0)",
     )
     parser.add_argument(
         "--education",
         type=float,
-        default=15.0,
-        help="教育費（万円/月/人）(default: 15.0)",
+        default=None,
+        help="教育費（万円/月/人）(default: 10.0)",
     )
     args = parser.parse_args()
-    child_birth_ages = [] if args.no_child else [int(x) for x in args.children.split(",")]
+    config = load_config(args.config)
+    r = resolve(args, config)
+
+    child_birth_ages = [] if r["no_child"] else [int(x) for x in str(r["children"]).split(",")]
 
     print_parameters()
     try:
         results = run_scenarios(
-            start_age=args.age, initial_savings=args.savings, income=args.income,
+            start_age=r["age"], initial_savings=r["savings"], income=r["income"],
             child_birth_ages=child_birth_ages,
-            couple_living_cost_monthly=args.living,
-            child_living_cost_monthly=args.child_living,
-            education_cost_monthly=args.education,
+            couple_living_cost_monthly=r["living"],
+            child_living_cost_monthly=r["child_living"],
+            education_cost_monthly=r["education"],
         )
     except ValueError as e:
         print(f"\n{e}\n")
@@ -222,14 +231,14 @@ def main():
 
     try:
         discipline_results = run_scenarios(
-            start_age=args.age,
-            initial_savings=args.savings,
-            income=args.income,
+            start_age=r["age"],
+            initial_savings=r["savings"],
+            income=r["income"],
             discipline_factors=DISCIPLINE_FACTORS,
             child_birth_ages=child_birth_ages,
-            couple_living_cost_monthly=args.living,
-            child_living_cost_monthly=args.child_living,
-            education_cost_monthly=args.education,
+            couple_living_cost_monthly=r["living"],
+            child_living_cost_monthly=r["child_living"],
+            education_cost_monthly=r["education"],
         )
     except ValueError as e:
         print(f"\n{e}\n")

@@ -24,6 +24,12 @@ env/
 .DS_Store
 Thumbs.db
 
+# Config (personal settings)
+config.toml
+
+# Personal reports
+my-report.md
+
 # Claude Code
 .claude/
 CLAUDE.md

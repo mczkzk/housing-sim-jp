@@ -1,7 +1,9 @@
 """CLI entry point for single simulation (3 strategy comparison)."""
 
 import argparse
+from pathlib import Path
 
+from housing_sim_jp.config import load_config, resolve
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy
@@ -11,56 +13,65 @@ def main():
     """Execute main simulation (3 strategy comparison)"""
     parser = argparse.ArgumentParser(description="住宅資産形成シミュレーション")
     parser.add_argument(
-        "--age", type=int, default=37, help="開始年齢 (default: 37)"
+        "--config", type=Path, default=None, help="設定ファイルパス (default: config.toml)"
     )
     parser.add_argument(
-        "--savings", type=float, default=800, help="初期金融資産・万円 (default: 800)"
+        "--age", type=int, default=None, help="開始年齢 (default: 30)"
+    )
+    parser.add_argument(
+        "--savings", type=float, default=None, help="初期金融資産・万円 (default: 500)"
     )
     parser.add_argument(
         "--income",
         type=float,
-        default=72.5,
-        help="現在の世帯月額手取り・万円 (default: 72.5)",
+        default=None,
+        help="現在の世帯月額手取り・万円 (default: 60.0)",
     )
     parser.add_argument(
         "--children",
         type=str,
-        default="39",
-        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 39)",
+        default=None,
+        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 33,35)",
     )
     parser.add_argument(
         "--no-child",
         action="store_true",
+        default=None,
         help="子供なし（教育費ゼロ）",
     )
     parser.add_argument(
         "--living",
         type=float,
-        default=27.0,
+        default=None,
         help="夫婦の生活費（万円/月、住居費・教育費・子供分除く）(default: 27.0)",
     )
     parser.add_argument(
         "--child-living",
         type=float,
-        default=5.0,
+        default=None,
         help="子1人あたりの追加生活費（万円/月）(default: 5.0)",
     )
     parser.add_argument(
         "--education",
         type=float,
-        default=15.0,
-        help="教育費（万円/月/人）(default: 15.0)",
+        default=None,
+        help="教育費（万円/月/人）(default: 10.0)",
     )
     args = parser.parse_args()
-    start_age = args.age
-    savings = args.savings
-    child_birth_ages = [] if args.no_child else [int(x) for x in args.children.split(",")]
+    config = load_config(args.config)
+    r = resolve(args, config)
+
+    start_age = r["age"]
+    savings = r["savings"]
+    children_str = r["children"]
+    no_child = r["no_child"]
+    child_birth_ages = [] if no_child else [int(x) for x in str(children_str).split(",")]
 
     params = SimulationParams(
-        initial_takehome_monthly=args.income,
-        couple_living_cost_monthly=args.living,
-        child_living_cost_monthly=args.child_living,
-        education_cost_monthly=args.education,
+        initial_takehome_monthly=r["income"],
+        couple_living_cost_monthly=r["living"],
+        child_living_cost_monthly=r["child_living"],
+        education_cost_monthly=r["education"],
     )
     strategies = [
         UrawaMansion(savings),
@@ -71,13 +82,14 @@ def main():
     sim_years = 80 - start_age
     print("=" * 80)
     print(f"住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
-    print(f"  初期資産: {savings:.0f}万円 / 月収手取り: {args.income:.1f}万円")
+    income = r["income"]
+    print(f"  初期資産: {savings:.0f}万円 / 月収手取り: {income:.1f}万円")
     if start_age < params.income_base_age:
-        income_at_35 = args.income * (1 + params.young_growth_rate) ** (
+        income_at_35 = income * (1 + params.young_growth_rate) ** (
             params.income_base_age - start_age
         )
         print(
-            f"  収入成長: {start_age}歳 {args.income:.1f}万 →(年3%)→ 35歳 {income_at_35:.1f}万 →(年1.5%)→ 60歳"
+            f"  収入成長: {start_age}歳 {income:.1f}万 →(年3%)→ 35歳 {income_at_35:.1f}万 →(年1.5%)→ 60歳"
         )
     if child_birth_ages:
         parts = [f"{a}歳出産→{a+7}〜{a+22}歳" for a in child_birth_ages]

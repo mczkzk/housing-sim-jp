@@ -38,18 +38,33 @@ python -m housing_sim_jp.scenario_cli
 python -m pytest tests/ -v
 ```
 
+### 設定ファイル
+
+`config.example.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
+
+```bash
+cp config.example.toml config.toml
+# config.toml を編集して個人設定を反映
+python -m housing_sim_jp.cli                              # config.toml を自動読み込み
+python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
+python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個別に上書き
+```
+
+**優先順位**: CLIフラグ > config.toml > ハードコードデフォルト
+
 ### オプション
 
 | フラグ | 説明 | デフォルト |
 |--------|------|-----------|
-| `--age` | 開始年齢（20〜45歳） | 37 |
-| `--savings` | 初期金融資産（万円） | 800 |
-| `--income` | 世帯月額手取り（万円） | 72.5 |
-| `--children` | 出産時の親の年齢（カンマ区切り、最大2人） | 39 |
+| `--config` | 設定ファイルパス | config.toml（存在時のみ） |
+| `--age` | 開始年齢（20〜45歳） | 30 |
+| `--savings` | 初期金融資産（万円） | 500 |
+| `--income` | 世帯月額手取り（万円） | 60.0 |
+| `--children` | 出産時の親の年齢（カンマ区切り、最大2人） | 33,35 |
 | `--no-child` | 子供なし（教育費ゼロ） | - |
 | `--living` | 夫婦の生活費（万円/月、住居費・教育費・子供分除く） | 27.0 |
 | `--child-living` | 子1人あたりの追加生活費（万円/月） | 5.0 |
-| `--education` | 教育費（万円/月/人） | 15.0 |
+| `--education` | 教育費（万円/月/人） | 10.0 |
 
 - **生活費**: 夫婦ベース27万＋子供1人あたり5万で動的に計算。子1人の場合は合計32万、子2人で37万、子なしで27万
 - **教育費**: `--children` から自動計算（各子の7〜22歳 = 小学校入学〜大学卒業の16年間、月15万円/人）
