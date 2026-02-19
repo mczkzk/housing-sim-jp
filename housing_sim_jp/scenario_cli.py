@@ -1,82 +1,15 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Three Scenario Comparison: Low Growth, Standard, High Growth
-Macro-consistent parameter settings.
-"""
+"""CLI entry point for scenario comparison."""
 
 import argparse
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS
 
-from housing_simulation import (
-    SimulationParams,
-    UrawaMansion,
-    UrawaHouse,
-    StrategicRental,
-    NormalRental,
-    simulate_strategy,
-)
-
-SCENARIOS = {
-    "低成長": {
-        "inflation_rate": 0.005,
-        "investment_return": 0.04,
-        "land_appreciation": 0.00,
-        "income_growth_rate": 0.005,
-        "loan_rate_schedule": [0.0075, 0.0100, 0.0125, 0.0125, 0.0125],
-    },
-    "標準": {
-        "inflation_rate": 0.015,
-        "investment_return": 0.055,
-        "land_appreciation": 0.005,
-        "income_growth_rate": 0.015,
-        "loan_rate_schedule": [0.0075, 0.0125, 0.0175, 0.0200, 0.0200],
-    },
-    "高成長": {
-        "inflation_rate": 0.025,
-        "investment_return": 0.07,
-        "land_appreciation": 0.01,
-        "income_growth_rate": 0.025,
-        "loan_rate_schedule": [0.0100, 0.0175, 0.0225, 0.0275, 0.0300],
-    },
-}
-
-
-DISCIPLINE_FACTORS = {
-    "浦和マンション": 0.9,
-    "浦和一戸建て": 0.9,
-    "戦略的賃貸": 0.8,
-    "通常賃貸": 0.8,
-}
-
-
-def run_scenarios(start_age: int = 37, initial_savings: float = 800, income: float = 72.5, discipline_factors=None):
-    """Execute simulations for all scenarios.
-    discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
-    """
-    all_results = {}
-
-    for scenario_name, scenario_params in SCENARIOS.items():
-        params = SimulationParams(initial_takehome_monthly=income)
-        for key, value in scenario_params.items():
-            setattr(params, key, value)
-
-        strategies = [UrawaMansion(initial_savings), UrawaHouse(initial_savings), StrategicRental(initial_savings), NormalRental(initial_savings)]
-        results = []
-        for strategy in strategies:
-            factor = 1.0
-            if discipline_factors:
-                factor = discipline_factors.get(strategy.name, 1.0)
-            results.append(simulate_strategy(strategy, params, start_age=start_age, discipline_factor=factor))
-        all_results[scenario_name] = results
-
-    return all_results
-
-
-STRATEGY_LABELS = ["マンション購入派", "一戸建て購入派", "戦略的賃貸", "通常賃貸(3LDK固定)"]
+STRATEGY_LABELS = [
+    "マンション購入派",
+    "一戸建て購入派",
+    "戦略的賃貸",
+    "通常賃貸(3LDK固定)",
+]
 SCENARIO_ORDER = ["低成長", "標準", "高成長"]
 
 
@@ -94,9 +27,15 @@ def print_parameters():
     )
     print("-" * 120)
 
-    print(f"{'低成長':<12} {0.5:>9.1f}% {4.0:>9.1f}% {0.0:>9.1f}% {'0.75→1.25%':>15}")
-    print(f"{'標準':<12} {1.5:>9.1f}% {5.5:>9.1f}% {0.5:>9.1f}% {'0.75→2.00%':>15}")
-    print(f"{'高成長':<12} {2.5:>9.1f}% {7.0:>9.1f}% {1.0:>9.1f}% {'1.00→3.00%':>15}")
+    print(
+        f"{'低成長':<12} {0.5:>9.1f}% {4.0:>9.1f}% {0.0:>9.1f}% {'0.75→1.25%':>15}"
+    )
+    print(
+        f"{'標準':<12} {1.5:>9.1f}% {5.5:>9.1f}% {0.5:>9.1f}% {'0.75→2.00%':>15}"
+    )
+    print(
+        f"{'高成長':<12} {2.5:>9.1f}% {7.0:>9.1f}% {1.0:>9.1f}% {'1.00→3.00%':>15}"
+    )
     print("-" * 120)
     print()
 
@@ -161,12 +100,20 @@ def print_results(all_results):
             )
         print()
 
-    _print_summary_table("シナリオ別・最終純資産比較", all_results, "final_net_assets")
-    _print_summary_table("シナリオ別・税引後手取り純資産比較", all_results, "after_tax_net_assets")
+    _print_summary_table(
+        "シナリオ別・最終純資産比較", all_results, "final_net_assets"
+    )
+    _print_summary_table(
+        "シナリオ別・税引後手取り純資産比較", all_results, "after_tax_net_assets"
+    )
 
     print("【備考】")
-    print("  ・マンション: 建替えリスク期待値（10%×2,200万+12%×1,250万=370万）を75歳時点の一時費用として計上済み")
-    print("  ・一戸建て: 土地売却時の流動性ディスカウント15%を適用済み（売り急ぎ・指値リスク）")
+    print(
+        "  ・マンション: 建替えリスク期待値（10%×2,200万+12%×1,250万=370万）を75歳時点の一時費用として計上済み"
+    )
+    print(
+        "  ・一戸建て: 土地売却時の流動性ディスカウント15%を適用済み（売り急ぎ・指値リスク）"
+    )
     print("-" * 120)
 
 
@@ -186,8 +133,14 @@ def print_discipline_analysis(base_results, discipline_results):
     print("-" * 120)
 
     for scenario_name in SCENARIO_ORDER:
-        vals = [discipline_results[scenario_name][i]["after_tax_net_assets"] / 10000 for i in range(4)]
-        base = [base_results[scenario_name][i]["after_tax_net_assets"] / 10000 for i in range(4)]
+        vals = [
+            discipline_results[scenario_name][i]["after_tax_net_assets"] / 10000
+            for i in range(4)
+        ]
+        base = [
+            base_results[scenario_name][i]["after_tax_net_assets"] / 10000
+            for i in range(4)
+        ]
         diffs = [vals[i] - base[i] for i in range(4)]
 
         cells = []
@@ -207,24 +160,44 @@ def print_discipline_analysis(base_results, discipline_results):
     print()
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="3シナリオ比較シミュレーション")
-    parser.add_argument("--age", type=int, default=37, help="開始年齢 (default: 37)")
-    parser.add_argument("--savings", type=float, default=800, help="初期金融資産・万円 (default: 800)")
-    parser.add_argument("--income", type=float, default=72.5, help="現在の世帯月額手取り・万円 (default: 72.5)")
+    parser.add_argument(
+        "--age", type=int, default=37, help="開始年齢 (default: 37)"
+    )
+    parser.add_argument(
+        "--savings", type=float, default=800, help="初期金融資産・万円 (default: 800)"
+    )
+    parser.add_argument(
+        "--income",
+        type=float,
+        default=72.5,
+        help="現在の世帯月額手取り・万円 (default: 72.5)",
+    )
     args = parser.parse_args()
 
     print_parameters()
     try:
-        results = run_scenarios(start_age=args.age, initial_savings=args.savings, income=args.income)
+        results = run_scenarios(
+            start_age=args.age, initial_savings=args.savings, income=args.income
+        )
     except ValueError as e:
         print(f"\n{e}\n")
         raise SystemExit(1)
     print_results(results)
 
     try:
-        discipline_results = run_scenarios(start_age=args.age, initial_savings=args.savings, income=args.income, discipline_factors=DISCIPLINE_FACTORS)
+        discipline_results = run_scenarios(
+            start_age=args.age,
+            initial_savings=args.savings,
+            income=args.income,
+            discipline_factors=DISCIPLINE_FACTORS,
+        )
     except ValueError as e:
         print(f"\n{e}\n")
         raise SystemExit(1)
     print_discipline_analysis(results, discipline_results)
+
+
+if __name__ == "__main__":
+    main()

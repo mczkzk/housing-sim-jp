@@ -15,10 +15,13 @@
 
 ```bash
 # 単体シミュレーション（3戦略比較: マンション/一戸建て/戦略的賃貸）
-python housing_simulation.py
+python -m housing_sim_jp.cli
 
 # 3シナリオ×4戦略比較（低成長/標準/高成長 + 投資規律の感度分析）
-python scenario_comparison.py
+python -m housing_sim_jp.scenario_cli
+
+# テスト
+python -m pytest tests/ -v
 ```
 
 ### オプション
@@ -31,10 +34,10 @@ python scenario_comparison.py
 
 ```bash
 # 例: 30歳・貯蓄500万円・月収手取り50万円で開始
-python housing_simulation.py --age 30 --savings 500 --income 50
+python -m housing_sim_jp.cli --age 30 --savings 500 --income 50
 ```
 
-## 経済シナリオ（scenario_comparison.py）
+## 経済シナリオ
 
 | パラメータ | 低成長 | 標準 | 高成長 |
 |-----------|--------|------|--------|
