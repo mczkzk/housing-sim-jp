@@ -174,12 +174,25 @@ def main():
         default=72.5,
         help="現在の世帯月額手取り・万円 (default: 72.5)",
     )
+    parser.add_argument(
+        "--children",
+        type=str,
+        default="38",
+        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 38)",
+    )
+    parser.add_argument(
+        "--no-child",
+        action="store_true",
+        help="子供なし（教育費ゼロ）",
+    )
     args = parser.parse_args()
+    child_birth_ages = [] if args.no_child else [int(x) for x in args.children.split(",")]
 
     print_parameters()
     try:
         results = run_scenarios(
-            start_age=args.age, initial_savings=args.savings, income=args.income
+            start_age=args.age, initial_savings=args.savings, income=args.income,
+            child_birth_ages=child_birth_ages,
         )
     except ValueError as e:
         print(f"\n{e}\n")
@@ -192,6 +205,7 @@ def main():
             initial_savings=args.savings,
             income=args.income,
             discipline_factors=DISCIPLINE_FACTORS,
+            child_birth_ages=child_birth_ages,
         )
     except ValueError as e:
         print(f"\n{e}\n")

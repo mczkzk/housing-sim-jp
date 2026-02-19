@@ -20,6 +20,7 @@ from housing_sim_jp.simulation import (
     MAX_REPAYMENT_RATIO,
     MAX_INCOME_MULTIPLIER,
     TAKEHOME_TO_GROSS,
+    DEFAULT_CHILD_BIRTH_AGES,
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "MAX_REPAYMENT_RATIO",
     "MAX_INCOME_MULTIPLIER",
     "TAKEHOME_TO_GROSS",
+    "DEFAULT_CHILD_BIRTH_AGES",
 ]

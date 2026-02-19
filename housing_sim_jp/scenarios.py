@@ -47,9 +47,11 @@ def run_scenarios(
     initial_savings: float = 800,
     income: float = 72.5,
     discipline_factors=None,
+    child_birth_ages: list[int] | None = None,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
+    child_birth_ages: list of parent's age at each child's birth. None=default [38]. []=no children.
     """
     all_results = {}
 
@@ -75,6 +77,7 @@ def run_scenarios(
                     params,
                     start_age=start_age,
                     discipline_factor=factor,
+                    child_birth_ages=child_birth_ages,
                 )
             )
         all_results[scenario_name] = results

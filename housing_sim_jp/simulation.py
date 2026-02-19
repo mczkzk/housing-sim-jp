@@ -7,7 +7,7 @@ from housing_sim_jp.strategies import Strategy
 
 # Simulation age limits
 MIN_START_AGE = 20  # 婚姻可能年齢
-MAX_START_AGE = 45  # 出産可能上限（教育費45-60歳の前提: 38歳頃出産）
+MAX_START_AGE = 45  # 出産可能上限
 
 # Loan screening constants (銀行審査基準)
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
@@ -22,7 +22,7 @@ def validate_age(start_age: int) -> None:
         raise ValueError(
             f"開始年齢{start_age}歳は対象外です（{MIN_START_AGE}-{MAX_START_AGE}歳）\n"
             f"  下限{MIN_START_AGE}歳: 婚姻可能年齢\n"
-            f"  上限{MAX_START_AGE}歳: 教育費モデルの前提（38歳頃出産 → 45-60歳に教育費）"
+            f"  上限{MAX_START_AGE}歳: 出産可能上限"
         )
 
 
@@ -117,6 +117,12 @@ def _calc_monthly_income(
     return monthly_income, peak_income
 
 
+EDUCATION_COST_MONTHLY = 15.0
+# child_birth_age + offset → education cost period
+EDUCATION_CHILD_AGE_START = 7   # 小学校入学
+EDUCATION_CHILD_AGE_END = 22    # 大学卒業
+
+
 def _calc_expenses(
     month: int,
     age: int,
@@ -125,21 +131,18 @@ def _calc_expenses(
     params: SimulationParams,
     one_time_expenses: Dict[int, float],
     monthly_moving_cost: float,
+    education_ranges: list[tuple[int, int]],
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
     months_in_current_age = month % 12
 
-    EDUCATION_START_AGE = 45
-    EDUCATION_END_AGE = 60
-    EDUCATION_COST_MONTHLY = 15.0
-
     housing_cost = strategy.housing_cost(age, month, params)
 
-    education_cost = (
+    education_cost = sum(
         EDUCATION_COST_MONTHLY
-        if EDUCATION_START_AGE <= age <= EDUCATION_END_AGE
-        else 0
+        for start, end in education_ranges
+        if start <= age <= end
     )
 
     base_living = params.base_living_cost_monthly * (
@@ -228,13 +231,23 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
+DEFAULT_CHILD_BIRTH_AGES = [38]
+
+
 def simulate_strategy(
     strategy: Strategy,
     params: SimulationParams,
     start_age: int = 37,
     discipline_factor: float = 1.0,
+    child_birth_ages: list[int] | None = None,
 ) -> Dict:
-    """Execute simulation from start_age to 80. discipline_factor: 1.0=perfect, 0.8=80% of surplus invested."""
+    """Execute simulation from start_age to 80.
+    discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
+    child_birth_ages: list of parent's age at each child's birth. None=default [38]. []=no children.
+    """
+    if child_birth_ages is None:
+        child_birth_ages = list(DEFAULT_CHILD_BIRTH_AGES)
+
     validate_age(start_age)
     errors = validate_strategy(strategy, params)
     if errors:
@@ -245,6 +258,12 @@ def simulate_strategy(
 
     END_AGE = 80
     TOTAL_MONTHS = (END_AGE - start_age) * 12
+
+    education_ranges = [
+        (age + EDUCATION_CHILD_AGE_START, age + EDUCATION_CHILD_AGE_END)
+        for age in child_birth_ages
+    ]
+
     MOVING_COST_PER_TIME = 40
     RESTORATION_COST_PER_TIME = 15
     MOVING_TIMES = 3
@@ -291,7 +310,8 @@ def simulate_strategy(
         )
 
         housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
-            month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost
+            month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
+            education_ranges,
         )
 
         investable = (
