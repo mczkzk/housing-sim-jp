@@ -84,6 +84,17 @@ PRE_PURCHASE_RENT = 18.0  # 2LDK rent during pre-purchase phase
 PRE_PURCHASE_RENEWAL_DIVISOR = 24  # Renewal fee amortized monthly
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
+# Simulation constants
+END_AGE = 80
+NISA_LIMIT = 3600  # 夫婦NISA上限（万円）
+CAPITAL_GAINS_TAX_RATE = 0.20315
+RESIDENCE_SPECIAL_DEDUCTION = 3000  # 居住用財産3,000万円特別控除
+
+# Rental moving costs
+MOVING_COST_PER_TIME = 40
+RESTORATION_COST_PER_TIME = 15
+MOVING_TIMES = 3
+
 
 def _inflate_property_price(
     strategy: Strategy, params: SimulationParams, years: float,
@@ -488,7 +499,6 @@ def simulate_strategy(
             )
             raise ValueError(error_msg)
 
-    END_AGE = 80
     TOTAL_MONTHS = (END_AGE - start_age) * 12
     purchase_month_offset = (effective_purchase_age - start_age) * 12
 
@@ -501,13 +511,6 @@ def simulate_strategy(
         (birth_age, birth_age + CHILD_HOME_AGE_END)
         for birth_age in child_birth_ages
     ]
-
-    MOVING_COST_PER_TIME = 40
-    RESTORATION_COST_PER_TIME = 15
-    MOVING_TIMES = 3
-    NISA_LIMIT = 3600
-    CAPITAL_GAINS_TAX_RATE = 0.20315
-    RESIDENCE_SPECIAL_DEDUCTION = 3000
 
     # Convert building-age milestones to owner-age for this simulation
     one_time_expenses: dict[int, float] = {}
