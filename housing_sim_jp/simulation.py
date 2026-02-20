@@ -418,7 +418,7 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
-DEFAULT_CHILD_BIRTH_AGES = [33]
+DEFAULT_CHILD_BIRTH_AGES = [32, 35]
 
 
 def simulate_strategy(
@@ -431,7 +431,7 @@ def simulate_strategy(
 ) -> Dict:
     """Execute simulation from start_age to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
-    child_birth_ages: list of parent's age at each child's birth. None=default [33]. []=no children.
+    child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
     purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
     if child_birth_ages is None:

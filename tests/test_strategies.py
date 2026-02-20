@@ -178,12 +178,12 @@ class TestStrategicRentalHousingCost:
         assert cost == pytest.approx(expected, rel=1e-4)
 
     def test_phase2(self):
-        """Age 46-61 (child_birth=39): RENT_PHASE2 (24万) + renewal fee with inflation"""
+        """Age 46-61 (child_birth=39): rent_phase2 (23万, 1 child) + renewal fee with inflation"""
         s = StrategicRental(800, child_birth_ages=[39], start_age=37)
         months = (46 - 37) * 12
         years = months / 12
         cost = s.housing_cost(46, months, self.params)
-        inflated = 24.0 * (1.015 ** years)
+        inflated = 23.0 * (1.015 ** years)
         expected = inflated + inflated / 24
         assert cost == pytest.approx(expected, rel=1e-4)
 
@@ -203,6 +203,17 @@ class TestStrategicRentalHousingCost:
         cost_74 = s.housing_cost(74, (74 - 37) * 12, self.params)
         cost_75 = s.housing_cost(75, (75 - 37) * 12, self.params)
         assert cost_75 > cost_74
+
+    def test_phase2_two_children_higher_rent(self):
+        """2 children → phase2 rent is 25万 (23+2) instead of 23万"""
+        s1 = StrategicRental(800, child_birth_ages=[39], start_age=37)
+        s2 = StrategicRental(800, child_birth_ages=[39, 41], start_age=37)
+        assert s1.rent_phase2 == pytest.approx(23.0)
+        assert s2.rent_phase2 == pytest.approx(25.0)
+        months = (46 - 37) * 12
+        cost1 = s1.housing_cost(46, months, self.params)
+        cost2 = s2.housing_cost(46, months, self.params)
+        assert cost2 > cost1
 
     def test_no_child_always_phase1(self):
         """子なし → 全期間Phase1（2LDK 18万ベース）"""
@@ -225,8 +236,19 @@ class TestNormalRentalHousingCost:
         params = SimulationParams()
         s = NormalRental(800)
         cost = s.housing_cost(37, 0, params)
-        expected = 24.0 + 24.0 / 24
+        expected = 23.0 + 23.0 / 24
         assert cost == pytest.approx(expected, rel=1e-4)
+
+    def test_two_children_higher_rent(self):
+        """2 children → base rent is 25万 (23+2)"""
+        params = SimulationParams()
+        s1 = NormalRental(800, num_children=1)
+        s2 = NormalRental(800, num_children=2)
+        assert s1.base_rent == pytest.approx(23.0)
+        assert s2.base_rent == pytest.approx(25.0)
+        cost1 = s1.housing_cost(37, 0, params)
+        cost2 = s2.housing_cost(37, 0, params)
+        assert cost2 > cost1
 
     def test_elderly_premium(self):
         params = SimulationParams()

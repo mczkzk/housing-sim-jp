@@ -10,7 +10,7 @@ DEFAULTS = {
     "age": 30,
     "savings": 800.0,
     "income": 62.5,
-    "children": "33",
+    "children": "32,35",
     "no_child": False,
     "living": 27.0,
     "child_living": 5.0,

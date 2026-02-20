@@ -203,7 +203,8 @@ class StrategicRental(Strategy):
 
     INITIAL_COST = 105  # 敷金・礼金・仲介手数料・引越し
     RENT_PHASE1 = 18.0
-    RENT_PHASE2 = 24.0
+    RENT_PHASE2_BASE = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
+    RENT_PHASE2_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
     RENT_PHASE3_BASE = 17.0
     RENEWAL_FEE_DIVISOR = 24
     # 75歳以上の高齢者住宅プレミアム（期待値、2026年現在価値）
@@ -220,6 +221,8 @@ class StrategicRental(Strategy):
             land_value_ratio=0,
         )
         self.senior_rent_inflated = None
+        num_children = len(child_birth_ages) if child_birth_ages else 0
+        self.rent_phase2 = self.RENT_PHASE2_BASE + max(0, num_children - 1) * self.RENT_PHASE2_EXTRA
 
         if child_birth_ages:
             self.age_phase2_start = min(ba + CHILD_ROOM_AGE_START for ba in child_birth_ages)
@@ -241,7 +244,7 @@ class StrategicRental(Strategy):
         if age < self.age_phase2_start:
             base_rent = self.RENT_PHASE1
         elif age < self.age_phase2_end:
-            base_rent = self.RENT_PHASE2
+            base_rent = self.rent_phase2
         else:
             # Phase III: downsize to 2LDK, nominal rent fixed at phase2_end level
             if self.senior_rent_inflated is None:
@@ -271,13 +274,14 @@ class NormalRental(Strategy):
     """Normal Rental (No Downsizing, 3LDK for entire period)"""
 
     INITIAL_COST = 105  # 敷金・礼金・仲介手数料・引越し
-    BASE_RENT = 24.0
+    BASE_RENT = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
+    RENT_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
     RENEWAL_FEE_DIVISOR = 24
     # 75歳以上の高齢者住宅プレミアム（StrategicRentalと同じ期待値）
     ELDERLY_PREMIUM_AGE = 75
     ELDERLY_PREMIUM_MONTHLY = 3.0
 
-    def __init__(self, initial_savings: float = 800):
+    def __init__(self, initial_savings: float = 800, num_children: int = 0):
         super().__init__(
             name="通常賃貸",
             initial_savings=initial_savings,
@@ -286,13 +290,14 @@ class NormalRental(Strategy):
             loan_amount=0,
             land_value_ratio=0,
         )
+        self.base_rent = self.BASE_RENT + max(0, num_children - 1) * self.RENT_EXTRA
 
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
     ) -> float:
         """Monthly rent for 3LDK with inflation and renewal fee"""
         years_elapsed = months_elapsed / 12
-        cost = self.BASE_RENT * ((1 + params.inflation_rate) ** years_elapsed)
+        cost = self.base_rent * ((1 + params.inflation_rate) ** years_elapsed)
         cost += cost / self.RENEWAL_FEE_DIVISOR
         # 75歳以上: 高齢者住宅プレミアム
         if age >= self.ELDERLY_PREMIUM_AGE:

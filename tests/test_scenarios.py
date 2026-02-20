@@ -24,7 +24,8 @@ class TestScenarioOrdering:
     """High growth > Standard > Low growth for all strategies."""
 
     def setup_method(self):
-        self.results = run_scenarios(start_age=37, initial_savings=800, income=72.5)
+        self.results = run_scenarios(start_age=37, initial_savings=800, income=72.5,
+                                    child_birth_ages=[39])
 
     def test_ordering_all_strategies(self):
         for i in range(4):
@@ -50,7 +51,7 @@ class TestScenarioSnapshots:
 
     def test_high_growth_strategic_rental(self):
         r = self.results["高成長"][2]
-        assert r["after_tax_net_assets"] == pytest.approx(42869.876858, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(44771.518702, abs=0.01)
 
 
 class TestDisciplineFactors:

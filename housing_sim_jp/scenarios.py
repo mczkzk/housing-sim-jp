@@ -60,7 +60,7 @@ def run_scenarios(
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
-    child_birth_ages: list of parent's age at each child's birth. None=default [33]. []=no children.
+    child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
     """
     # StrategicRentalのフェーズ計算とsimulate_strategyの教育費計算を一致させるため、
     # Noneを事前に解決してから両方に渡す
@@ -86,7 +86,7 @@ def run_scenarios(
             UrawaMansion(initial_savings),
             UrawaHouse(initial_savings),
             StrategicRental(initial_savings, child_birth_ages=child_birth_ages, start_age=start_age),
-            NormalRental(initial_savings),
+            NormalRental(initial_savings, num_children=len(child_birth_ages)),
         ]
         results = []
         for strategy in strategies:
