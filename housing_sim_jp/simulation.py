@@ -111,7 +111,6 @@ def find_earliest_purchase_age(
         return None  # Already feasible at start_age
 
     monthly_return_rate = params.investment_return / 12
-    base_age = params.income_base_age
 
     # Resolve child_birth_ages for education/living cost projection
     if child_birth_ages is None:
@@ -131,32 +130,14 @@ def find_earliest_purchase_age(
 
     # Project savings year-by-year while living in 2LDK rental
     savings = strategy.initial_savings - PRE_PURCHASE_INITIAL_COST
-    income = params.initial_takehome_monthly
 
     for target_age in range(start_age + 1, MAX_PURCHASE_AGE + 1):
         # Simulate one year of rental living
         age = target_age - 1
         years_from_start = age - start_age
 
-        # Income projection
         if age < 60:
-            current_age_float = float(age)
-            if current_age_float < base_age:
-                projected_income = params.initial_takehome_monthly * (
-                    (1 + params.young_growth_rate) ** years_from_start
-                )
-            else:
-                if start_age < base_age:
-                    income_at_base = params.initial_takehome_monthly * (
-                        (1 + params.young_growth_rate) ** (base_age - start_age)
-                    )
-                    projected_income = income_at_base * (
-                        (1 + params.income_growth_rate) ** (current_age_float - base_age)
-                    )
-                else:
-                    projected_income = params.initial_takehome_monthly * (
-                        (1 + params.income_growth_rate) ** years_from_start
-                    )
+            projected_income = _project_working_income(years_from_start, start_age, params)
         else:
             projected_income = params.initial_takehome_monthly * 0.6
 
@@ -258,33 +239,37 @@ def _estimate_annual_pension(
     return public + params.corporate_pension_annual
 
 
+def _project_working_income(
+    years_elapsed: float, start_age: int, params: SimulationParams
+) -> float:
+    """Project pre-retirement (< 60) working income based on years elapsed."""
+    base_age = params.income_base_age
+    current_age = start_age + years_elapsed
+    if current_age < base_age:
+        return params.initial_takehome_monthly * (
+            (1 + params.young_growth_rate) ** years_elapsed
+        )
+    if start_age < base_age:
+        income_at_base = params.initial_takehome_monthly * (
+            (1 + params.young_growth_rate) ** (base_age - start_age)
+        )
+        return income_at_base * (
+            (1 + params.income_growth_rate) ** (current_age - base_age)
+        )
+    return params.initial_takehome_monthly * (
+        (1 + params.income_growth_rate) ** years_elapsed
+    )
+
+
 def _calc_monthly_income(
     month: int, start_age: int, params: SimulationParams, peak_income: float
 ) -> tuple[float, float]:
     """Calculate monthly income. Returns (income, updated_peak_income)."""
     years_elapsed = month / 12
     age = start_age + month // 12
-    income_at_start = params.initial_takehome_monthly
-    base_age = params.income_base_age
 
     if age < 60:
-        current_age_float = start_age + years_elapsed
-        if current_age_float < base_age:
-            monthly_income = income_at_start * (
-                (1 + params.young_growth_rate) ** years_elapsed
-            )
-        else:
-            if start_age < base_age:
-                income_at_35 = income_at_start * (
-                    (1 + params.young_growth_rate) ** (base_age - start_age)
-                )
-                years_since_base = current_age_float - base_age
-            else:
-                income_at_35 = income_at_start
-                years_since_base = years_elapsed
-            monthly_income = income_at_35 * (
-                (1 + params.income_growth_rate) ** years_since_base
-            )
+        monthly_income = _project_working_income(years_elapsed, start_age, params)
         peak_income = monthly_income
     elif age < 70:
         years_since_60 = (month - (60 - start_age) * 12) / 12
