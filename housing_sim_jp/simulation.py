@@ -45,6 +45,10 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
         takehome_monthly = params.initial_takehome_monthly
         gross_annual = takehome_monthly * 12 / TAKEHOME_TO_GROSS
 
+        if gross_annual <= 0:
+            errors.append("収入がゼロのため住宅ローン審査不可")
+            return errors
+
         # 年収倍率チェック
         income_multiplier = strategy.loan_amount / gross_annual
         if income_multiplier > MAX_INCOME_MULTIPLIER:
@@ -129,7 +133,7 @@ def find_earliest_purchase_age(
     ]
 
     # Project savings year-by-year while living in 2LDK rental
-    savings = strategy.initial_savings - PRE_PURCHASE_INITIAL_COST
+    savings = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
 
     for target_age in range(start_age + 1, MAX_PURCHASE_AGE + 1):
         # Simulate one year of rental living
@@ -148,7 +152,7 @@ def find_earliest_purchase_age(
         housing = rent + renewal
 
         education = sum(
-            params.education_cost_monthly
+            params.education_cost_monthly * inflation
             for s, e in education_ranges if s <= age <= e
         )
         num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
@@ -164,12 +168,12 @@ def find_earliest_purchase_age(
             savings += monthly_surplus
 
         # Check feasibility at target_age with inflated property price
-        projected_income_at_target = projected_income * (1 + params.income_growth_rate)
+        years_to_target = target_age - start_age
+        projected_income_at_target = _project_working_income(years_to_target, start_age, params)
         loan_months = min(35, 80 - target_age) * 12
         if loan_months <= 0:
             continue
 
-        years_to_target = target_age - start_age
         inflated_price = _inflate_property_price(strategy, params, years_to_target)
         original_price = type(strategy).PROPERTY_PRICE
         price_ratio = inflated_price / original_price
@@ -315,8 +319,9 @@ def _calc_expenses(
 
     housing_cost = strategy.housing_cost(age, ownership_month, params)
 
+    inflation = (1 + params.inflation_rate) ** years_elapsed
     education_cost = sum(
-        params.education_cost_monthly
+        params.education_cost_monthly * inflation
         for start, end in education_ranges
         if start <= age <= end
     )
@@ -328,7 +333,7 @@ def _calc_expenses(
     base_living = (
         params.couple_living_cost_monthly
         + num_children_at_home * params.child_living_cost_monthly
-    ) * ((1 + params.inflation_rate) ** years_elapsed)
+    ) * inflation
     living_cost = base_living * (
         params.retirement_living_cost_ratio if age >= 70 else 1.0
     )
@@ -517,14 +522,14 @@ def simulate_strategy(
 
     # Initial investment depends on whether there's a pre-purchase rental phase
     if has_pre_purchase_rental:
-        initial = strategy.initial_savings - PRE_PURCHASE_INITIAL_COST
+        initial = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
     else:
-        initial = strategy.initial_investment
+        initial = max(0.0, strategy.initial_investment)
     nisa_deposit = min(initial, NISA_LIMIT)
     nisa_balance = nisa_deposit
     nisa_cost_basis = nisa_deposit
     taxable_balance = initial - nisa_deposit
-    taxable_cost_basis = max(0.0, initial - nisa_deposit)
+    taxable_cost_basis = initial - nisa_deposit
 
     peak_income = 0.0
     monthly_log = []
@@ -546,7 +551,7 @@ def simulate_strategy(
             housing_cost = rent + rent / PRE_PURCHASE_RENEWAL_DIVISOR
 
             education_cost = sum(
-                params.education_cost_monthly
+                params.education_cost_monthly * inflation
                 for s, e in education_ranges if s <= age <= e
             )
             num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
