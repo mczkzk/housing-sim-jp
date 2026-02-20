@@ -40,6 +40,14 @@ class SimulationParams:
     couple_living_cost_monthly: float = 27.0   # 夫婦のみの生活費
     child_living_cost_monthly: float = 5.0     # 子1人あたりの追加生活費（食費・衣類・日用品等）
     education_cost_monthly: float = 15.0
+    # Car parameters
+    has_car: bool = False
+    car_purchase_price: float = 300  # 車両購入費（万円）
+    car_replacement_years: int = 7   # 買い替え周期（年）
+    car_residual_rate: float = 0.25  # 残価率（7年落ち普通車の市場相場）
+    car_parking_cost_monthly: float = 2.0  # 駐車場代（一戸建ては不要）
+    car_running_cost_monthly: float = 3.0  # 駐車場以外の維持費（ガソリン・保険・税金・メンテ）
+
     retirement_living_cost_ratio: float = 0.70
 
     def get_loan_rate(self, years_elapsed: float) -> float:

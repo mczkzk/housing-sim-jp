@@ -311,6 +311,7 @@ def _calc_expenses(
     education_ranges: list[tuple[int, int]],
     child_home_ranges: list[tuple[int, int]],
     purchase_month_offset: int = 0,
+    car_owned: bool = False,
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
@@ -330,9 +331,16 @@ def _calc_expenses(
         1 for start, end in child_home_ranges
         if start <= age <= end
     )
+    if params.has_car and car_owned:
+        car_cost = params.car_running_cost_monthly
+        if not strategy.HAS_OWN_PARKING:
+            car_cost += params.car_parking_cost_monthly
+    else:
+        car_cost = 0
     base_living = (
         params.couple_living_cost_monthly
         + num_children_at_home * params.child_living_cost_monthly
+        + car_cost
     ) * inflation
     living_cost = base_living * (
         params.retirement_living_cost_ratio if age >= 70 else 1.0
@@ -511,6 +519,11 @@ def simulate_strategy(
             if start_age <= owner_age < END_AGE:
                 one_time_expenses[owner_age] = cost
 
+    # Car ownership state (dynamically tracked, deferred if unaffordable)
+    car_owned = False
+    car_first_purchase_age = None
+    next_car_due_age = start_age if params.has_car else END_AGE + 1
+
     is_rental = strategy.property_price == 0
 
     monthly_moving_cost = 0
@@ -538,6 +551,24 @@ def simulate_strategy(
 
     for month in range(TOTAL_MONTHS):
         age = start_age + month // 12
+        months_in_current_age = month % 12
+
+        # Car purchase/replacement at year boundaries (deferred if unaffordable)
+        car_one_time = 0
+        if params.has_car and months_in_current_age == 0 and age >= next_car_due_age:
+            balance = nisa_balance + taxable_balance
+            years_from_start = age - start_age
+            inflation_factor = (1 + params.inflation_rate) ** years_from_start
+            if not car_owned:
+                cost = params.car_purchase_price * inflation_factor
+            else:
+                cost = params.car_purchase_price * (1 - params.car_residual_rate) * inflation_factor
+            if balance >= cost:
+                car_one_time = cost
+                car_owned = True
+                if car_first_purchase_age is None:
+                    car_first_purchase_age = age
+                next_car_due_age = age + params.car_replacement_years
 
         monthly_income, peak_income = _calc_monthly_income(
             month, start_age, params, peak_income
@@ -555,26 +586,31 @@ def simulate_strategy(
                 for s, e in education_ranges if s <= age <= e
             )
             num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
+            # Pre-purchase = renting, so parking cost always applies
+            car_cost = (params.car_running_cost_monthly + params.car_parking_cost_monthly) if (params.has_car and car_owned) else 0
             base_living = (
                 params.couple_living_cost_monthly
                 + num_children * params.child_living_cost_monthly
+                + car_cost
             ) * inflation
             living_cost = base_living * (
                 params.retirement_living_cost_ratio if age >= 70 else 1.0
             )
             utility_cost = 0
             loan_deduction = 0
-            one_time_expense = 0
+            one_time_expense = car_one_time
 
             # Purchase costs at the transition month
             if month == purchase_month_offset - 1:
-                one_time_expense = purchase_closing_cost
+                one_time_expense += purchase_closing_cost
         else:
             housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
                 month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
                 education_ranges, child_home_ranges,
                 purchase_month_offset=purchase_month_offset,
+                car_owned=car_owned,
             )
+            one_time_expense += car_one_time
 
         investable = (
             monthly_income
@@ -665,5 +701,6 @@ def simulate_strategy(
         "final_net_assets": final_net_assets,
         "after_tax_net_assets": after_tax_net_assets,
         "bankrupt_age": bankrupt_age,
+        "car_first_purchase_age": car_first_purchase_age,
         "monthly_log": monthly_log,
     }

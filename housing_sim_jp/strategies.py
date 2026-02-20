@@ -57,6 +57,7 @@ class Strategy:
 
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {}
     LIQUIDATION_COST: ClassVar[float] = 0
+    HAS_OWN_PARKING: ClassVar[bool] = False
 
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
@@ -155,6 +156,7 @@ class UrawaHouse(Strategy):
         17: 180, 30: 500, 45: 300,
     }
     LIQUIDATION_COST: ClassVar[float] = 650
+    HAS_OWN_PARKING: ClassVar[bool] = True
 
     def __init__(self, initial_savings: float = 800):
         super().__init__(

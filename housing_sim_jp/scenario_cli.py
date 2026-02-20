@@ -178,6 +178,7 @@ def main():
         couple_living_cost_monthly=r["living"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
+        has_car=r["car"],
     )
     print_results(results)
 
@@ -190,6 +191,7 @@ def main():
         couple_living_cost_monthly=r["living"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
+        has_car=r["car"],
     )
     print_discipline_analysis(results, discipline_results)
 

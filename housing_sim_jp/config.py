@@ -15,6 +15,7 @@ DEFAULTS = {
     "living": 27.0,
     "child_living": 5.0,
     "education": 10.0,
+    "car": False,
 }
 
 
@@ -45,6 +46,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--living", type=float, default=None, help=f"夫婦の生活費（万円/月、住居費・教育費・子供分除く）(default: {d['living']})")
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
     parser.add_argument("--education", type=float, default=None, help=f"教育費（万円/月/人）(default: {d['education']})")
+    parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")
     return parser
 
 

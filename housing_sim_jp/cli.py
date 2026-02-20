@@ -18,6 +18,7 @@ def main():
         couple_living_cost_monthly=r["living"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
+        has_car=r["car"],
     )
     strategies = [
         UrawaMansion(savings),
@@ -37,6 +38,10 @@ def main():
         print(
             f"  収入成長: {start_age}歳 {income:.1f}万 →(年3%)→ 35歳 {income_at_35:.1f}万 →(年1.5%)→ 60歳"
         )
+    if r["car"]:
+        replacements = (80 - start_age) // params.car_replacement_years
+        total_running = params.car_running_cost_monthly + params.car_parking_cost_monthly
+        print(f"  車所有: {params.car_purchase_price:.0f}万円/{params.car_replacement_years}年買替（{replacements}回）+ 維持費{total_running:.1f}万/月（一戸建ては駐車場代{params.car_parking_cost_monthly:.1f}万不要）")
     if child_birth_ages:
         parts = [f"{a}歳出産→{a+7}〜{a+22}歳" for a in child_birth_ages]
         print(f"  教育費: 子{len(child_birth_ages)}人（{', '.join(parts)}）")
@@ -137,6 +142,8 @@ def main():
         print(
             f"    金融所得税: ▲{r['securities_tax']:>8.2f}万 / 不動産譲渡税: ▲{r['real_estate_tax']:.2f}万"
         )
+        if r.get("car_first_purchase_age") is not None and r["car_first_purchase_age"] > start_age:
+            print(f"    車: {r['car_first_purchase_age']}歳で購入（{start_age}歳時点では資金不足）")
         if r["bankrupt_age"] is not None:
             print(f"    ⚠ {r['bankrupt_age']}歳で資産破綻（生活費が資産を超過）")
 
