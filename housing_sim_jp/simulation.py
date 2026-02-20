@@ -1,10 +1,9 @@
 """Core simulation engine."""
 
 import dataclasses
-from typing import Dict
 
 from housing_sim_jp.params import SimulationParams, _calc_equal_payment
-from housing_sim_jp.strategies import Strategy, StrategicRental
+from housing_sim_jp.strategies import Strategy
 
 # Simulation age limits
 MIN_START_AGE = 20  # 婚姻可能年齢
@@ -306,7 +305,7 @@ def _calc_expenses(
     start_age: int,
     strategy: Strategy,
     params: SimulationParams,
-    one_time_expenses: Dict[int, float],
+    one_time_expenses: dict[int, float],
     monthly_moving_cost: float,
     education_ranges: list[tuple[int, int]],
     child_home_ranges: list[tuple[int, int]],
@@ -436,7 +435,7 @@ def simulate_strategy(
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
     purchase_age: int | None = None,
-) -> Dict:
+) -> dict:
     """Execute simulation from start_age to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
     child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
@@ -511,7 +510,7 @@ def simulate_strategy(
     RESIDENCE_SPECIAL_DEDUCTION = 3000
 
     # Convert building-age milestones to owner-age for this simulation
-    one_time_expenses: Dict[int, float] = {}
+    one_time_expenses: dict[int, float] = {}
     if strategy.ONE_TIME_EXPENSES_BY_BUILDING_AGE:
         purchase_building_age = getattr(strategy, "PURCHASE_AGE_OF_BUILDING", 0)
         for building_age, cost in strategy.ONE_TIME_EXPENSES_BY_BUILDING_AGE.items():
