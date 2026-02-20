@@ -447,6 +447,60 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
+def _calc_final_assets(
+    strategy: Strategy,
+    params: SimulationParams,
+    ownership_years: int,
+    nisa_balance: float,
+    taxable_balance: float,
+    taxable_cost_basis: float,
+    purchase_closing_cost: float,
+) -> dict:
+    """Calculate final asset values at simulation end (age 80)."""
+    investment_balance = nisa_balance + taxable_balance
+
+    if strategy.property_price > 0:
+        land_value_initial = strategy.property_price * strategy.land_value_ratio
+        land_value_final = land_value_initial * (
+            (1 + params.land_appreciation) ** ownership_years
+        )
+        liquidation_cost = strategy.LIQUIDATION_COST
+    else:
+        land_value_final = 0
+        liquidation_cost = 0
+
+    liquidity_haircut = land_value_final * strategy.liquidity_discount
+    effective_land_value = land_value_final - liquidity_haircut
+
+    taxable_gain = max(0, taxable_balance - taxable_cost_basis)
+    securities_tax = taxable_gain * CAPITAL_GAINS_TAX_RATE
+
+    real_estate_tax = 0
+    if strategy.property_price > 0:
+        acquisition_cost = strategy.property_price + purchase_closing_cost
+        real_estate_gain = effective_land_value - acquisition_cost
+        taxable_re_gain = max(0, real_estate_gain - RESIDENCE_SPECIAL_DEDUCTION)
+        real_estate_tax = taxable_re_gain * CAPITAL_GAINS_TAX_RATE
+
+    after_tax_securities = investment_balance - securities_tax
+    final_net_assets = investment_balance + effective_land_value - liquidation_cost
+    after_tax_net_assets = (
+        after_tax_securities + effective_land_value - liquidation_cost - real_estate_tax
+    )
+
+    return {
+        "investment_balance_80": investment_balance,
+        "securities_tax": securities_tax,
+        "real_estate_tax": real_estate_tax,
+        "land_value_80": land_value_final,
+        "liquidity_haircut": liquidity_haircut,
+        "effective_land_value": effective_land_value,
+        "liquidation_cost": liquidation_cost,
+        "final_net_assets": final_net_assets,
+        "after_tax_net_assets": after_tax_net_assets,
+    }
+
+
 DEFAULT_CHILD_BIRTH_AGES = [32, 35]
 
 
@@ -656,54 +710,21 @@ def simulate_strategy(
             )
 
     ownership_years = END_AGE - effective_purchase_age
-    investment_balance = nisa_balance + taxable_balance
-
-    if strategy.property_price > 0:
-        land_value_initial = strategy.property_price * strategy.land_value_ratio
-        land_value_final = land_value_initial * (
-            (1 + params.land_appreciation) ** ownership_years
-        )
-        liquidation_cost = strategy.LIQUIDATION_COST
-    else:
-        land_value_final = 0
-        liquidation_cost = 0
-
-    liquidity_haircut = land_value_final * strategy.liquidity_discount
-    effective_land_value = land_value_final - liquidity_haircut
-
-    taxable_gain = max(0, taxable_balance - taxable_cost_basis)
-    securities_tax = taxable_gain * CAPITAL_GAINS_TAX_RATE
-
-    real_estate_tax = 0
-    if strategy.property_price > 0:
-        acquisition_cost = strategy.property_price + purchase_closing_cost
-        real_estate_gain = effective_land_value - acquisition_cost
-        taxable_re_gain = max(0, real_estate_gain - RESIDENCE_SPECIAL_DEDUCTION)
-        real_estate_tax = taxable_re_gain * CAPITAL_GAINS_TAX_RATE
-
-    after_tax_securities = nisa_balance + taxable_balance - securities_tax
-    final_net_assets = investment_balance + effective_land_value - liquidation_cost
-    after_tax_net_assets = (
-        after_tax_securities + effective_land_value - liquidation_cost - real_estate_tax
+    final = _calc_final_assets(
+        strategy, params, ownership_years,
+        nisa_balance, taxable_balance, taxable_cost_basis,
+        purchase_closing_cost,
     )
 
     return {
         "strategy": strategy.name,
         "purchase_age": effective_purchase_age,
-        "investment_balance_80": investment_balance,
         "nisa_balance": nisa_balance,
         "nisa_cost_basis": nisa_cost_basis,
         "taxable_balance": taxable_balance,
         "taxable_cost_basis": taxable_cost_basis,
-        "securities_tax": securities_tax,
-        "real_estate_tax": real_estate_tax,
-        "land_value_80": land_value_final,
-        "liquidity_haircut": liquidity_haircut,
-        "effective_land_value": effective_land_value,
-        "liquidation_cost": liquidation_cost,
-        "final_net_assets": final_net_assets,
-        "after_tax_net_assets": after_tax_net_assets,
         "bankrupt_age": bankrupt_age,
         "car_first_purchase_age": car_first_purchase_age,
         "monthly_log": monthly_log,
+        **final,
     }
