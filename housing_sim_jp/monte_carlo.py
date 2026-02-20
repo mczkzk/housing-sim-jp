@@ -24,6 +24,9 @@ from housing_sim_jp.strategies import (
 )
 
 
+MC_PERCENTILES = (5, 25, 50, 75, 95)
+
+
 @dataclass
 class MonteCarloConfig:
     """Configuration for Monte Carlo simulation."""
@@ -191,7 +194,7 @@ def run_monte_carlo(
         idx = max(0, min(int(p / 100 * n), n - 1))
         return results_list[idx]
 
-    percentiles = {p: _percentile(p) for p in [5, 25, 50, 75, 95]}
+    percentiles = {p: _percentile(p) for p in MC_PERCENTILES}
     mean = sum(results_list) / n if n > 0 else 0
     variance = sum((x - mean) ** 2 for x in results_list) / n if n > 0 else 0
     std = math.sqrt(variance)

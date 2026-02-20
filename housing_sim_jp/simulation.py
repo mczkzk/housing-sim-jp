@@ -10,6 +10,10 @@ MIN_START_AGE = 20  # 婚姻可能年齢
 MAX_START_AGE = 45  # 出産可能上限
 MAX_CHILDREN = 2    # 3LDKの部屋数制約（子供部屋最大2つ）
 
+# Life-stage age thresholds
+REEMPLOYMENT_AGE = 60  # 再雇用開始年齢
+PENSION_AGE = 70        # 年金生活開始年齢
+
 # Loan screening constants (銀行審査基準)
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
 MAX_REPAYMENT_RATIO = 0.35  # 返済比率上限（年収400万以上）
@@ -150,7 +154,7 @@ def find_earliest_purchase_age(
         age = target_age - 1
         years_from_start = age - start_age
 
-        if age < 60:
+        if age < REEMPLOYMENT_AGE:
             projected_income = _project_working_income(years_from_start, start_age, params)
         else:
             projected_income = params.initial_takehome_monthly * 0.6
@@ -250,7 +254,7 @@ def _estimate_annual_pension(
 def _project_working_income(
     years_elapsed: float, start_age: int, params: SimulationParams
 ) -> float:
-    """Project pre-retirement (< 60) working income based on years elapsed."""
+    """Project pre-retirement (< REEMPLOYMENT_AGE) working income based on years elapsed."""
     base_age = params.income_base_age
     current_age = start_age + years_elapsed
     if current_age < base_age:
@@ -276,20 +280,20 @@ def _calc_monthly_income(
     years_elapsed = month / 12
     age = start_age + month // 12
 
-    if age < 60:
+    if age < REEMPLOYMENT_AGE:
         monthly_income = _project_working_income(years_elapsed, start_age, params)
         peak_income = monthly_income
-    elif age < 70:
-        years_since_60 = (month - (60 - start_age) * 12) / 12
+    elif age < PENSION_AGE:
+        years_since_reemploy = (month - (REEMPLOYMENT_AGE - start_age) * 12) / 12
         monthly_income = peak_income * params.retirement_reduction * (
-            (1 + params.inflation_rate * 0.5) ** years_since_60
+            (1 + params.inflation_rate * 0.5) ** years_since_reemploy
         )
     else:
-        years_since_70 = age - 70
+        years_since_pension = age - PENSION_AGE
         annual_pension = _estimate_annual_pension(peak_income, params)
         annual_pension *= (
             (1 + params.inflation_rate - params.pension_real_reduction)
-            ** years_since_70
+            ** years_since_pension
         )
         monthly_income = annual_pension / 12
 
@@ -344,7 +348,7 @@ def _calc_education_and_living(
         + extra_monthly_cost
     ) * inflation
     living_cost = base_living * (
-        params.retirement_living_cost_ratio if age >= 70 else 1.0
+        params.retirement_living_cost_ratio if age >= PENSION_AGE else 1.0
     )
     return education_cost, living_cost
 

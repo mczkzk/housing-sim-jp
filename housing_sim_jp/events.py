@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from random import Random
 
 from housing_sim_jp.params import SimulationParams
+from housing_sim_jp.simulation import REEMPLOYMENT_AGE, PENSION_AGE
 
 
 @dataclass
@@ -30,6 +31,8 @@ class EventTimeline:
     disaster_events: dict[int, float] = field(default_factory=dict)
     care_start_month: int | None = None
     rental_rejection_month: int | None = None
+    care_cost_monthly: float = 15.0
+    rental_rejection_premium: float = 5.0
 
     def get_extra_cost(self, month: int, age: int, params: SimulationParams) -> float:
         """Calculate extra monthly cost from care and rental rejection events."""
@@ -37,11 +40,11 @@ class EventTimeline:
         if self.care_start_month is not None and month >= self.care_start_month:
             years_from_start = month / 12
             inflation = (1 + params.inflation_rate) ** years_from_start
-            cost += 15.0 * inflation  # care_cost_monthly at 2026 prices
+            cost += self.care_cost_monthly * inflation
         if self.rental_rejection_month is not None and month >= self.rental_rejection_month:
             years_from_start = month / 12
             inflation = (1 + params.inflation_rate) ** years_from_start
-            cost += 5.0 * inflation  # rental_rejection_premium at 2026 prices
+            cost += self.rental_rejection_premium * inflation
         return cost
 
 
@@ -53,14 +56,17 @@ def sample_events(
     is_rental: bool,
 ) -> EventTimeline:
     """Sample a complete event timeline for one simulation run."""
-    timeline = EventTimeline()
+    timeline = EventTimeline(
+        care_cost_monthly=config.care_cost_monthly,
+        rental_rejection_premium=config.rental_rejection_premium,
+    )
     total_years = total_months // 12
 
-    # Job loss (working age only: < 60)
+    # Job loss (working age only: < REEMPLOYMENT_AGE)
     occurrences = 0
     for year_idx in range(total_years):
         age = start_age + year_idx
-        if age >= 60:
+        if age >= REEMPLOYMENT_AGE:
             break
         if occurrences >= config.job_loss_max_occurrences:
             break
@@ -89,11 +95,11 @@ def sample_events(
             timeline.care_start_month = year_idx * 12
             break
 
-    # Rental rejection premium (70+ renters only)
+    # Rental rejection premium (PENSION_AGE+ renters only)
     if is_rental:
         for year_idx in range(total_years):
             age = start_age + year_idx
-            if age < 70:
+            if age < PENSION_AGE:
                 continue
             if rng.random() < config.rental_rejection_prob_after_70:
                 timeline.rental_rejection_month = year_idx * 12
