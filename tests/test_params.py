@@ -1,7 +1,8 @@
 """Tests for SimulationParams and helper functions."""
 
 import pytest
-from housing_sim_jp import SimulationParams, _calc_equal_payment
+from housing_sim_jp import SimulationParams
+from housing_sim_jp.params import _calc_equal_payment
 
 
 class TestGetLoanRate:

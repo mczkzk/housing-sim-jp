@@ -7,9 +7,8 @@ from housing_sim_jp import (
     UrawaHouse,
     StrategicRental,
     NormalRental,
-    _repair_reserve_multiplier,
-    _house_maintenance_multiplier,
 )
+from housing_sim_jp.strategies import _repair_reserve_multiplier, _house_maintenance_multiplier
 
 
 class TestRepairReserveMultiplier:
