@@ -130,12 +130,7 @@ def find_earliest_purchase_age(
 
     monthly_return_rate = params.investment_return / 12
 
-    # Resolve child_birth_ages for education/living cost projection
-    if child_birth_ages is None:
-        child_birth_ages = [
-            a for a in DEFAULT_CHILD_BIRTH_AGES
-            if a + EDUCATION_CHILD_AGE_END >= start_age
-        ]
+    child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
 
     education_ranges = [
         (a + EDUCATION_CHILD_AGE_START, a + EDUCATION_CHILD_AGE_END)
@@ -520,6 +515,18 @@ def _calc_final_assets(
 DEFAULT_CHILD_BIRTH_AGES = [32, 35]
 
 
+def resolve_child_birth_ages(
+    child_birth_ages: list[int] | None, start_age: int,
+) -> list[int]:
+    """Resolve None → filtered DEFAULT_CHILD_BIRTH_AGES. Pass-through if already a list."""
+    if child_birth_ages is not None:
+        return child_birth_ages
+    return [
+        a for a in DEFAULT_CHILD_BIRTH_AGES
+        if a + EDUCATION_CHILD_AGE_END >= start_age
+    ]
+
+
 def simulate_strategy(
     strategy: Strategy,
     params: SimulationParams,
@@ -534,12 +541,8 @@ def simulate_strategy(
     child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
     purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
-    if child_birth_ages is None:
-        child_birth_ages = [
-            a for a in DEFAULT_CHILD_BIRTH_AGES
-            if a + EDUCATION_CHILD_AGE_END >= start_age
-        ]
-    else:
+    child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
+    if child_birth_ages:
         if len(child_birth_ages) > MAX_CHILDREN:
             raise ValueError(
                 f"子供の人数{len(child_birth_ages)}人は上限{MAX_CHILDREN}人を超えています"

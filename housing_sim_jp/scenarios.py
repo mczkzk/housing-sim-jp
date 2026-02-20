@@ -10,9 +10,8 @@ from housing_sim_jp.strategies import (
 from housing_sim_jp.simulation import (
     simulate_strategy,
     resolve_purchase_age,
+    resolve_child_birth_ages,
     INFEASIBLE,
-    DEFAULT_CHILD_BIRTH_AGES,
-    EDUCATION_CHILD_AGE_END,
 )
 
 SCENARIOS = {
@@ -65,11 +64,7 @@ def run_scenarios(
     """
     # StrategicRentalのフェーズ計算とsimulate_strategyの教育費計算を一致させるため、
     # Noneを事前に解決してから両方に渡す
-    if child_birth_ages is None:
-        child_birth_ages = [
-            a for a in DEFAULT_CHILD_BIRTH_AGES
-            if a + EDUCATION_CHILD_AGE_END >= start_age
-        ]
+    child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
 
     all_results = {}
 

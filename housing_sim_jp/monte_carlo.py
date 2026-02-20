@@ -13,6 +13,7 @@ from housing_sim_jp.simulation import (
     END_AGE,
     simulate_strategy,
     resolve_purchase_age,
+    resolve_child_birth_ages,
     INFEASIBLE,
 )
 from housing_sim_jp.strategies import (
@@ -221,17 +222,8 @@ def run_monte_carlo_all_strategies(
     quiet: bool = False,
 ) -> list[MonteCarloResult]:
     """Run Monte Carlo simulation for all 4 strategies."""
-    from housing_sim_jp.simulation import (
-        DEFAULT_CHILD_BIRTH_AGES,
-        EDUCATION_CHILD_AGE_END,
-    )
-
     # Resolve child_birth_ages once for consistency
-    if child_birth_ages is None:
-        child_birth_ages = [
-            a for a in DEFAULT_CHILD_BIRTH_AGES
-            if a + EDUCATION_CHILD_AGE_END >= start_age
-        ]
+    child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
 
     num_children = len(child_birth_ages)
 
