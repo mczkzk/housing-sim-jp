@@ -410,15 +410,15 @@ def _update_investments(
     taxable_cost_basis: float,
     nisa_limit: float,
     monthly_return_rate: float,
-) -> tuple[float, float, float, float, int | None]:
+) -> tuple[float, float, float, float, bool]:
     """Apply returns and invest/withdraw. Returns (nisa_bal, nisa_cb, tax_bal, tax_cb, bankrupt_flag).
-    bankrupt_flag is True if bankruptcy occurred this month, else None.
+    bankrupt_flag is True if bankruptcy occurred this month.
     """
     # Apply monthly returns
     nisa_balance *= 1 + monthly_return_rate
     taxable_balance *= 1 + monthly_return_rate
 
-    bankrupt = None
+    bankrupt = False
 
     if investable >= 0:
         nisa_room = max(0, nisa_limit - nisa_cost_basis)
