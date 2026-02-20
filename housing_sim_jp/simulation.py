@@ -161,15 +161,9 @@ def find_earliest_purchase_age(
         renewal = rent / PRE_PURCHASE_RENEWAL_DIVISOR
         housing = rent + renewal
 
-        education = sum(
-            params.education_cost_monthly * inflation
-            for s, e in education_ranges if s <= age <= e
+        education, living = _calc_education_and_living(
+            age, years_from_start, params, education_ranges, child_home_ranges,
         )
-        num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
-        living = (
-            params.couple_living_cost_monthly
-            + num_children * params.child_living_cost_monthly
-        ) * inflation
 
         monthly_surplus = projected_income - housing - education - living
         # Accumulate 12 months of surplus with investment returns
@@ -310,6 +304,39 @@ EDUCATION_CHILD_AGE_END = 22    # 大学卒業
 CHILD_HOME_AGE_END = 22  # 大学卒業で独立
 
 
+def _calc_education_and_living(
+    age: int,
+    years_elapsed: float,
+    params: SimulationParams,
+    education_ranges: list[tuple[int, int]],
+    child_home_ranges: list[tuple[int, int]],
+    extra_monthly_cost: float = 0,
+) -> tuple[float, float]:
+    """Calculate education and living costs. Returns (education_cost, living_cost).
+
+    extra_monthly_cost: additional per-month cost (e.g. car running) added to base living.
+    """
+    inflation = (1 + params.inflation_rate) ** years_elapsed
+    education_cost = sum(
+        params.education_cost_monthly * inflation
+        for start, end in education_ranges
+        if start <= age <= end
+    )
+    num_children = sum(
+        1 for start, end in child_home_ranges
+        if start <= age <= end
+    )
+    base_living = (
+        params.couple_living_cost_monthly
+        + num_children * params.child_living_cost_monthly
+        + extra_monthly_cost
+    ) * inflation
+    living_cost = base_living * (
+        params.retirement_living_cost_ratio if age >= 70 else 1.0
+    )
+    return education_cost, living_cost
+
+
 def _calc_expenses(
     month: int,
     age: int,
@@ -330,30 +357,14 @@ def _calc_expenses(
 
     housing_cost = strategy.housing_cost(age, ownership_month, params)
 
-    inflation = (1 + params.inflation_rate) ** years_elapsed
-    education_cost = sum(
-        params.education_cost_monthly * inflation
-        for start, end in education_ranges
-        if start <= age <= end
-    )
-
-    num_children_at_home = sum(
-        1 for start, end in child_home_ranges
-        if start <= age <= end
-    )
     if params.has_car and car_owned:
         car_cost = params.car_running_cost_monthly
         if not strategy.HAS_OWN_PARKING:
             car_cost += params.car_parking_cost_monthly
     else:
         car_cost = 0
-    base_living = (
-        params.couple_living_cost_monthly
-        + num_children_at_home * params.child_living_cost_monthly
-        + car_cost
-    ) * inflation
-    living_cost = base_living * (
-        params.retirement_living_cost_ratio if age >= 70 else 1.0
+    education_cost, living_cost = _calc_education_and_living(
+        age, years_elapsed, params, education_ranges, child_home_ranges, car_cost,
     )
 
     loan_deduction = 0
@@ -583,20 +594,10 @@ def simulate_strategy(
             rent = PRE_PURCHASE_RENT * inflation
             housing_cost = rent + rent / PRE_PURCHASE_RENEWAL_DIVISOR
 
-            education_cost = sum(
-                params.education_cost_monthly * inflation
-                for s, e in education_ranges if s <= age <= e
-            )
-            num_children = sum(1 for s, e in child_home_ranges if s <= age <= e)
             # Pre-purchase = renting, so parking cost always applies
             car_cost = (params.car_running_cost_monthly + params.car_parking_cost_monthly) if (params.has_car and car_owned) else 0
-            base_living = (
-                params.couple_living_cost_monthly
-                + num_children * params.child_living_cost_monthly
-                + car_cost
-            ) * inflation
-            living_cost = base_living * (
-                params.retirement_living_cost_ratio if age >= 70 else 1.0
+            education_cost, living_cost = _calc_education_and_living(
+                age, years_elapsed, params, education_ranges, child_home_ranges, car_cost,
             )
             utility_cost = 0
             loan_deduction = 0
