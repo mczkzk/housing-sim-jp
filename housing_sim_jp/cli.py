@@ -1,9 +1,6 @@
 """CLI entry point for single simulation (3 strategy comparison)."""
 
-import argparse
-from pathlib import Path
-
-from housing_sim_jp.config import load_config, resolve
+from housing_sim_jp.config import parse_args
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy, validate_strategy, find_earliest_purchase_age
@@ -11,61 +8,10 @@ from housing_sim_jp.simulation import simulate_strategy, validate_strategy, find
 
 def main():
     """Execute main simulation (3 strategy comparison)"""
-    parser = argparse.ArgumentParser(description="住宅資産形成シミュレーション")
-    parser.add_argument(
-        "--config", type=Path, default=None, help="設定ファイルパス (default: config.toml)"
-    )
-    parser.add_argument(
-        "--age", type=int, default=None, help="開始年齢 (default: 30)"
-    )
-    parser.add_argument(
-        "--savings", type=float, default=None, help="初期金融資産・万円 (default: 800)"
-    )
-    parser.add_argument(
-        "--income",
-        type=float,
-        default=None,
-        help="現在の世帯月額手取り・万円 (default: 62.5)",
-    )
-    parser.add_argument(
-        "--children",
-        type=str,
-        default=None,
-        help="出産時の親の年齢（カンマ区切りで複数可、例: 28,32）(default: 33)",
-    )
-    parser.add_argument(
-        "--no-child",
-        action="store_true",
-        default=None,
-        help="子供なし（教育費ゼロ）",
-    )
-    parser.add_argument(
-        "--living",
-        type=float,
-        default=None,
-        help="夫婦の生活費（万円/月、住居費・教育費・子供分除く）(default: 27.0)",
-    )
-    parser.add_argument(
-        "--child-living",
-        type=float,
-        default=None,
-        help="子1人あたりの追加生活費（万円/月）(default: 5.0)",
-    )
-    parser.add_argument(
-        "--education",
-        type=float,
-        default=None,
-        help="教育費（万円/月/人）(default: 10.0)",
-    )
-    args = parser.parse_args()
-    config = load_config(args.config)
-    r = resolve(args, config)
+    r, child_birth_ages = parse_args("住宅資産形成シミュレーション")
 
     start_age = r["age"]
     savings = r["savings"]
-    children_str = r["children"]
-    no_child = r["no_child"]
-    child_birth_ages = [] if no_child else [int(x) for x in str(children_str).split(",")]
 
     params = SimulationParams(
         initial_takehome_monthly=r["income"],
