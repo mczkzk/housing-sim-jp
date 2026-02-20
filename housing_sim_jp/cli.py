@@ -3,7 +3,7 @@
 from housing_sim_jp.config import parse_args
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
-from housing_sim_jp.simulation import simulate_strategy, validate_strategy, find_earliest_purchase_age
+from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, INFEASIBLE
 
 
 def main():
@@ -47,18 +47,13 @@ def main():
 
     results = []
     for strategy in strategies:
-        purchase_age = None
-        if strategy.property_price > 0:
-            errors = validate_strategy(strategy, params)
-            if errors:
-                purchase_age = find_earliest_purchase_age(
-                    strategy, params, start_age, child_birth_ages
-                )
-                if purchase_age is None:
-                    print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
-                    results.append(None)
-                    continue
-                print(f"  {strategy.name}: {start_age}歳では購入不可 → {purchase_age}歳で購入可能（{start_age}-{purchase_age-1}歳は2LDK賃貸）")
+        purchase_age = resolve_purchase_age(strategy, params, start_age, child_birth_ages)
+        if purchase_age == INFEASIBLE:
+            print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
+            results.append(None)
+            continue
+        if purchase_age is not None:
+            print(f"  {strategy.name}: {start_age}歳では購入不可 → {purchase_age}歳で購入可能（{start_age}-{purchase_age-1}歳は2LDK賃貸）")
         try:
             results.append(
                 simulate_strategy(

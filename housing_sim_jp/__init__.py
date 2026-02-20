@@ -16,6 +16,8 @@ from housing_sim_jp.strategies import (
 from housing_sim_jp.simulation import (
     simulate_strategy,
     find_earliest_purchase_age,
+    resolve_purchase_age,
+    INFEASIBLE,
     validate_age,
     validate_strategy,
     _estimate_annual_pension,
@@ -44,6 +46,8 @@ __all__ = [
     "END_AGE",
     "simulate_strategy",
     "find_earliest_purchase_age",
+    "resolve_purchase_age",
+    "INFEASIBLE",
     "validate_age",
     "validate_strategy",
     "_estimate_annual_pension",

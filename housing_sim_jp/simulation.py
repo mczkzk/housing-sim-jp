@@ -211,6 +211,30 @@ def find_earliest_purchase_age(
     return None
 
 
+INFEASIBLE = -1
+
+
+def resolve_purchase_age(
+    strategy: Strategy,
+    params: SimulationParams,
+    start_age: int,
+    child_birth_ages: list[int] | None = None,
+) -> int | None:
+    """Determine the purchase age for a strategy.
+
+    Returns:
+        None: rental, or already feasible at start_age → normal flow
+        int > 0: deferred purchase at this age
+        INFEASIBLE (-1): purchase impossible at any age → caller should skip
+    """
+    if strategy.property_price == 0:
+        return None
+    if not validate_strategy(strategy, params):
+        return None
+    age = find_earliest_purchase_age(strategy, params, start_age, child_birth_ages)
+    return age if age is not None else INFEASIBLE
+
+
 # 公的年金計算定数（日本年金機構 簡易版）
 KISO_PENSION_ANNUAL = 78.0    # 老齢基礎年金 万円/人/年（2024年度満額）
 KOSEI_RATE = 5.481 / 1000     # 厚生年金 報酬比例乗率
