@@ -57,11 +57,23 @@ class Strategy:
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {}
     LIQUIDATION_COST: ClassVar[float] = 0
     HAS_OWN_PARKING: ClassVar[bool] = False
+    RENEWAL_FEE_DIVISOR: ClassVar[int] = 24
+    ELDERLY_PREMIUM_AGE: ClassVar[int] = 75
+    ELDERLY_PREMIUM_MONTHLY: ClassVar[float] = 3.0
 
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
     ) -> float:
         raise NotImplementedError
+
+    def _calc_rental_extras(self, rent: float, age: int, years_elapsed: float, params: SimulationParams) -> float:
+        """Renewal fee (amortized) + elderly premium for rental strategies."""
+        extra = rent / self.RENEWAL_FEE_DIVISOR
+        if age >= self.ELDERLY_PREMIUM_AGE:
+            extra += self.ELDERLY_PREMIUM_MONTHLY * (
+                (1 + params.inflation_rate) ** years_elapsed
+            )
+        return extra
 
     def _calc_loan_cost(self, months_elapsed: int, params: SimulationParams) -> float:
         """Calculate monthly loan payment and update balance. Returns 0 after payoff."""
@@ -207,10 +219,6 @@ class StrategicRental(Strategy):
     RENT_PHASE2_BASE = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
     RENT_PHASE2_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
     RENT_PHASE3_BASE = 18.0
-    RENEWAL_FEE_DIVISOR = 24
-    # 75歳以上の高齢者住宅プレミアム（期待値、2026年現在価値）
-    ELDERLY_PREMIUM_AGE = 75
-    ELDERLY_PREMIUM_MONTHLY = 3.0
 
     def __init__(self, initial_savings: float = 800, child_birth_ages=None, start_age: int = 37):
         super().__init__(
@@ -254,22 +262,11 @@ class StrategicRental(Strategy):
                 self.senior_rent_inflated = self.RENT_PHASE3_BASE * (
                     (1 + params.inflation_rate) ** phase3_start_years
                 )
-            base_rent = self.senior_rent_inflated
-            cost = base_rent + base_rent / self.RENEWAL_FEE_DIVISOR
-            if age >= self.ELDERLY_PREMIUM_AGE:
-                cost += self.ELDERLY_PREMIUM_MONTHLY * (
-                    (1 + params.inflation_rate) ** years_elapsed
-                )
-            return cost
+            rent = self.senior_rent_inflated
+            return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
 
-        cost = base_rent * ((1 + params.inflation_rate) ** years_elapsed)
-        cost += cost / self.RENEWAL_FEE_DIVISOR
-        # 75歳以上: 高齢者住宅プレミアム（全フェーズ共通）
-        if age >= self.ELDERLY_PREMIUM_AGE:
-            cost += self.ELDERLY_PREMIUM_MONTHLY * (
-                (1 + params.inflation_rate) ** years_elapsed
-            )
-        return cost
+        rent = base_rent * ((1 + params.inflation_rate) ** years_elapsed)
+        return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
 
 
 class NormalRental(Strategy):
@@ -278,10 +275,6 @@ class NormalRental(Strategy):
     INITIAL_COST = 105  # 敷金・礼金・仲介手数料・引越し
     BASE_RENT = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
     RENT_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
-    RENEWAL_FEE_DIVISOR = 24
-    # 75歳以上の高齢者住宅プレミアム（StrategicRentalと同じ期待値）
-    ELDERLY_PREMIUM_AGE = 75
-    ELDERLY_PREMIUM_MONTHLY = 3.0
 
     def __init__(self, initial_savings: float = 800, num_children: int = 0):
         super().__init__(
@@ -300,11 +293,5 @@ class NormalRental(Strategy):
     ) -> float:
         """Monthly rent for 3LDK with inflation and renewal fee"""
         years_elapsed = months_elapsed / 12
-        cost = self.base_rent * ((1 + params.inflation_rate) ** years_elapsed)
-        cost += cost / self.RENEWAL_FEE_DIVISOR
-        # 75歳以上: 高齢者住宅プレミアム
-        if age >= self.ELDERLY_PREMIUM_AGE:
-            cost += self.ELDERLY_PREMIUM_MONTHLY * (
-                (1 + params.inflation_rate) ** years_elapsed
-            )
-        return cost
+        rent = self.base_rent * ((1 + params.inflation_rate) ** years_elapsed)
+        return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
