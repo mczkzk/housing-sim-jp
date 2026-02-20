@@ -1,0 +1,102 @@
+"""Life event risk modeling for Monte Carlo simulation."""
+
+from dataclasses import dataclass, field
+from random import Random
+
+from housing_sim_jp.params import SimulationParams
+
+
+@dataclass
+class EventRiskConfig:
+    """Probability parameters for life event risks."""
+
+    job_loss_annual_prob: float = 0.02
+    job_loss_duration_months: int = 6
+    job_loss_max_occurrences: int = 2
+    disaster_annual_prob: float = 0.005
+    disaster_damage_ratio: float = 0.30
+    disaster_insurance_coverage: float = 0.50
+    care_annual_prob_after_75: float = 0.05
+    care_cost_monthly: float = 15.0
+    rental_rejection_prob_after_70: float = 0.10
+    rental_rejection_premium: float = 5.0
+
+
+@dataclass
+class EventTimeline:
+    """Pre-sampled event timeline for a single simulation run."""
+
+    job_loss_months: set[int] = field(default_factory=set)
+    disaster_events: dict[int, float] = field(default_factory=dict)
+    care_start_month: int | None = None
+    rental_rejection_month: int | None = None
+
+    def get_extra_cost(self, month: int, age: int, params: SimulationParams) -> float:
+        """Calculate extra monthly cost from care and rental rejection events."""
+        cost = 0.0
+        if self.care_start_month is not None and month >= self.care_start_month:
+            years_from_start = month / 12
+            inflation = (1 + params.inflation_rate) ** years_from_start
+            cost += 15.0 * inflation  # care_cost_monthly at 2026 prices
+        if self.rental_rejection_month is not None and month >= self.rental_rejection_month:
+            years_from_start = month / 12
+            inflation = (1 + params.inflation_rate) ** years_from_start
+            cost += 5.0 * inflation  # rental_rejection_premium at 2026 prices
+        return cost
+
+
+def sample_events(
+    rng: Random,
+    config: EventRiskConfig,
+    start_age: int,
+    total_months: int,
+    is_rental: bool,
+) -> EventTimeline:
+    """Sample a complete event timeline for one simulation run."""
+    timeline = EventTimeline()
+    total_years = total_months // 12
+
+    # Job loss (working age only: < 60)
+    occurrences = 0
+    for year_idx in range(total_years):
+        age = start_age + year_idx
+        if age >= 60:
+            break
+        if occurrences >= config.job_loss_max_occurrences:
+            break
+        if rng.random() < config.job_loss_annual_prob:
+            start_month = year_idx * 12
+            for m in range(config.job_loss_duration_months):
+                if start_month + m < total_months:
+                    timeline.job_loss_months.add(start_month + m)
+            occurrences += 1
+
+    # Disaster (property owners only)
+    if not is_rental:
+        for year_idx in range(total_years):
+            if rng.random() < config.disaster_annual_prob:
+                net_damage = config.disaster_damage_ratio * (
+                    1 - config.disaster_insurance_coverage
+                )
+                timeline.disaster_events[year_idx] = net_damage
+
+    # Care need (75+ only)
+    for year_idx in range(total_years):
+        age = start_age + year_idx
+        if age < 75:
+            continue
+        if rng.random() < config.care_annual_prob_after_75:
+            timeline.care_start_month = year_idx * 12
+            break
+
+    # Rental rejection premium (70+ renters only)
+    if is_rental:
+        for year_idx in range(total_years):
+            age = start_age + year_idx
+            if age < 70:
+                continue
+            if rng.random() < config.rental_rejection_prob_after_70:
+                timeline.rental_rejection_month = year_idx * 12
+                break
+
+    return timeline

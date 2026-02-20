@@ -1,7 +1,7 @@
 """Simulation parameters and financial calculation helpers."""
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -49,6 +49,9 @@ class SimulationParams:
     car_running_cost_monthly: float = 3.0  # 駐車場以外の維持費（ガソリン・保険・税金・メンテ）
 
     retirement_living_cost_ratio: float = 0.70
+
+    # Monte Carlo: per-year investment returns (None=use fixed investment_return)
+    annual_investment_returns: Optional[List[float]] = None
 
     def get_loan_rate(self, years_elapsed: float) -> float:
         """Get monthly loan rate based on elapsed years (5-year step schedule)"""

@@ -79,7 +79,7 @@ class TestSnapshotAge37:
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(24521.429027, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(23965.732057, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, start_age=37, child_birth_ages=[39])
@@ -115,14 +115,14 @@ class TestEdgeAges:
     def test_age_25(self):
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, start_age=25, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(125764.610577, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(125193.394387, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
         """child_birth_ages=[39] for start_age=45 (child age 6-16 during sim)."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, start_age=45, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(2931.576561, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(2438.278180, abs=0.01)
         assert r["bankrupt_age"] is None
 
 
@@ -140,7 +140,7 @@ class TestDisciplineFactor:
         r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=1.0, child_birth_ages=[39])
         r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(19926.775968, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(19371.078999, abs=0.01)
 
 
 class TestChildBirthAges:
@@ -148,7 +148,7 @@ class TestChildBirthAges:
         """child_birth_ages=[38] should produce known snapshot."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, start_age=37, child_birth_ages=[38])
-        assert r["after_tax_net_assets"] == pytest.approx(23496.321857, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(22899.628537, abs=0.01)
 
     def test_no_child_increases_assets(self):
         """No education costs → more investable → higher assets."""

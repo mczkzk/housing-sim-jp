@@ -30,6 +30,8 @@ from housing_sim_jp.simulation import (
     TAKEHOME_TO_GROSS,
     DEFAULT_CHILD_BIRTH_AGES,
 )
+from housing_sim_jp.events import EventRiskConfig, EventTimeline
+from housing_sim_jp.monte_carlo import MonteCarloConfig, MonteCarloResult, run_monte_carlo
 
 __all__ = [
     "SimulationParams",
@@ -59,4 +61,9 @@ __all__ = [
     "MAX_INCOME_MULTIPLIER",
     "TAKEHOME_TO_GROSS",
     "DEFAULT_CHILD_BIRTH_AGES",
+    "EventRiskConfig",
+    "EventTimeline",
+    "MonteCarloConfig",
+    "MonteCarloResult",
+    "run_monte_carlo",
 ]

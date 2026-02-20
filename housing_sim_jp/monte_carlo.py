@@ -1,0 +1,260 @@
+"""Monte Carlo simulation engine."""
+
+import dataclasses
+import math
+import sys
+from dataclasses import dataclass, field
+from random import Random
+from typing import Callable
+
+from housing_sim_jp.events import EventRiskConfig, EventTimeline, sample_events
+from housing_sim_jp.params import SimulationParams
+from housing_sim_jp.simulation import (
+    END_AGE,
+    simulate_strategy,
+    resolve_purchase_age,
+    INFEASIBLE,
+)
+from housing_sim_jp.strategies import (
+    Strategy,
+    UrawaMansion,
+    UrawaHouse,
+    StrategicRental,
+    NormalRental,
+)
+
+
+@dataclass
+class MonteCarloConfig:
+    """Configuration for Monte Carlo simulation."""
+
+    n_simulations: int = 1000
+    seed: int | None = 42
+    return_volatility: float = 0.15
+    inflation_volatility: float = 0.005
+    land_volatility: float = 0.03
+    land_inflation_correlation: float = 0.6
+    event_risks: EventRiskConfig | None = None
+
+
+@dataclass
+class MonteCarloResult:
+    """Results from Monte Carlo simulation for a single strategy."""
+
+    strategy_name: str
+    n_simulations: int
+    after_tax_net_assets: list[float] = field(default_factory=list)
+    bankrupt_count: int = 0
+    percentiles: dict[int, float] = field(default_factory=dict)
+    bankruptcy_probability: float = 0.0
+    mean: float = 0.0
+    std: float = 0.0
+    skipped: bool = False
+
+
+def _sample_log_normal_returns(
+    rng: Random,
+    n_years: int,
+    target_mean: float,
+    volatility: float,
+) -> list[float]:
+    """Sample annual investment returns from log-normal distribution.
+
+    Maps target arithmetic mean and volatility to log-normal parameters
+    so that E[r] = target_mean and Std[r] ≈ volatility.
+    """
+    # log-normal: if X = exp(mu + sigma*Z) - 1, then
+    # E[X+1] = exp(mu + sigma^2/2), Var[X+1] = (exp(sigma^2)-1)*exp(2*mu+sigma^2)
+    m = 1 + target_mean  # target E[X+1]
+    v = volatility ** 2   # target Var[X+1]
+    sigma_sq = math.log(1 + v / (m * m))
+    sigma = math.sqrt(sigma_sq)
+    mu = math.log(m) - sigma_sq / 2
+
+    returns = []
+    for _ in range(n_years):
+        z = rng.gauss(0, 1)
+        annual_return = math.exp(mu + sigma * z) - 1
+        returns.append(annual_return)
+    return returns
+
+
+def _sample_correlated_pair(
+    rng: Random,
+    mean1: float,
+    std1: float,
+    mean2: float,
+    std2: float,
+    correlation: float,
+) -> tuple[float, float]:
+    """Sample two correlated normal values using Cholesky decomposition."""
+    z1 = rng.gauss(0, 1)
+    z2 = rng.gauss(0, 1)
+    # Cholesky: x1 = z1, x2 = rho*z1 + sqrt(1-rho^2)*z2
+    x1 = z1
+    x2 = correlation * z1 + math.sqrt(1 - correlation ** 2) * z2
+    return mean1 + std1 * x1, mean2 + std2 * x2
+
+
+def run_monte_carlo(
+    strategy_factory: Callable[[], Strategy],
+    base_params: SimulationParams,
+    config: MonteCarloConfig,
+    start_age: int,
+    discipline_factor: float = 1.0,
+    child_birth_ages: list[int] | None = None,
+    purchase_age: int | None = None,
+    quiet: bool = False,
+) -> MonteCarloResult:
+    """Run N Monte Carlo simulations for a single strategy."""
+    rng = Random(config.seed)
+    n_years = END_AGE - start_age
+    results_list: list[float] = []
+    bankrupt_count = 0
+    strategy_name = strategy_factory().name
+
+    for i in range(config.n_simulations):
+        strategy = strategy_factory()
+        is_rental = strategy.property_price == 0
+
+        # Sample per-year investment returns (log-normal)
+        annual_returns = _sample_log_normal_returns(
+            rng, n_years, base_params.investment_return, config.return_volatility,
+        )
+
+        # Sample per-run correlated inflation and land appreciation
+        sampled_inflation, sampled_land = _sample_correlated_pair(
+            rng,
+            base_params.inflation_rate, config.inflation_volatility,
+            base_params.land_appreciation, config.land_volatility,
+            config.land_inflation_correlation,
+        )
+
+        params = dataclasses.replace(
+            base_params,
+            inflation_rate=sampled_inflation,
+            land_appreciation=sampled_land,
+            annual_investment_returns=annual_returns,
+        )
+
+        # Sample event timeline
+        event_timeline: EventTimeline | None = None
+        if config.event_risks is not None:
+            total_months = n_years * 12
+            event_timeline = sample_events(
+                rng, config.event_risks, start_age, total_months, is_rental,
+            )
+
+        # Resolve purchase age for this run's params
+        run_purchase_age = purchase_age
+        if run_purchase_age is None and strategy.property_price > 0:
+            run_purchase_age = resolve_purchase_age(
+                strategy, params, start_age, child_birth_ages,
+            )
+            if run_purchase_age == INFEASIBLE:
+                results_list.append(0.0)
+                bankrupt_count += 1
+                if not quiet and (i + 1) % 100 == 0:
+                    print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
+                continue
+
+        try:
+            result = simulate_strategy(
+                strategy, params,
+                start_age=start_age,
+                discipline_factor=discipline_factor,
+                child_birth_ages=child_birth_ages,
+                purchase_age=run_purchase_age,
+                event_timeline=event_timeline,
+            )
+        except ValueError:
+            results_list.append(0.0)
+            bankrupt_count += 1
+            if not quiet and (i + 1) % 100 == 0:
+                print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
+            continue
+
+        results_list.append(result["after_tax_net_assets"])
+        if result["bankrupt_age"] is not None:
+            bankrupt_count += 1
+
+        if not quiet and (i + 1) % 100 == 0:
+            print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
+
+    if not quiet and config.n_simulations >= 100:
+        print(file=sys.stderr)
+
+    results_list.sort()
+    n = len(results_list)
+
+    def _percentile(p: float) -> float:
+        idx = max(0, min(int(p / 100 * n), n - 1))
+        return results_list[idx]
+
+    percentiles = {p: _percentile(p) for p in [5, 25, 50, 75, 95]}
+    mean = sum(results_list) / n if n > 0 else 0
+    variance = sum((x - mean) ** 2 for x in results_list) / n if n > 0 else 0
+    std = math.sqrt(variance)
+
+    return MonteCarloResult(
+        strategy_name=strategy_name,
+        n_simulations=config.n_simulations,
+        after_tax_net_assets=results_list,
+        bankrupt_count=bankrupt_count,
+        percentiles=percentiles,
+        bankruptcy_probability=bankrupt_count / config.n_simulations,
+        mean=mean,
+        std=std,
+    )
+
+
+def run_monte_carlo_all_strategies(
+    base_params: SimulationParams,
+    config: MonteCarloConfig,
+    start_age: int,
+    initial_savings: float,
+    discipline_factor: float = 1.0,
+    child_birth_ages: list[int] | None = None,
+    quiet: bool = False,
+) -> list[MonteCarloResult]:
+    """Run Monte Carlo simulation for all 4 strategies."""
+    from housing_sim_jp.simulation import (
+        DEFAULT_CHILD_BIRTH_AGES,
+        EDUCATION_CHILD_AGE_END,
+    )
+
+    # Resolve child_birth_ages once for consistency
+    if child_birth_ages is None:
+        child_birth_ages = [
+            a for a in DEFAULT_CHILD_BIRTH_AGES
+            if a + EDUCATION_CHILD_AGE_END >= start_age
+        ]
+
+    num_children = len(child_birth_ages)
+
+    factories: list[tuple[Callable[[], Strategy], float]] = [
+        (lambda: UrawaMansion(initial_savings), 1.0),
+        (lambda: UrawaHouse(initial_savings), 1.0),
+        (
+            lambda: StrategicRental(
+                initial_savings, child_birth_ages=child_birth_ages, start_age=start_age,
+            ),
+            1.0,
+        ),
+        (lambda: NormalRental(initial_savings, num_children=num_children), 1.0),
+    ]
+
+    results = []
+    for factory, disc in factories:
+        mc_result = run_monte_carlo(
+            strategy_factory=factory,
+            base_params=base_params,
+            config=config,
+            start_age=start_age,
+            discipline_factor=discipline_factor if discipline_factor != 1.0 else disc,
+            child_birth_ages=child_birth_ages,
+            quiet=quiet,
+        )
+        results.append(mc_result)
+
+    return results

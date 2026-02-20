@@ -206,7 +206,7 @@ class StrategicRental(Strategy):
     RENT_PHASE1 = 18.0
     RENT_PHASE2_BASE = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
     RENT_PHASE2_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
-    RENT_PHASE3_BASE = 17.0
+    RENT_PHASE3_BASE = 18.0
     RENEWAL_FEE_DIVISOR = 24
     # 75歳以上の高齢者住宅プレミアム（期待値、2026年現在価値）
     ELDERLY_PREMIUM_AGE = 75

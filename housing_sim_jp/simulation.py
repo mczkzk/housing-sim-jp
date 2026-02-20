@@ -511,6 +511,7 @@ def simulate_strategy(
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
     purchase_age: int | None = None,
+    event_timeline=None,
 ) -> dict:
     """Execute simulation from start_age to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
@@ -618,9 +619,15 @@ def simulate_strategy(
     peak_income = 0.0
     monthly_log = []
     bankrupt_age = None
-    monthly_return_rate = params.investment_return / 12
+    fixed_monthly_return = params.investment_return / 12
 
     for month in range(TOTAL_MONTHS):
+        year_idx = month // 12
+        if params.annual_investment_returns is not None:
+            monthly_return_rate = params.annual_investment_returns[year_idx] / 12
+        else:
+            monthly_return_rate = fixed_monthly_return
+
         age = start_age + month // 12
         months_in_current_age = month % 12
 
@@ -673,6 +680,14 @@ def simulate_strategy(
             )
             one_time_expense += car_one_time
 
+        # Event risk overrides
+        if event_timeline is not None:
+            if month in event_timeline.job_loss_months:
+                monthly_income = 0
+            event_extra_cost = event_timeline.get_extra_cost(month, age, params)
+        else:
+            event_extra_cost = 0
+
         investable = (
             monthly_income
             - housing_cost
@@ -682,6 +697,7 @@ def simulate_strategy(
             - monthly_moving_cost
             + loan_deduction
             - one_time_expense
+            - event_extra_cost
         )
 
         if discipline_factor < 1.0 and investable > 0:

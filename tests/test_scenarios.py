@@ -51,7 +51,7 @@ class TestScenarioSnapshots:
 
     def test_high_growth_strategic_rental(self):
         r = self.results["高成長"][2]
-        assert r["after_tax_net_assets"] == pytest.approx(44771.518702, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(43939.713800, abs=0.01)
 
 
 class TestDisciplineFactors:
