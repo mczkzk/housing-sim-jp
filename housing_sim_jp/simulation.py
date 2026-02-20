@@ -300,6 +300,14 @@ def _calc_monthly_income(
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
 EDUCATION_CHILD_AGE_END = 22    # 大学卒業
 
+# ステージ別教育費割合（education_cost_monthly = ピーク（高校）金額に対する比率）
+EDUCATION_COST_RATIOS: tuple[tuple[int, int, float], ...] = (
+    (7, 12, 0.4),   # 小学校（習い事・学童）
+    (13, 15, 0.7),  # 中学校（塾開始・部活）
+    (16, 18, 1.0),  # 高校（塾・予備校・受験）← ピーク
+    (19, 22, 0.85), # 大学（学費のみ、塾なし）
+)
+
 # 子供が同居する期間（生活費計算用）
 CHILD_HOME_AGE_END = 22  # 大学卒業で独立
 
@@ -317,11 +325,15 @@ def _calc_education_and_living(
     extra_monthly_cost: additional per-month cost (e.g. car running) added to base living.
     """
     inflation = (1 + params.inflation_rate) ** years_elapsed
-    education_cost = sum(
-        params.education_cost_monthly * inflation
-        for start, end in education_ranges
-        if start <= age <= end
-    )
+    education_cost = 0.0
+    for ed_start, ed_end in education_ranges:
+        if ed_start <= age <= ed_end:
+            child_age = age - ed_start + EDUCATION_CHILD_AGE_START
+            ratio = next(
+                (r for lo, hi, r in EDUCATION_COST_RATIOS if lo <= child_age <= hi),
+                0.0,
+            )
+            education_cost += params.education_cost_monthly * ratio * inflation
     num_children = sum(
         1 for start, end in child_home_ranges
         if start <= age <= end
