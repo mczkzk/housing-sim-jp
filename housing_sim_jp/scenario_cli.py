@@ -1,7 +1,7 @@
 """CLI entry point for scenario comparison."""
 
 from housing_sim_jp.config import parse_args
-from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS
+from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
 
 STRATEGY_LABELS = [
     "マンション購入派",
@@ -26,15 +26,16 @@ def print_parameters():
     )
     print("-" * 120)
 
-    print(
-        f"{'低成長':<12} {0.5:>9.1f}% {4.0:>9.1f}% {0.0:>9.1f}% {'0.75→1.25%':>15}"
-    )
-    print(
-        f"{'標準':<12} {1.5:>9.1f}% {5.5:>9.1f}% {0.5:>9.1f}% {'0.75→2.00%':>15}"
-    )
-    print(
-        f"{'高成長':<12} {2.5:>9.1f}% {7.0:>9.1f}% {1.0:>9.1f}% {'1.00→3.00%':>15}"
-    )
+    for name in SCENARIO_ORDER:
+        scenario = SCENARIOS[name]
+        inflation = scenario["inflation_rate"] * 100
+        investment = scenario["investment_return"] * 100
+        land = scenario["land_appreciation"] * 100
+        rates = scenario["loan_rate_schedule"]
+        loan = f"{rates[0]*100:.2f}→{rates[-1]*100:.2f}%"
+        print(
+            f"{name:<12} {inflation:>9.1f}% {investment:>9.1f}% {land:>9.1f}% {loan:>15}"
+        )
     print("-" * 120)
     print()
 

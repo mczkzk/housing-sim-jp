@@ -52,8 +52,7 @@ class Strategy:
     # Mutable loan state (managed by _calc_loan_cost)
     remaining_balance: float = field(default=0.0, init=False, repr=False)
     monthly_payment: float = field(default=0.0, init=False, repr=False)
-
-    LOAN_MONTHS: ClassVar[int] = 0
+    loan_months: int = 0
 
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {}
     LIQUIDATION_COST: ClassVar[float] = 0
@@ -66,7 +65,7 @@ class Strategy:
 
     def _calc_loan_cost(self, months_elapsed: int, params: SimulationParams) -> float:
         """Calculate monthly loan payment and update balance. Returns 0 after payoff."""
-        if months_elapsed >= self.LOAN_MONTHS:
+        if months_elapsed >= self.loan_months:
             return 0.0
 
         years_elapsed = months_elapsed / 12
@@ -76,10 +75,10 @@ class Strategy:
         if months_elapsed == 0:
             self.remaining_balance = self.loan_amount
             self.monthly_payment = _calc_equal_payment(
-                self.loan_amount, current_rate, self.LOAN_MONTHS
+                self.loan_amount, current_rate, self.loan_months
             )
         elif months_elapsed % 60 == 0:
-            remaining_months = self.LOAN_MONTHS - months_elapsed
+            remaining_months = self.loan_months - months_elapsed
             self.monthly_payment = _calc_equal_payment(
                 self.remaining_balance, current_rate, remaining_months
             )
@@ -101,7 +100,6 @@ class UrawaMansion(Strategy):
     INITIAL_REPAIR_RESERVE = 1.1  # 修繕積立金 initial (age-multiplied)
     PROPERTY_TAX_MONTHLY = 1.8
     INSURANCE_MONTHLY = 0.15  # RC造 is cheaper than wooden
-    LOAN_MONTHS = 420
 
     # 専有部のみ（共用部は管理修繕費でカバー）
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {
@@ -117,6 +115,7 @@ class UrawaMansion(Strategy):
             property_price=self.PROPERTY_PRICE,
             loan_amount=self.PROPERTY_PRICE,
             land_value_ratio=0.25,
+            loan_months=420,
         )
 
     def housing_cost(
@@ -150,7 +149,6 @@ class UrawaHouse(Strategy):
     )
     INSURANCE_MONTHLY = 0.4
     OTHER_MONTHLY = 0.7  # セキュリティ(SECOM等)0.5万 + 雑費0.2万 (全期間適用)
-    LOAN_MONTHS = 420
 
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {
         17: 180, 30: 500, 45: 300,
@@ -168,6 +166,7 @@ class UrawaHouse(Strategy):
             land_value_ratio=0.55,
             utility_premium=0.3,  # 日本生協連調査: detached house +3,000円/month vs condo
             liquidity_discount=0.15,  # 築50年古家付き土地: 売り急ぎ・指値リスク
+            loan_months=420,
         )
 
     def housing_cost(
@@ -181,7 +180,7 @@ class UrawaHouse(Strategy):
         cost = self._calc_loan_cost(months_elapsed, params)
 
         # Small repairs: age-based during loan, flat base after payoff
-        if months_elapsed < self.LOAN_MONTHS:
+        if months_elapsed < self.loan_months:
             maintenance = _house_maintenance_multiplier(house_age)
         else:
             maintenance = self.MAINTENANCE_BASE
@@ -221,6 +220,7 @@ class StrategicRental(Strategy):
             property_price=0,
             loan_amount=0,
             land_value_ratio=0,
+            loan_months=0,
         )
         self.senior_rent_inflated = None
         num_children = len(child_birth_ages) if child_birth_ages else 0
@@ -291,6 +291,7 @@ class NormalRental(Strategy):
             property_price=0,
             loan_amount=0,
             land_value_ratio=0,
+            loan_months=0,
         )
         self.base_rent = self.BASE_RENT + max(0, num_children - 1) * self.RENT_EXTRA
 

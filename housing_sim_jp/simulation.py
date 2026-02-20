@@ -40,7 +40,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
         )
 
     # Check 2: loan approval (purchase strategies only)
-    if strategy.loan_amount > 0 and strategy.LOAN_MONTHS > 0:
+    if strategy.loan_amount > 0 and strategy.loan_months > 0:
         takehome_monthly = params.initial_takehome_monthly
         gross_annual = takehome_monthly * 12 / TAKEHOME_TO_GROSS
 
@@ -62,7 +62,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
         # 返済比率チェック（審査金利でストレステスト）
         screening_monthly_rate = SCREENING_RATE / 12
         monthly_payment = _calc_equal_payment(
-            strategy.loan_amount, screening_monthly_rate, strategy.LOAN_MONTHS
+            strategy.loan_amount, screening_monthly_rate, strategy.loan_months
         )
         annual_payment = monthly_payment * 12
         repayment_ratio = annual_payment / gross_annual
@@ -187,8 +187,8 @@ def find_earliest_purchase_age(
         test_strategy.property_price = inflated_price
         test_strategy.loan_amount = inflated_price
         test_strategy.initial_investment = savings - inflated_initial_cost
-        if loan_months != type(strategy).LOAN_MONTHS:
-            test_strategy.LOAN_MONTHS = loan_months
+        if loan_months != test_strategy.loan_months:
+            test_strategy.loan_months = loan_months
 
         test_params = dataclasses.replace(
             params, initial_takehome_monthly=projected_income_at_target
@@ -537,6 +537,10 @@ def simulate_strategy(
 
     validate_age(start_age)
 
+    # Reset mutable loan state in case the Strategy instance is reused.
+    strategy.remaining_balance = 0.0
+    strategy.monthly_payment = 0.0
+
     effective_purchase_age = purchase_age if purchase_age and purchase_age > start_age else start_age
     has_pre_purchase_rental = effective_purchase_age > start_age
 
@@ -553,8 +557,8 @@ def simulate_strategy(
 
         # Cap loan term
         loan_months_cap = min(35, 80 - effective_purchase_age) * 12
-        if loan_months_cap < type(strategy).LOAN_MONTHS:
-            strategy.LOAN_MONTHS = loan_months_cap
+        if loan_months_cap < strategy.loan_months:
+            strategy.loan_months = loan_months_cap
     else:
         purchase_closing_cost = strategy.initial_savings - strategy.initial_investment
         errors = validate_strategy(strategy, params)
