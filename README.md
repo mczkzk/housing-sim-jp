@@ -36,11 +36,12 @@ python -m pytest tests/ -v
 
 ### 設定ファイル
 
-`config.example-30.toml` や `config.example-35.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
+`config.example-*.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
 
 ```bash
-cp config.example-30.toml config.toml   # 30歳プリセット（800万/62.5万/子2人）
-cp config.example-35.toml config.toml   # 35歳プリセット（1500万/75万/子1人/教育費ピーク18万）
+cp config.example-25.toml config.toml   # 25歳プリセット（200万/55万/子2人）
+cp config.example-30.toml config.toml   # 30歳プリセット（800万/75万/子2人）
+cp config.example-35.toml config.toml   # 35歳プリセット（2000万/85万/子1人/車/ペット1匹）
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
 python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個別に上書き
@@ -96,13 +97,13 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | **高校** | 16-18歳 | **1.0** | **15.0万/月** |
 | 大学     | 19-22歳 | 0.85 | 12.8万/月 |
 
-- **生活費**: 夫婦ベース＋子供1人あたり追加分で動的計算。子の同居期間は出生〜22歳（大学卒業で独立）
+- **生活費**: 年齢別ベースライン（20歳20万→35歳29万→50歳以降27.5万）＋プレミアム（`--living-premium`）＋子供1人あたり追加分で動的計算。子の同居期間は出生〜22歳（大学卒業で独立）
 - **子なし**: `--children none`（TOMLでは `children = []`）で教育費・子供生活費ゼロ
 - **子供上限**: 3LDKの部屋数制約により最大2人
 
 ### 収入・年金
 
-- **収入モデル**: 〜34歳は年3%成長、35歳〜は年1.5%成長、60歳で再雇用（ピークの60%）、70歳で年金生活
+- **収入モデル**: 〜29歳は年8%成長（大手共働きベース）、30歳〜は年1.5%成長、60歳で再雇用（ピークの60%）、70歳で年金生活
 - **年金**: 公的年金（基礎年金+厚生年金）をピーク収入から動的計算 + 企業年金（デフォルト130万/年）
 
 ### 住宅購入
@@ -172,5 +173,6 @@ python -m housing_sim_jp.chart_cli --mc-runs 500 --output reports/charts/
 
 | レポート | 条件 |
 |---------|------|
-| [reports/report-30.md](reports/report-30.md) | 30歳・800万・手取り62.5万・子2人（32,35歳出産）・教育費ピーク14万/月 |
-| [reports/report-35.md](reports/report-35.md) | 35歳・1500万・手取り75万・子1人（37歳出産）・教育費ピーク18万/月・ペット1匹 |
+| [reports/report-25.md](reports/report-25.md) | 25歳・200万・手取り55万・子2人（30,32歳出産）・教育費ピーク15万/月 |
+| [reports/report-30.md](reports/report-30.md) | 30歳・800万・手取り75万・子2人（33,35歳出産）・教育費ピーク15万/月 |
+| [reports/report-35.md](reports/report-35.md) | 35歳・2000万・手取り85万・子1人（37歳出産）・教育費ピーク20万/月・車・ペット1匹 |
