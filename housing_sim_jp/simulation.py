@@ -473,6 +473,40 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
+def _try_car_purchase(
+    age: int,
+    month: int,
+    start_age: int,
+    params: SimulationParams,
+    investment_balance: float,
+    car_owned: bool,
+    car_first_purchase_age: int | None,
+    next_car_due_age: int,
+    child_home_ranges: list[tuple[int, int]],
+) -> tuple[float, bool, int | None, int]:
+    """Try car purchase/replacement at year boundary.
+
+    Returns (one_time_cost, car_owned, car_first_purchase_age, next_car_due_age).
+    """
+    if not (params.has_car and month % 12 == 0 and age >= next_car_due_age):
+        return 0.0, car_owned, car_first_purchase_age, next_car_due_age
+
+    years_from_start = age - start_age
+    inflation_factor = (1 + params.inflation_rate) ** years_from_start
+    if not car_owned:
+        cost = params.car_purchase_price * inflation_factor
+    else:
+        cost = params.car_purchase_price * (1 - params.car_residual_rate) * inflation_factor
+
+    required_ef = _calc_required_emergency_fund(age, month, params, child_home_ranges)
+    if investment_balance >= cost + required_ef:
+        if car_first_purchase_age is None:
+            car_first_purchase_age = age
+        return cost, True, car_first_purchase_age, age + params.car_replacement_years
+
+    return 0.0, car_owned, car_first_purchase_age, next_car_due_age
+
+
 def _process_ideco(
     age: int,
     month: int,
@@ -765,24 +799,12 @@ def simulate_strategy(
         months_in_current_age = month % 12
 
         # Car purchase/replacement at year boundaries (deferred if unaffordable)
-        car_one_time = 0
-        if params.has_car and months_in_current_age == 0 and age >= next_car_due_age:
-            balance = nisa_balance + taxable_balance
-            years_from_start = age - start_age
-            inflation_factor = (1 + params.inflation_rate) ** years_from_start
-            if not car_owned:
-                cost = params.car_purchase_price * inflation_factor
-            else:
-                cost = params.car_purchase_price * (1 - params.car_residual_rate) * inflation_factor
-            required_ef_for_car = _calc_required_emergency_fund(
-                age, month, params, child_home_ranges,
-            )
-            if balance >= cost + required_ef_for_car:
-                car_one_time = cost
-                car_owned = True
-                if car_first_purchase_age is None:
-                    car_first_purchase_age = age
-                next_car_due_age = age + params.car_replacement_years
+        car_one_time, car_owned, car_first_purchase_age, next_car_due_age = _try_car_purchase(
+            age, month, start_age, params,
+            nisa_balance + taxable_balance,
+            car_owned, car_first_purchase_age, next_car_due_age,
+            child_home_ranges,
+        )
 
         monthly_income, peak_income = _calc_monthly_income(
             month, start_age, params, peak_income
