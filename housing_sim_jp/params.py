@@ -35,6 +35,7 @@ class SimulationParams:
     )
     loan_tax_deduction_rate: float = 0.007
     loan_tax_deduction_years: int = 10
+    loan_deduction_limit: float = 3000  # 中古省エネ住宅の借入限度額（万円）
 
     # Living cost parameters
     couple_living_cost_monthly: float = 27.0   # 夫婦のみの生活費
@@ -49,6 +50,9 @@ class SimulationParams:
     car_running_cost_monthly: float = 3.0  # 駐車場以外の維持費（ガソリン・保険・税金・メンテ）
 
     retirement_living_cost_ratio: float = 0.70
+
+    # iDeCo parameters
+    ideco_monthly_contribution: float = 4.0  # 夫婦合計（2万×2人, 企業型DC+DB上限）
 
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: Optional[List[float]] = None

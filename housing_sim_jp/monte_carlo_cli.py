@@ -28,7 +28,7 @@ def _build_parser():
     )
     parser.add_argument(
         "--no-events", action="store_true",
-        help="イベントリスク（失業・災害・介護・入居拒否）を無効化",
+        help="イベントリスク（失業・災害・介護・入居拒否・離婚・死亡）を無効化",
     )
     parser.add_argument(
         "--stress-test", action="store_true",
@@ -107,6 +107,15 @@ def _run_stress_test(
             disaster_annual_prob=0,
             care_annual_prob_after_75=0,
             rental_rejection_prob_after_70=0,
+            divorce_annual_prob=0,
+            spouse_death_annual_prob=0,
+        )),
+        ("離婚(年1%)", EventRiskConfig(
+            job_loss_annual_prob=0,
+            disaster_annual_prob=0,
+            care_annual_prob_after_75=0,
+            rental_rejection_prob_after_70=0,
+            spouse_death_annual_prob=0,
         )),
         ("全イベント", EventRiskConfig()),
     ]
@@ -157,6 +166,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
+        ideco_monthly_contribution=r["ideco"],
     )
 
     event_risks = None if args.no_events else EventRiskConfig()

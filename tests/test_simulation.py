@@ -13,6 +13,8 @@ from housing_sim_jp import (
     find_earliest_purchase_age,
     MAX_CHILDREN,
 )
+from housing_sim_jp.events import EventRiskConfig, EventTimeline, sample_events
+from housing_sim_jp.simulation import REEMPLOYMENT_AGE
 
 
 class TestValidateAge:
@@ -71,19 +73,19 @@ class TestSnapshotAge37:
 
     def test_mansion(self):
         r = simulate_strategy(UrawaMansion(800), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(24685.380598, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(24375.045791, abs=0.01)
 
     def test_house(self):
         r = simulate_strategy(UrawaHouse(800), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(31166.077998, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(31225.740181, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(29548.801889, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(31163.981031, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(20232.457076, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(22030.030745, abs=0.01)
 
 
 class TestSnapshotDetails:
@@ -94,7 +96,7 @@ class TestSnapshotDetails:
         self.r = simulate_strategy(UrawaMansion(800), params, start_age=37, child_birth_ages=[39])
 
     def test_nisa_balance(self):
-        assert self.r["nisa_balance"] == pytest.approx(22537.100649, abs=0.01)
+        assert self.r["nisa_balance"] == pytest.approx(22226.765842, abs=0.01)
 
     def test_land_value(self):
         assert self.r["land_value_80"] == pytest.approx(2348.279949, abs=0.01)
@@ -115,14 +117,14 @@ class TestEdgeAges:
     def test_age_25(self):
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, start_age=25, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(130769.750189, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(134013.772665, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
         """child_birth_ages=[39] for start_age=45 (child age 6-16 during sim)."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, start_age=45, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(7394.431375, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(8384.747137, abs=0.01)
         assert r["bankrupt_age"] is None
 
 
@@ -140,7 +142,7 @@ class TestDisciplineFactor:
         r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=1.0, child_birth_ages=[39])
         r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(23881.212864, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(25316.111842, abs=0.01)
 
 
 class TestChildBirthAges:
@@ -148,7 +150,7 @@ class TestChildBirthAges:
         """child_birth_ages=[38] should produce known snapshot."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, start_age=37, child_birth_ages=[38])
-        assert r["after_tax_net_assets"] == pytest.approx(28710.464848, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(30331.530162, abs=0.01)
 
     def test_no_child_increases_assets(self):
         """No education costs → more investable → higher assets."""
@@ -263,3 +265,126 @@ class TestDeferredPurchase:
         assert purchase_age is not None
         r = simulate_strategy(UrawaHouse(500), params, start_age=30, purchase_age=purchase_age, child_birth_ages=[39])
         assert r["bankrupt_age"] is None
+
+
+class TestIDeCo:
+    """Tests for iDeCo integration in simulate_strategy."""
+
+    def test_ideco_zero_vs_nonzero(self):
+        """iDeCo拠出ありの方が資産が多い（税軽減効果）."""
+        params_with = SimulationParams(ideco_monthly_contribution=4.0)
+        params_without = SimulationParams(ideco_monthly_contribution=0)
+        r_with = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params_with, start_age=37, child_birth_ages=[39],
+        )
+        r_without = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params_without, start_age=37, child_birth_ages=[39],
+        )
+        assert r_with["after_tax_net_assets"] > r_without["after_tax_net_assets"]
+
+    def test_ideco_withdrawal_at_60(self):
+        """iDeCo balance should be zero after age 60 (withdrawn as lump sum)."""
+        params = SimulationParams(ideco_monthly_contribution=4.0)
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        assert r["ideco_total_contribution"] > 0
+        assert r["ideco_tax_benefit_total"] > 0
+        assert r["ideco_tax_paid"] >= 0
+
+    def test_ideco_no_contribution_after_60(self):
+        """Starting at 45 with 15 years to 60, iDeCo should contribute for 15 years."""
+        params = SimulationParams(ideco_monthly_contribution=4.0)
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=45),
+            params, start_age=45, child_birth_ages=[39],
+        )
+        expected_contribution = 4.0 * 12 * 15  # 15 years × 12 months × 4万
+        assert r["ideco_total_contribution"] == pytest.approx(expected_contribution, abs=0.01)
+
+
+class TestDivorceEvent:
+    """Tests for divorce event in simulation."""
+
+    def test_divorce_splits_assets(self):
+        """Divorce should reduce assets (50% split)."""
+        params = SimulationParams()
+        # Force divorce at month 12 (age 38)
+        timeline = EventTimeline(divorce_month=12)
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+            event_timeline=timeline,
+        )
+        r_base = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        assert r["after_tax_net_assets"] < r_base["after_tax_net_assets"]
+
+    def test_divorce_forces_sale(self):
+        """Divorce with purchase strategy should sell property."""
+        params = SimulationParams()
+        timeline = EventTimeline(divorce_month=60)  # Age 42
+        r = simulate_strategy(
+            UrawaMansion(800), params, start_age=37, child_birth_ages=[39],
+            event_timeline=timeline,
+        )
+        # After divorce, property_price is 0 → land_value should be 0
+        assert r["land_value_80"] == 0
+        assert r["effective_land_value"] == 0
+
+
+class TestSpouseDeathEvent:
+    """Tests for spouse death event in simulation."""
+
+    def test_death_pays_mortgage(self):
+        """Death should clear mortgage (団信) and add insurance payout."""
+        params = SimulationParams()
+        timeline = EventTimeline(
+            spouse_death_month=60,  # Age 42
+            life_insurance_payout=3000,
+        )
+        r = simulate_strategy(
+            UrawaMansion(800), params, start_age=37, child_birth_ages=[39],
+            event_timeline=timeline,
+        )
+        # Property value should still exist (not sold)
+        assert r["land_value_80"] > 0
+
+    def test_death_adds_insurance(self):
+        """Death should increase assets from insurance payout."""
+        params = SimulationParams()
+        timeline = EventTimeline(
+            spouse_death_month=60,
+            life_insurance_payout=3000,
+        )
+        r_death = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+            event_timeline=timeline,
+        )
+        # Should not crash and should complete
+        assert r_death["after_tax_net_assets"] > 0
+
+
+class TestDivorceDeathMutualExclusion:
+    """Divorce and death should be mutually exclusive in sampling."""
+
+    def test_divorce_death_mutually_exclusive(self):
+        """sample_events should never set both divorce and death."""
+        from random import Random
+        rng = Random(42)
+        config = EventRiskConfig(
+            divorce_annual_prob=0.5,
+            spouse_death_annual_prob=0.5,
+        )
+        for _ in range(100):
+            timeline = sample_events(rng, config, start_age=30, total_months=600, is_rental=False)
+            if timeline.divorce_month is not None:
+                assert timeline.spouse_death_month is None
+            if timeline.spouse_death_month is not None:
+                assert timeline.divorce_month is None

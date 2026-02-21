@@ -21,6 +21,11 @@ class EventRiskConfig:
     care_cost_monthly: float = 15.0
     rental_rejection_prob_after_70: float = 0.10
     rental_rejection_premium: float = 5.0
+    # Divorce / spouse death
+    divorce_annual_prob: float = 0.01       # 年1%（生涯≈35%）
+    spouse_death_annual_prob: float = 0.003  # 年0.3%（夫婦合計）
+    life_insurance_payout: float = 3000      # 生命保険金（万円）
+    survivor_pension_annual: float = 75      # 遺族年金（万円/年、簡易定額）
 
 
 @dataclass
@@ -33,6 +38,11 @@ class EventTimeline:
     rental_rejection_month: int | None = None
     care_cost_monthly: float = 15.0
     rental_rejection_premium: float = 5.0
+    # Divorce / spouse death (mutually exclusive)
+    divorce_month: int | None = None
+    spouse_death_month: int | None = None
+    life_insurance_payout: float = 3000
+    survivor_pension_annual: float = 75
 
     def get_extra_cost(self, month: int, age: int, params: SimulationParams) -> float:
         """Calculate extra monthly cost from care and rental rejection events."""
@@ -104,5 +114,19 @@ def sample_events(
             if rng.random() < config.rental_rejection_prob_after_70:
                 timeline.rental_rejection_month = year_idx * 12
                 break
+
+    # Divorce / spouse death (mutually exclusive, stop at PENSION_AGE)
+    timeline.life_insurance_payout = config.life_insurance_payout
+    timeline.survivor_pension_annual = config.survivor_pension_annual
+    for year_idx in range(total_years):
+        age = start_age + year_idx
+        if age >= PENSION_AGE:
+            break
+        if rng.random() < config.divorce_annual_prob:
+            timeline.divorce_month = year_idx * 12
+            break
+        if rng.random() < config.spouse_death_annual_prob:
+            timeline.spouse_death_month = year_idx * 12
+            break
 
     return timeline

@@ -180,6 +180,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
+        ideco_monthly_contribution=r["ideco"],
     )
     print_results(results)
 
@@ -193,6 +194,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
+        ideco_monthly_contribution=r["ideco"],
     )
     print_discipline_analysis(results, discipline_results)
 

@@ -57,6 +57,7 @@ def run_scenarios(
     child_living_cost_monthly: float = 5.0,
     education_cost_monthly: float = 10.0,
     has_car: bool = False,
+    ideco_monthly_contribution: float = 4.0,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
@@ -75,6 +76,7 @@ def run_scenarios(
             child_living_cost_monthly=child_living_cost_monthly,
             education_cost_monthly=education_cost_monthly,
             has_car=has_car,
+            ideco_monthly_contribution=ideco_monthly_contribution,
         )
         for key, value in scenario_params.items():
             setattr(params, key, value)

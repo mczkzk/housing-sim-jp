@@ -4,6 +4,12 @@ import dataclasses
 
 from housing_sim_jp.params import SimulationParams, _calc_equal_payment
 from housing_sim_jp.strategies import Strategy
+from housing_sim_jp.tax import (
+    calc_marginal_income_tax_rate,
+    estimate_taxable_income,
+    calc_ideco_tax_benefit_monthly,
+    calc_retirement_income_tax,
+)
 
 # Simulation age limits
 MIN_START_AGE = 20  # 婚姻可能年齢
@@ -381,9 +387,8 @@ def _calc_expenses(
     loan_deduction = 0
     ownership_years = ownership_month / 12
     if strategy.loan_amount > 0 and ownership_years >= 0 and ownership_years < params.loan_tax_deduction_years:
-        annual_deduction = (
-            strategy.remaining_balance * params.loan_tax_deduction_rate
-        )
+        capped_balance = min(strategy.remaining_balance, params.loan_deduction_limit)
+        annual_deduction = capped_balance * params.loan_tax_deduction_rate
         loan_deduction = annual_deduction / 12
 
     one_time_expense = 0
@@ -635,6 +640,23 @@ def simulate_strategy(
     taxable_balance = initial - nisa_deposit
     taxable_cost_basis = initial - nisa_deposit
 
+    # Divorce / death state
+    is_divorced = False
+    is_spouse_dead = False
+    divorce_rental_cost = 0.0  # Post-divorce 2LDK rent (set at divorce time)
+
+    # iDeCo state
+    ideco_balance = 0.0
+    ideco_total_contribution = 0.0
+    ideco_tax_benefit_total = 0.0
+    ideco_tax_paid = 0.0
+    ideco_contribution_years = 0
+
+    # Estimate marginal tax rate from initial income (for iDeCo tax benefit)
+    gross_annual = params.initial_takehome_monthly * 12 / TAKEHOME_TO_GROSS
+    taxable_income = estimate_taxable_income(gross_annual)
+    marginal_tax_rate = calc_marginal_income_tax_rate(taxable_income)
+
     peak_income = 0.0
     monthly_log = []
     bankrupt_age = None
@@ -704,6 +726,56 @@ def simulate_strategy(
             if month in event_timeline.job_loss_months:
                 monthly_income = 0
             event_extra_cost = event_timeline.get_extra_cost(month, age, params)
+
+            # Divorce event
+            if event_timeline.divorce_month is not None and month == event_timeline.divorce_month and not is_divorced:
+                is_divorced = True
+                # Asset split 50%
+                nisa_balance *= 0.5
+                nisa_cost_basis *= 0.5
+                taxable_balance *= 0.5
+                taxable_cost_basis *= 0.5
+                ideco_balance *= 0.5
+                # Property: sell and split proceeds
+                if strategy.property_price > 0:
+                    years_owned = (month - purchase_month_offset) / 12
+                    if years_owned > 0:
+                        land_value = _inflate_property_price(strategy, params, years_owned)
+                    else:
+                        land_value = strategy.property_price * strategy.land_value_ratio
+                    sale_proceeds = land_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
+                    if sale_proceeds > 0:
+                        event_extra_cost -= sale_proceeds * 0.5  # Add 50% of proceeds
+                    strategy.remaining_balance = 0.0
+                    strategy.property_price = 0
+                # Set post-divorce rental cost
+                years_elapsed = month / 12
+                divorce_rental_cost = PRE_PURCHASE_RENT * (
+                    (1 + params.inflation_rate) ** years_elapsed
+                )
+
+            # Spouse death event
+            if event_timeline.spouse_death_month is not None and month == event_timeline.spouse_death_month and not is_spouse_dead:
+                is_spouse_dead = True
+                # 団信: mortgage cleared
+                if strategy.property_price > 0:
+                    strategy.remaining_balance = 0.0
+                # Life insurance payout → invest
+                event_extra_cost -= event_timeline.life_insurance_payout
+
+            # Post-event income/cost adjustments
+            if is_divorced or is_spouse_dead:
+                monthly_income *= params.husband_income_ratio
+                living_cost *= 0.7
+                if is_divorced:
+                    # Override housing to 2LDK rental (nominal fixed at divorce time)
+                    housing_cost = divorce_rental_cost
+                    housing_cost += divorce_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
+                    loan_deduction = 0
+
+            # Survivor pension (death only, pension age)
+            if is_spouse_dead and age >= PENSION_AGE:
+                monthly_income += event_timeline.survivor_pension_annual / 12
         else:
             event_extra_cost = 0
 
@@ -718,6 +790,34 @@ def simulate_strategy(
             - one_time_expense
             - event_extra_cost
         )
+
+        # iDeCo: contribute before 60, receive lump-sum at 60
+        ideco_contribution = params.ideco_monthly_contribution
+        if ideco_contribution > 0 and age < REEMPLOYMENT_AGE:
+            investable -= ideco_contribution
+            tax_benefit = calc_ideco_tax_benefit_monthly(
+                ideco_contribution, marginal_tax_rate,
+            )
+            investable += tax_benefit
+            ideco_balance += ideco_contribution
+            ideco_total_contribution += ideco_contribution
+            ideco_tax_benefit_total += tax_benefit
+            if month % 12 == 0:
+                ideco_contribution_years += 1
+
+        # iDeCo: apply investment returns
+        if ideco_balance > 0:
+            ideco_balance *= 1 + monthly_return_rate
+
+        # iDeCo lump-sum withdrawal at age 60 (first month)
+        if ideco_contribution > 0 and age == REEMPLOYMENT_AGE and month % 12 == 0 and ideco_balance > 0:
+            retirement_tax = calc_retirement_income_tax(
+                ideco_balance, ideco_contribution_years,
+            )
+            ideco_tax_paid = retirement_tax
+            ideco_net = ideco_balance - retirement_tax
+            investable += ideco_net
+            ideco_balance = 0.0
 
         if discipline_factor < 1.0 and investable > 0:
             investable *= discipline_factor
@@ -764,6 +864,9 @@ def simulate_strategy(
         "taxable_cost_basis": taxable_cost_basis,
         "bankrupt_age": bankrupt_age,
         "car_first_purchase_age": car_first_purchase_age,
+        "ideco_total_contribution": ideco_total_contribution,
+        "ideco_tax_benefit_total": ideco_tax_benefit_total,
+        "ideco_tax_paid": ideco_tax_paid,
         "monthly_log": monthly_log,
         **final,
     }
