@@ -613,6 +613,26 @@ def _process_ideco(
             ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid)
 
 
+def _manage_emergency_fund(
+    emergency_fund: float,
+    required_ef: float,
+    investable: float,
+) -> tuple[float, float]:
+    """Release excess EF to investment, or top up EF from surplus.
+
+    Returns (emergency_fund, investable).
+    """
+    if emergency_fund > required_ef:
+        investable += emergency_fund - required_ef
+        emergency_fund = required_ef
+    if investable > 0:
+        ef_shortfall = max(0, required_ef - emergency_fund)
+        ef_topup = min(investable, ef_shortfall)
+        emergency_fund += ef_topup
+        investable -= ef_topup
+    return emergency_fund, investable
+
+
 def _calc_required_emergency_fund(
     age: int,
     month: int,
@@ -948,19 +968,13 @@ def simulate_strategy(
             monthly_return_rate, params, marginal_tax_rate,
         )
 
-        # Emergency fund management: fill shortfall, release excess
+        # Emergency fund management: release excess / top up shortfall
         required_ef = _calc_required_emergency_fund(
             age, month, params, child_home_ranges, is_divorced, is_spouse_dead,
         )
-        if emergency_fund > required_ef:
-            excess = emergency_fund - required_ef
-            emergency_fund = required_ef
-            investable += excess
-        if investable > 0:
-            ef_shortfall = max(0, required_ef - emergency_fund)
-            ef_topup = min(investable, ef_shortfall)
-            emergency_fund += ef_topup
-            investable -= ef_topup
+        emergency_fund, investable = _manage_emergency_fund(
+            emergency_fund, required_ef, investable,
+        )
 
         if discipline_factor < 1.0 and investable > 0:
             investable *= discipline_factor
