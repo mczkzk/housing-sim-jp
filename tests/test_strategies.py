@@ -8,7 +8,10 @@ from housing_sim_jp import (
     StrategicRental,
     NormalRental,
 )
-from housing_sim_jp.strategies import _repair_reserve_multiplier, _house_maintenance_multiplier
+from housing_sim_jp.strategies import (
+    _stepped_multiplier, _REPAIR_RESERVE_STEPS, _REPAIR_RESERVE_FINAL,
+    _HOUSE_MAINTENANCE_STEPS, _HOUSE_MAINTENANCE_FINAL,
+)
 
 
 class TestRepairReserveMultiplier:
@@ -28,7 +31,7 @@ class TestRepairReserveMultiplier:
         ],
     )
     def test_boundaries(self, age, expected):
-        assert _repair_reserve_multiplier(age) == expected
+        assert _stepped_multiplier(age, _REPAIR_RESERVE_STEPS, _REPAIR_RESERVE_FINAL) == expected
 
 
 class TestHouseMaintenanceMultiplier:
@@ -46,7 +49,7 @@ class TestHouseMaintenanceMultiplier:
         ],
     )
     def test_boundaries(self, age, expected):
-        assert _house_maintenance_multiplier(age) == expected
+        assert _stepped_multiplier(age, _HOUSE_MAINTENANCE_STEPS, _HOUSE_MAINTENANCE_FINAL) == expected
 
 
 class TestUrawaMansionInit:

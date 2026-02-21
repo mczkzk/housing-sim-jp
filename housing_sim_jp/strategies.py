@@ -11,28 +11,25 @@ CHILD_ROOM_AGE_END = 22    # 大学卒業
 END_AGE = 80
 
 
-def _repair_reserve_multiplier(building_age: float) -> float:
-    """Repair reserve multiplier for condominiums (国交省 stepped increase, final 3.6x)"""
-    if building_age < 20:
-        return 1.0
-    if building_age < 30:
-        return 2.0
-    if building_age < 40:
-        return 3.0
-    if building_age < 50:
-        return 3.5
-    return 3.6
+def _stepped_multiplier(age: float, steps: list[tuple[float, float]], final: float) -> float:
+    """Return multiplier based on stepped age thresholds.
+
+    steps: [(threshold, value), ...] — returns value if age < threshold.
+    final: returned when age exceeds all thresholds.
+    """
+    for limit, value in steps:
+        if age < limit:
+            return value
+    return final
 
 
-def _house_maintenance_multiplier(house_age: float) -> float:
-    """Small repair cost multiplier for detached houses (age-based)"""
-    if house_age < 10:
-        return 1.0
-    if house_age < 20:
-        return 1.3
-    if house_age < 30:
-        return 1.6
-    return 1.8
+# 国交省 段階増額方式（最終倍率3.6倍）
+_REPAIR_RESERVE_STEPS = [(20, 1.0), (30, 2.0), (40, 3.0), (50, 3.5)]
+_REPAIR_RESERVE_FINAL = 3.6
+
+# 一戸建て小修繕コスト倍率
+_HOUSE_MAINTENANCE_STEPS = [(10, 1.0), (20, 1.3), (30, 1.6)]
+_HOUSE_MAINTENANCE_FINAL = 1.8
 
 
 @dataclass
@@ -141,7 +138,7 @@ class UrawaMansion(Strategy):
         cost = self._calc_loan_cost(months_elapsed, params)
 
         # 修繕積立金: 段階増額値は長期修繕計画に基づく名目値（工事費上昇織り込み済み）
-        cost += self.INITIAL_REPAIR_RESERVE * _repair_reserve_multiplier(building_age)
+        cost += self.INITIAL_REPAIR_RESERVE * _stepped_multiplier(building_age, _REPAIR_RESERVE_STEPS, _REPAIR_RESERVE_FINAL)
         cost += self.MANAGEMENT_FEE * inflation
         cost += self.PROPERTY_TAX_MONTHLY * inflation
         cost += self.INSURANCE_MONTHLY * inflation
@@ -193,7 +190,7 @@ class UrawaHouse(Strategy):
 
         # Small repairs: age-based during loan, flat base after payoff
         if months_elapsed < self.loan_months:
-            maintenance = _house_maintenance_multiplier(house_age)
+            maintenance = _stepped_multiplier(house_age, _HOUSE_MAINTENANCE_STEPS, _HOUSE_MAINTENANCE_FINAL)
         else:
             maintenance = self.MAINTENANCE_BASE
 
