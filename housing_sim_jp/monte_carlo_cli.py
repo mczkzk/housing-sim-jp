@@ -87,6 +87,36 @@ def _print_results(results: list[MonteCarloResult], n: int, vol: float, has_even
     print("─" * 40)
 
 
+def _isolated_risk(**overrides) -> EventRiskConfig:
+    """EventRiskConfig with all probabilities zeroed, then selectively re-enabled."""
+    return EventRiskConfig(
+        job_loss_annual_prob=0, disaster_annual_prob=0,
+        care_annual_prob_after_75=0, rental_rejection_prob_after_70=0,
+        divorce_annual_prob=0, spouse_death_annual_prob=0,
+        relocation_annual_prob=0, **overrides,
+    )
+
+
+def _build_stress_scenarios(
+    base_config: MonteCarloConfig,
+) -> list[tuple[str, EventRiskConfig | None]]:
+    """Build stress test scenario list."""
+    reloc_prob = (base_config.event_risks.relocation_annual_prob
+                  if base_config.event_risks else 0.03)
+    scenarios: list[tuple[str, EventRiskConfig | None]] = [
+        ("ベース(イベントなし)", None),
+        ("失業6ヶ月(年2%)", _isolated_risk(job_loss_annual_prob=0.02)),
+        ("離婚(年1%)", _isolated_risk(divorce_annual_prob=0.01)),
+        ("全イベント", EventRiskConfig(relocation_annual_prob=reloc_prob)),
+    ]
+    if reloc_prob > 0.03:
+        scenarios.insert(-1, (
+            f"転勤族(年{reloc_prob:.0%})",
+            _isolated_risk(relocation_annual_prob=reloc_prob),
+        ))
+    return scenarios
+
+
 def _run_stress_test(
     base_params: SimulationParams,
     base_config: MonteCarloConfig,
@@ -94,44 +124,11 @@ def _run_stress_test(
     initial_savings: float,
     child_birth_ages: list[int],
 ):
-    """Run 3 scenarios: no events, job loss only, all events."""
+    """Run stress test scenarios isolating each event type."""
     print("\n【ストレステスト: イベントリスクの影響】")
     print("─" * 70)
 
-    reloc_prob = (base_config.event_risks.relocation_annual_prob
-                  if base_config.event_risks else 0.03)
-    no_reloc = dict(relocation_annual_prob=0)
-    scenarios = [
-        ("ベース(イベントなし)", None),
-        ("失業6ヶ月(年2%)", EventRiskConfig(
-            disaster_annual_prob=0,
-            care_annual_prob_after_75=0,
-            rental_rejection_prob_after_70=0,
-            divorce_annual_prob=0,
-            spouse_death_annual_prob=0,
-            **no_reloc,
-        )),
-        ("離婚(年1%)", EventRiskConfig(
-            job_loss_annual_prob=0,
-            disaster_annual_prob=0,
-            care_annual_prob_after_75=0,
-            rental_rejection_prob_after_70=0,
-            spouse_death_annual_prob=0,
-            **no_reloc,
-        )),
-        ("全イベント", EventRiskConfig(relocation_annual_prob=reloc_prob)),
-    ]
-    # Add 転勤族 scenario only when elevated probability
-    if reloc_prob > 0.03:
-        scenarios.insert(-1, (f"転勤族(年{reloc_prob:.0%})", EventRiskConfig(
-            job_loss_annual_prob=0,
-            disaster_annual_prob=0,
-            care_annual_prob_after_75=0,
-            rental_rejection_prob_after_70=0,
-            divorce_annual_prob=0,
-            spouse_death_annual_prob=0,
-            relocation_annual_prob=reloc_prob,
-        )))
+    scenarios = _build_stress_scenarios(base_config)
     all_scenario_results = []
     for i, (label, event_cfg) in enumerate(scenarios):
         print(f"\r  ストレステスト: {i + 1}/{len(scenarios)} {label}...", end="", file=sys.stderr, flush=True)
