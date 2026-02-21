@@ -1,5 +1,7 @@
 """Scenario definitions and multi-scenario execution."""
 
+import dataclasses
+
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import (
     UrawaMansion,
@@ -73,7 +75,7 @@ def run_scenarios(
     all_results = {}
 
     for scenario_name, scenario_params in SCENARIOS.items():
-        params = SimulationParams(
+        base_params = SimulationParams(
             initial_takehome_monthly=income,
             young_growth_rate=young_growth_rate,
             living_premium=living_premium,
@@ -84,8 +86,7 @@ def run_scenarios(
             ideco_monthly_contribution=ideco_monthly_contribution,
             emergency_fund_months=emergency_fund_months,
         )
-        for key, value in scenario_params.items():
-            setattr(params, key, value)
+        params = dataclasses.replace(base_params, **scenario_params)
 
         strategies = [
             UrawaMansion(initial_savings),
