@@ -6,33 +6,12 @@ from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, INFEASIBLE
 
 
-def main():
-    """Execute main simulation (3 strategy comparison)"""
-    r, child_birth_ages = parse_args("住宅資産形成シミュレーション")
-
-    start_age = r["age"]
-    savings = r["savings"]
-
-    params = SimulationParams(
-        initial_takehome_monthly=r["income"],
-        couple_living_cost_monthly=r["living"],
-        child_living_cost_monthly=r["child_living"],
-        education_cost_monthly=r["education"],
-        has_car=r["car"],
-        pet_count=r["pets"],
-        ideco_monthly_contribution=r["ideco"],
-        emergency_fund_months=r["emergency_fund"],
-    )
-    strategies = [
-        UrawaMansion(savings),
-        UrawaHouse(savings),
-        StrategicRental(savings, child_birth_ages=child_birth_ages, start_age=start_age),
-    ]
-
+def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth_ages: list[int]):
     sim_years = 80 - start_age
+    income = r["income"]
+    savings = r["savings"]
     print("=" * 80)
     print(f"住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
-    income = r["income"]
     print(f"  初期資産: {savings:.0f}万円 / 月収手取り: {income:.1f}万円")
     if start_age < params.income_base_age:
         income_at_35 = income * (1 + params.young_growth_rate) ** (
@@ -58,32 +37,20 @@ def main():
     print("=" * 80)
     print()
 
-    results = []
-    for strategy in strategies:
-        purchase_age = resolve_purchase_age(strategy, params, start_age, child_birth_ages)
-        if purchase_age == INFEASIBLE:
-            print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
-            results.append(None)
-            continue
-        if purchase_age is not None:
-            print(f"  {strategy.name}: {start_age}歳では購入不可 → {purchase_age}歳で購入可能（{start_age}-{purchase_age-1}歳は2LDK賃貸）")
-        try:
-            results.append(
-                simulate_strategy(
-                    strategy, params, start_age=start_age,
-                    child_birth_ages=child_birth_ages, purchase_age=purchase_age,
-                )
-            )
-        except ValueError as e:
-            print(f"\n{e}\n")
-            return
 
-    valid_results = [r for r in results if r is not None]
-    if not valid_results:
-        print("\nすべての戦略が購入不可です。")
-        return
+def _print_row(valid_results: list[dict], label: str, key: str,
+               fmt: str = "{:>14.0f}万", negate: bool = False, skip_zero: bool = False):
+    print(f"{label:<20} ", end="")
+    for r in valid_results:
+        v = r[key]
+        if skip_zero and v == 0:
+            print(f"{'0':>14}万 ", end="")
+        else:
+            print(fmt.format(-v if negate else v) + " ", end="")
+    print()
 
-    # Build header dynamically from valid results
+
+def _print_asset_table(valid_results: list[dict]):
     strategy_names = [r["strategy"] for r in valid_results]
     header = f"{'項目':<20} " + " ".join(f"{n:>15}" for n in strategy_names)
 
@@ -92,29 +59,21 @@ def main():
     print(header)
     print("-" * 100)
 
-    def _print_row(label, key, fmt="{:>14.0f}万", negate=False, skip_zero=False):
-        print(f"{label:<20} ", end="")
-        for r in valid_results:
-            v = r[key]
-            if skip_zero and v == 0:
-                print(f"{'0':>14}万 ", end="")
-            else:
-                print(fmt.format(-v if negate else v) + " ", end="")
-        print()
+    pr = lambda label, key, **kw: _print_row(valid_results, label, key, **kw)
 
-    _print_row("運用資産残高(80歳)", "investment_balance_80")
-    _print_row("不動産土地価値(名目)", "land_value_80", "{:>14.2f}万")
-    _print_row("不動産換金コスト", "liquidation_cost", "{:>14.2f}万", negate=True, skip_zero=True)
-    _print_row("流動性ﾃﾞｨｽｶｳﾝﾄ", "liquidity_haircut", "{:>14.2f}万", negate=True, skip_zero=True)
+    pr("運用資産残高(80歳)", "investment_balance_80")
+    pr("不動産土地価値(名目)", "land_value_80", fmt="{:>14.2f}万")
+    pr("不動産換金コスト", "liquidation_cost", fmt="{:>14.2f}万", negate=True, skip_zero=True)
+    pr("流動性ﾃﾞｨｽｶｳﾝﾄ", "liquidity_haircut", fmt="{:>14.2f}万", negate=True, skip_zero=True)
 
     print("-" * 80)
-    _print_row("最終換金可能純資産", "final_net_assets", "{:>14.2f}万")
+    pr("最終換金可能純資産", "final_net_assets", fmt="{:>14.2f}万")
     print("-" * 80)
 
     print(f"\n{'--- 税引後 ---':<20}")
-    _print_row("金融所得課税(▲)", "securities_tax", "{:>14.2f}万", negate=True)
-    _print_row("不動産譲渡税(▲)", "real_estate_tax", "{:>14.2f}万", negate=True)
-    _print_row("税引後手取り純資産", "after_tax_net_assets", "{:>14.2f}万")
+    pr("金融所得課税(▲)", "securities_tax", fmt="{:>14.2f}万", negate=True)
+    pr("不動産譲渡税(▲)", "real_estate_tax", fmt="{:>14.2f}万", negate=True)
+    pr("税引後手取り純資産", "after_tax_net_assets", fmt="{:>14.2f}万")
     print("-" * 80)
 
     print("\n【億円単位】")
@@ -127,6 +86,8 @@ def main():
         print(f"{r['after_tax_net_assets']/10000:>13.2f}億円 ", end="")
     print()
 
+
+def _print_summary(valid_results: list[dict], start_age: int):
     print("\n" + "=" * 80)
     print("【標準シナリオ最終資産サマリー】")
     print("=" * 80)
@@ -163,6 +124,8 @@ def main():
         if r["bankrupt_age"] is not None:
             print(f"    ⚠ {r['bankrupt_age']}歳で資産破綻（生活費が資産を超過）")
 
+
+def _print_yearly_log(valid_results: list[dict]):
     for strategy_name in ["浦和一戸建て", "戦略的賃貸", "浦和マンション"]:
         matching = [r for r in valid_results if r["strategy"] == strategy_name]
         if not matching:
@@ -188,6 +151,61 @@ def main():
                 )
 
         print("-" * 100)
+
+
+def main():
+    """Execute main simulation (3 strategy comparison)"""
+    r, child_birth_ages = parse_args("住宅資産形成シミュレーション")
+
+    start_age = r["age"]
+    savings = r["savings"]
+
+    params = SimulationParams(
+        initial_takehome_monthly=r["income"],
+        couple_living_cost_monthly=r["living"],
+        child_living_cost_monthly=r["child_living"],
+        education_cost_monthly=r["education"],
+        has_car=r["car"],
+        pet_count=r["pets"],
+        ideco_monthly_contribution=r["ideco"],
+        emergency_fund_months=r["emergency_fund"],
+    )
+    strategies = [
+        UrawaMansion(savings),
+        UrawaHouse(savings),
+        StrategicRental(savings, child_birth_ages=child_birth_ages, start_age=start_age),
+    ]
+
+    _print_header(r, params, start_age, child_birth_ages)
+
+    results = []
+    for strategy in strategies:
+        purchase_age = resolve_purchase_age(strategy, params, start_age, child_birth_ages)
+        if purchase_age == INFEASIBLE:
+            print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
+            results.append(None)
+            continue
+        if purchase_age is not None:
+            print(f"  {strategy.name}: {start_age}歳では購入不可 → {purchase_age}歳で購入可能（{start_age}-{purchase_age-1}歳は2LDK賃貸）")
+        try:
+            results.append(
+                simulate_strategy(
+                    strategy, params, start_age=start_age,
+                    child_birth_ages=child_birth_ages, purchase_age=purchase_age,
+                )
+            )
+        except ValueError as e:
+            print(f"\n{e}\n")
+            return
+
+    valid_results = [r for r in results if r is not None]
+    if not valid_results:
+        print("\nすべての戦略が購入不可です。")
+        return
+
+    _print_asset_table(valid_results)
+    _print_summary(valid_results, start_age)
+    _print_yearly_log(valid_results)
 
 
 if __name__ == "__main__":
