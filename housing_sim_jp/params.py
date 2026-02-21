@@ -39,12 +39,12 @@ class SimulationParams:
     land_appreciation: float = 0.005
 
     # Income parameters
-    # initial_takehome_monthly: 開始時点の世帯月額手取り
-    # <30歳: young_growth_rate(8%)で成長、30歳以降: income_growth_rate(1.5%)で成長
     initial_takehome_monthly: float = 72.5
-    income_growth_rate: float = 0.015  # 30歳以降の成長率
-    young_growth_rate: float = 0.08  # 20代の成長率（大手共働きベース、中小は0.03）
-    income_base_age: int = 30  # 基準年齢
+    # 年齢別収入成長率スケジュール: [(閾値年齢, 年率), ...]
+    # 各レートはその閾値年齢未満の区間に適用（賃金構造基本統計調査ベース）
+    income_growth_schedule: list[tuple[int, float]] = field(
+        default_factory=lambda: [(30, 0.055), (40, 0.030), (50, 0.015), (60, 0.000)]
+    )
     retirement_reduction: float = 0.60
     # 企業年金（確定給付+確定拠出）: 大手正社員夫婦想定
     corporate_pension_annual: float = 130

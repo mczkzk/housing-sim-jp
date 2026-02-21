@@ -47,11 +47,11 @@ class TestScenarioSnapshots:
 
     def test_low_growth_mansion(self):
         r = self.results["低成長"][0]
-        assert r["after_tax_net_assets"] == pytest.approx(9702.089609, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(12126.517546, abs=0.01)
 
     def test_high_growth_strategic_rental(self):
         r = self.results["高成長"][2]
-        assert r["after_tax_net_assets"] == pytest.approx(44128.144009, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(45949.185137, abs=0.01)
 
 
 class TestDisciplineFactors:

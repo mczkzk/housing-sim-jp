@@ -21,21 +21,21 @@ SCENARIOS = {
         "inflation_rate": 0.005,
         "investment_return": 0.04,
         "land_appreciation": 0.00,
-        "income_growth_rate": 0.005,
+        "income_growth_schedule": [(30, 0.045), (40, 0.020), (50, 0.005), (60, 0.000)],
         "loan_rate_schedule": [0.0075, 0.0100, 0.0125, 0.0125, 0.0125],
     },
     "標準": {
         "inflation_rate": 0.015,
         "investment_return": 0.055,
         "land_appreciation": 0.005,
-        "income_growth_rate": 0.015,
+        "income_growth_schedule": [(30, 0.055), (40, 0.030), (50, 0.015), (60, 0.000)],
         "loan_rate_schedule": [0.0075, 0.0125, 0.0175, 0.0200, 0.0200],
     },
     "高成長": {
         "inflation_rate": 0.025,
         "investment_return": 0.07,
         "land_appreciation": 0.01,
-        "income_growth_rate": 0.025,
+        "income_growth_schedule": [(30, 0.065), (40, 0.040), (50, 0.025), (60, 0.010)],
         "loan_rate_schedule": [0.0100, 0.0175, 0.0225, 0.0275, 0.0300],
     },
 }
@@ -55,7 +55,6 @@ def run_scenarios(
     income: float = 62.5,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
-    young_growth_rate: float = 0.03,
     living_premium: float = 0.0,
     child_living_cost_monthly: float = 5.0,
     education_cost_monthly: float = 10.0,
@@ -77,7 +76,6 @@ def run_scenarios(
     for scenario_name, scenario_params in SCENARIOS.items():
         base_params = SimulationParams(
             initial_takehome_monthly=income,
-            young_growth_rate=young_growth_rate,
             living_premium=living_premium,
             child_living_cost_monthly=child_living_cost_monthly,
             education_cost_monthly=education_cost_monthly,

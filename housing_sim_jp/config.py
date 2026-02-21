@@ -17,7 +17,6 @@ DEFAULTS = {
     "car": False,
     "pets": 0,
     "relocation": False,
-    "young_growth": 0.08,
     "ideco": 4.0,
     "emergency_fund": 6.0,
 }

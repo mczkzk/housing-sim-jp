@@ -176,7 +176,6 @@ def main():
     results = run_scenarios(
         start_age=r["age"], initial_savings=r["savings"], income=r["income"],
         child_birth_ages=child_birth_ages,
-        young_growth_rate=r["young_growth"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
@@ -193,7 +192,6 @@ def main():
         income=r["income"],
         discipline_factors=DISCIPLINE_FACTORS,
         child_birth_ages=child_birth_ages,
-        young_growth_rate=r["young_growth"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],

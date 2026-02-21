@@ -66,7 +66,6 @@ def main():
 
     params = SimulationParams(
         initial_takehome_monthly=r["income"],
-        young_growth_rate=r["young_growth"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],

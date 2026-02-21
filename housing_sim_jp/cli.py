@@ -13,13 +13,19 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
     print("=" * 80)
     print(f"住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
     print(f"  初期資産: {savings:.0f}万円 / 月収手取り: {income:.1f}万円")
-    if start_age < params.income_base_age:
-        income_at_35 = income * (1 + params.young_growth_rate) ** (
-            params.income_base_age - start_age
-        )
-        print(
-            f"  収入成長: {start_age}歳 {income:.1f}万 →(年3%)→ 35歳 {income_at_35:.1f}万 →(年1.5%)→ 60歳"
-        )
+    schedule = params.income_growth_schedule
+    parts = []
+    prev_age = start_age
+    projected = income
+    for threshold, rate in schedule:
+        if threshold <= start_age:
+            continue
+        if prev_age < threshold:
+            projected *= (1 + rate) ** (threshold - prev_age)
+            parts.append(f"{threshold}歳 {projected:.1f}万")
+            prev_age = threshold
+    if parts:
+        print(f"  収入成長: {start_age}歳 {income:.1f}万 → {'→'.join(parts)}")
     if r["car"]:
         replacements = (80 - start_age) // params.car_replacement_years
         total_running = params.car_running_cost_monthly + params.car_parking_cost_monthly
@@ -162,7 +168,6 @@ def main():
 
     params = SimulationParams(
         initial_takehome_monthly=r["income"],
-        young_growth_rate=r["young_growth"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],

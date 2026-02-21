@@ -26,12 +26,12 @@ class TestDeterministicUnchanged:
     def test_mansion_snapshot(self):
         params = SimulationParams()
         r = simulate_strategy(UrawaMansion(800), params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(18198.598462, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(18856.302400, abs=0.01)
 
     def test_house_snapshot(self):
         params = SimulationParams()
         r = simulate_strategy(UrawaHouse(800), params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(25055.186234, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(25729.137245, abs=0.01)
 
 
 class TestLogNormalMean:

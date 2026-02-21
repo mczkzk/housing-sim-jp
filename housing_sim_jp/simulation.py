@@ -294,22 +294,19 @@ def _project_working_income(
     years_elapsed: float, start_age: int, params: SimulationParams
 ) -> float:
     """Project pre-retirement (< REEMPLOYMENT_AGE) working income based on years elapsed."""
-    base_age = params.income_base_age
     current_age = start_age + years_elapsed
-    if current_age < base_age:
-        return params.initial_takehome_monthly * (
-            (1 + params.young_growth_rate) ** years_elapsed
-        )
-    if start_age < base_age:
-        income_at_base = params.initial_takehome_monthly * (
-            (1 + params.young_growth_rate) ** (base_age - start_age)
-        )
-        return income_at_base * (
-            (1 + params.income_growth_rate) ** (current_age - base_age)
-        )
-    return params.initial_takehome_monthly * (
-        (1 + params.income_growth_rate) ** years_elapsed
-    )
+    income = params.initial_takehome_monthly
+    prev_age = start_age
+    for threshold, rate in params.income_growth_schedule:
+        if current_age <= threshold:
+            income *= (1 + rate) ** (current_age - prev_age)
+            return income
+        if prev_age < threshold:
+            income *= (1 + rate) ** (threshold - prev_age)
+            prev_age = threshold
+    last_rate = params.income_growth_schedule[-1][1]
+    income *= (1 + last_rate) ** (current_age - prev_age)
+    return income
 
 
 def _calc_monthly_income(
