@@ -176,7 +176,8 @@ def main():
 
     base_params = SimulationParams(
         initial_takehome_monthly=r["income"],
-        couple_living_cost_monthly=r["living"],
+        young_growth_rate=r["young_growth"],
+        living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],

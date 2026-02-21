@@ -3,6 +3,7 @@
 import dataclasses
 import math
 import sys
+from collections import defaultdict
 from dataclasses import dataclass, field
 from random import Random
 from typing import Callable
@@ -56,6 +57,8 @@ class MonteCarloResult:
     mean: float = 0.0
     std: float = 0.0
     skipped: bool = False
+    # age → {5: val, 25: val, 50: val, 75: val, 95: val}
+    yearly_balance_percentiles: dict[int, dict[int, float]] | None = None
 
 
 def _sample_log_normal_returns(
@@ -102,6 +105,13 @@ def _sample_correlated_pair(
     return mean1 + std1 * x1, mean2 + std2 * x2
 
 
+def _percentile_from_sorted(sorted_vals: list[float], p: int) -> float:
+    """Calculate percentile from a pre-sorted list."""
+    n = len(sorted_vals)
+    idx = max(0, min(int(p / 100 * n), n - 1))
+    return sorted_vals[idx]
+
+
 def run_monte_carlo(
     strategy_factory: Callable[[], Strategy],
     base_params: SimulationParams,
@@ -111,13 +121,20 @@ def run_monte_carlo(
     child_birth_ages: list[int] | None = None,
     purchase_age: int | None = None,
     quiet: bool = False,
+    collect_yearly: bool = False,
 ) -> MonteCarloResult:
-    """Run N Monte Carlo simulations for a single strategy."""
+    """Run N Monte Carlo simulations for a single strategy.
+
+    collect_yearly: if True, collect yearly balance from monthly_log
+    and compute percentiles per age.
+    """
     rng = Random(config.seed)
     n_years = END_AGE - start_age
     results_list: list[float] = []
     bankrupt_count = 0
     strategy_name = strategy_factory().name
+
+    yearly_balances: dict[int, list[float]] = defaultdict(list) if collect_yearly else {}
 
     for i in range(config.n_simulations):
         strategy = strategy_factory()
@@ -196,6 +213,10 @@ def run_monte_carlo(
         if result["bankrupt_age"] is not None:
             bankrupt_count += 1
 
+        if collect_yearly:
+            for entry in result["monthly_log"]:
+                yearly_balances[entry["age"]].append(entry["balance"])
+
         if not quiet and (i + 1) % 100 == 0:
             print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
 
@@ -205,14 +226,17 @@ def run_monte_carlo(
     results_list.sort()
     n = len(results_list)
 
-    def _percentile(p: float) -> float:
-        idx = max(0, min(int(p / 100 * n), n - 1))
-        return results_list[idx]
-
-    percentiles = {p: _percentile(p) for p in MC_PERCENTILES}
+    percentiles = {p: _percentile_from_sorted(results_list, p) for p in MC_PERCENTILES}
     mean = sum(results_list) / n if n > 0 else 0
     variance = sum((x - mean) ** 2 for x in results_list) / n if n > 0 else 0
     std = math.sqrt(variance)
+
+    yearly_balance_percentiles = None
+    if collect_yearly and yearly_balances:
+        yearly_balance_percentiles = {
+            age: {p: _percentile_from_sorted(sorted(vals), p) for p in MC_PERCENTILES}
+            for age, vals in yearly_balances.items()
+        }
 
     return MonteCarloResult(
         strategy_name=strategy_name,
@@ -223,6 +247,7 @@ def run_monte_carlo(
         bankruptcy_probability=bankrupt_count / config.n_simulations,
         mean=mean,
         std=std,
+        yearly_balance_percentiles=yearly_balance_percentiles,
     )
 
 
@@ -234,6 +259,7 @@ def run_monte_carlo_all_strategies(
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
     quiet: bool = False,
+    collect_yearly: bool = False,
 ) -> list[MonteCarloResult]:
     """Run Monte Carlo simulation for all 4 strategies."""
     # Resolve child_birth_ages once for consistency
@@ -263,6 +289,7 @@ def run_monte_carlo_all_strategies(
             discipline_factor=discipline_factor if discipline_factor != 1.0 else disc,
             child_birth_ages=child_birth_ages,
             quiet=quiet,
+            collect_yearly=collect_yearly,
         )
         results.append(mc_result)
 

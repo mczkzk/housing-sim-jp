@@ -53,7 +53,8 @@ def run_scenarios(
     income: float = 62.5,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
-    couple_living_cost_monthly: float = 27.0,
+    young_growth_rate: float = 0.03,
+    living_premium: float = 0.0,
     child_living_cost_monthly: float = 5.0,
     education_cost_monthly: float = 10.0,
     has_car: bool = False,
@@ -74,7 +75,8 @@ def run_scenarios(
     for scenario_name, scenario_params in SCENARIOS.items():
         params = SimulationParams(
             initial_takehome_monthly=income,
-            couple_living_cost_monthly=couple_living_cost_monthly,
+            young_growth_rate=young_growth_rate,
+            living_premium=living_premium,
             child_living_cost_monthly=child_living_cost_monthly,
             education_cost_monthly=education_cost_monthly,
             has_car=has_car,

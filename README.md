@@ -57,7 +57,7 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | `--savings` | 初期金融資産（万円） | 800 |
 | `--income` | 世帯月額手取り（万円） | 62.5 |
 | `--children` | 出産時の親の年齢（カンマ区切り、最大2人、`none`で子なし） | 32,35 |
-| `--living` | 夫婦の生活費（万円/月、住居費・教育費・子供分除く） | 27.0 |
+| `--living-premium` | 生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月） | 0.0 |
 | `--child-living` | 子1人あたりの追加生活費（万円/月） | 5.0 |
 | `--education` | 教育費ピーク（高校）金額（万円/月/人） | 10.0 |
 | `--car` | 車所有（購入300万/7年買替+維持費5万/月を計上） | なし |
@@ -114,7 +114,7 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 ### 資産運用・税務
 
 - **投資口座**: iDeCo → NISA → 特定口座の順で投資。取り崩しは逆順
-  - **iDeCo**: 60歳まで拠出（デフォルト夫婦合計4万/月）、毎月の税軽減（拠出額×限界税率）を投資に加算。60歳で一時金受取（退職所得控除適用後に課税）
+  - **iDeCo**: 60歳まで拠出（デフォルト夫婦合計4万/月）、毎月の税軽減（拠出額×限界税率）を投資に加算。71歳で一時金受取（退職金と1年以上ずらす税務最適化、退職所得控除適用後に課税）。実運用では71〜75歳の間で相場状況を見て判断（暴落時は後ろ倒し）
   - **NISA**: 夫婦合計3,600万円上限・非課税
   - **特定口座**: NISA超過分（課税20.315%）
 - **不動産売却**: 居住用財産3,000万円特別控除を適用
@@ -154,9 +154,23 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 
 **出力:** P5/P25/P50/P75/P95のパーセンタイル分布、一時的資産枯渇経験率、ストレステスト結果
 
+## チャート生成
+
+```bash
+# 確定論+MC（デフォルト: reports/charts/ に出力）
+python -m housing_sim_jp.chart_cli
+python -m housing_sim_jp.chart_cli --config config.example-35.toml
+
+# 確定論のみ（高速）
+python -m housing_sim_jp.chart_cli --no-mc
+
+# MC試行数・出力先を指定
+python -m housing_sim_jp.chart_cli --mc-runs 500 --output reports/charts/
+```
+
 ## 分析レポート
 
 | レポート | 条件 |
 |---------|------|
-| [report-30.md](report-30.md) | 30歳・800万・手取り62.5万・子2人（32,35歳出産）・教育費ピーク14万/月 |
-| [report-35.md](report-35.md) | 35歳・1500万・手取り75万・子1人（37歳出産）・教育費ピーク18万/月・ペット1匹 |
+| [reports/report-30.md](reports/report-30.md) | 30歳・800万・手取り62.5万・子2人（32,35歳出産）・教育費ピーク14万/月 |
+| [reports/report-35.md](reports/report-35.md) | 35歳・1500万・手取り75万・子1人（37歳出産）・教育費ピーク18万/月・ペット1匹 |

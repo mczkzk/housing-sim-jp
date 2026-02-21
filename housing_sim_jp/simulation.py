@@ -2,7 +2,7 @@
 
 import dataclasses
 
-from housing_sim_jp.params import SimulationParams, _calc_equal_payment
+from housing_sim_jp.params import SimulationParams, _calc_equal_payment, base_living_cost
 from housing_sim_jp.strategies import Strategy
 from housing_sim_jp.tax import (
     calc_marginal_income_tax_rate,
@@ -19,6 +19,7 @@ MAX_CHILDREN = 2    # 3LDKの部屋数制約（子供部屋最大2つ）
 # Life-stage age thresholds
 REEMPLOYMENT_AGE = 60  # 再雇用開始年齢
 PENSION_AGE = 70        # 年金生活開始年齢
+IDECO_WITHDRAWAL_AGE = 71  # iDeCo一時金受取年齢（退職金と1年以上ずらす）
 
 # Loan screening constants (銀行審査基準)
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
@@ -148,7 +149,11 @@ def find_earliest_purchase_age(
     ]
 
     # Project savings year-by-year while living in 2LDK rental
-    savings = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
+    # Match simulate_strategy: emergency fund is held as cash, not invested
+    initial = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
+    initial_ef = _calc_required_emergency_fund(start_age, 0, params, child_home_ranges)
+    emergency_fund = min(initial, initial_ef)
+    savings = initial - emergency_fund
 
     for target_age in range(start_age + 1, MAX_PURCHASE_AGE + 1):
         # Simulate one year of rental living
@@ -171,10 +176,30 @@ def find_earliest_purchase_age(
         )
 
         monthly_surplus = projected_income - housing - education - living
+        # iDeCo contributions are locked until 71 → not available for purchase
+        if age < REEMPLOYMENT_AGE and params.ideco_monthly_contribution > 0:
+            ideco = params.ideco_monthly_contribution
+            gross_annual = projected_income * 12 / TAKEHOME_TO_GROSS
+            taxable_income = estimate_taxable_income(gross_annual)
+            marginal_rate = calc_marginal_income_tax_rate(taxable_income)
+            tax_benefit = calc_ideco_tax_benefit_monthly(ideco, marginal_rate)
+            monthly_surplus -= ideco - tax_benefit
         # Accumulate 12 months of surplus with investment returns
         for _ in range(12):
             savings *= (1 + monthly_return_rate)
             savings += monthly_surplus
+
+        # Adjust emergency fund to current required level (match simulate_strategy)
+        month_now = (target_age - start_age) * 12
+        required_ef = _calc_required_emergency_fund(age + 1, month_now, params, child_home_ranges)
+        ef_diff = required_ef - emergency_fund
+        if ef_diff > 0:
+            transfer = min(savings, ef_diff)
+            savings -= transfer
+            emergency_fund += transfer
+        elif ef_diff < 0:
+            savings -= ef_diff  # ef_diff is negative, so this adds to savings
+            emergency_fund = required_ef
 
         # Check feasibility at target_age with inflated property price
         years_to_target = target_age - start_age
@@ -188,20 +213,23 @@ def find_earliest_purchase_age(
         price_ratio = inflated_price / original_price
         inflated_initial_cost = type(strategy).INITIAL_COST * price_ratio
 
-        # Deduct emergency fund from available investment capital
+        # Total assets = invested savings + emergency fund (cash)
+        total_assets = savings + emergency_fund
+
+        # Emergency fund required at purchase time
         num_children_at_target = sum(
             1 for start, end in child_home_ranges if start <= target_age <= end
         )
         inflation_at_target = (1 + params.inflation_rate) ** years_to_target
         required_ef = (
-            params.couple_living_cost_monthly
+            base_living_cost(target_age) + params.living_premium
             + num_children_at_target * params.child_living_cost_monthly
         ) * params.emergency_fund_months * inflation_at_target
 
-        test_strategy = type(strategy)(savings)
+        test_strategy = type(strategy)(total_assets)
         test_strategy.property_price = inflated_price
         test_strategy.loan_amount = inflated_price
-        test_strategy.initial_investment = savings - inflated_initial_cost - required_ef
+        test_strategy.initial_investment = total_assets - inflated_initial_cost - required_ef
         if loan_months != test_strategy.loan_months:
             test_strategy.loan_months = loan_months
 
@@ -354,7 +382,7 @@ def _calc_education_and_living(
         if start <= age <= end
     )
     base_living = (
-        params.couple_living_cost_monthly
+        base_living_cost(age) + params.living_premium
         + num_children * params.child_living_cost_monthly
         + extra_monthly_cost
     ) * inflation
@@ -673,7 +701,7 @@ def _process_ideco(
     params: SimulationParams,
     marginal_tax_rate: float,
 ) -> tuple[float, float, float, float, int, float]:
-    """Process iDeCo contribution (before 60) and lump-sum withdrawal (at 60).
+    """Process iDeCo contribution (before 60) and lump-sum withdrawal (at 71).
 
     Returns (investable, ideco_balance, ideco_total_contribution,
              ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid).
@@ -694,8 +722,8 @@ def _process_ideco(
     if ideco_balance > 0:
         ideco_balance *= 1 + monthly_return_rate
 
-    # Lump-sum withdrawal at age 60
-    if contribution > 0 and age == REEMPLOYMENT_AGE and month % 12 == 0 and ideco_balance > 0:
+    # Lump-sum withdrawal at age 71 (separate from retirement benefits by 1+ year)
+    if contribution > 0 and age == IDECO_WITHDRAWAL_AGE and month % 12 == 0 and ideco_balance > 0:
         retirement_tax = calc_retirement_income_tax(
             ideco_balance, ideco_contribution_years,
         )
@@ -742,7 +770,7 @@ def _calc_required_emergency_fund(
     num_children = sum(1 for start, end in child_home_ranges if start <= age <= end)
     inflation = (1 + params.inflation_rate) ** (month / 12)
     base_living = (
-        params.couple_living_cost_monthly
+        base_living_cost(age) + params.living_premium
         + num_children * params.child_living_cost_monthly
     )
     if age >= PENSION_AGE:
@@ -1118,6 +1146,16 @@ def simulate_strategy(
 
         if bankrupt and bankrupt_age is None:
             bankrupt_age = age
+            monthly_log.append({
+                "age": age,
+                "income": monthly_income,
+                "housing": housing_cost,
+                "education": education_cost,
+                "living": living_cost,
+                "investable": investable,
+                "balance": 0,
+            })
+            break
 
         investment_balance = nisa_balance + taxable_balance
 
@@ -1133,6 +1171,33 @@ def simulate_strategy(
                     "balance": investment_balance,
                 }
             )
+
+    if bankrupt_age is not None:
+        return {
+            "strategy": strategy.name,
+            "purchase_age": effective_purchase_age,
+            "nisa_balance": 0,
+            "nisa_cost_basis": 0,
+            "taxable_balance": 0,
+            "taxable_cost_basis": 0,
+            "emergency_fund_final": 0,
+            "bankrupt_age": bankrupt_age,
+            "car_first_purchase_age": car_first_purchase_age,
+            "pet_first_adoption_age": pet_first_adoption_age,
+            "ideco_total_contribution": ideco_total_contribution,
+            "ideco_tax_benefit_total": ideco_tax_benefit_total,
+            "ideco_tax_paid": ideco_tax_paid,
+            "monthly_log": monthly_log,
+            "investment_balance_80": 0,
+            "securities_tax": 0,
+            "real_estate_tax": 0,
+            "land_value_80": 0,
+            "liquidity_haircut": 0,
+            "effective_land_value": 0,
+            "liquidation_cost": 0,
+            "final_net_assets": 0,
+            "after_tax_net_assets": 0,
+        }
 
     ownership_years = END_AGE - effective_purchase_age
     final = _calc_final_assets(

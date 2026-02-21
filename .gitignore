@@ -29,6 +29,8 @@ config.toml
 
 # Personal reports
 my-report.md
+mc_fan-my.png
+trajectory-my.png
 
 # Claude Code
 .claude/

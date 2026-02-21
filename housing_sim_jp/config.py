@@ -11,12 +11,13 @@ DEFAULTS = {
     "savings": 800.0,
     "income": 62.5,
     "children": "32,35",
-    "living": 27.0,
+    "living_premium": 0.0,
     "child_living": 5.0,
     "education": 10.0,
     "car": False,
     "pets": 0,
     "relocation": False,
+    "young_growth": 0.08,
     "ideco": 4.0,
     "emergency_fund": 6.0,
 }
@@ -49,7 +50,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--savings", type=float, default=None, help=f"初期金融資産・万円 (default: {d['savings']:.0f})")
     parser.add_argument("--income", type=float, default=None, help=f"現在の世帯月額手取り・万円 (default: {d['income']})")
     parser.add_argument("--children", type=str, default=None, help=f"出産時の親の年齢（カンマ区切り、例: 28,32 / noneで子なし）(default: {d['children']})")
-    parser.add_argument("--living", type=float, default=None, help=f"夫婦の生活費（万円/月、住居費・教育費・子供分除く）(default: {d['living']})")
+    parser.add_argument("--living-premium", type=float, default=None, help=f"生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月）(default: {d['living_premium']})")
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
     parser.add_argument("--education", type=float, default=None, help=f"教育費（万円/月/人）(default: {d['education']})")
     parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")

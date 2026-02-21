@@ -2,11 +2,13 @@
 name = "housing-sim-jp"
 version = "0.1.0"
 requires-python = ">=3.11"
+dependencies = ["matplotlib"]
 
 [project.scripts]
 housing-sim = "housing_sim_jp.cli:main"
 scenario-compare = "housing_sim_jp.scenario_cli:main"
 monte-carlo = "housing_sim_jp.monte_carlo_cli:main"
+chart = "housing_sim_jp.chart_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

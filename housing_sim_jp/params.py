@@ -2,6 +2,33 @@
 
 from dataclasses import dataclass, field
 
+# Age-based baseline living cost curve (万円/月, couple without children)
+# Piecewise linear interpolation; flat at 27.5 beyond age 50.
+_LIVING_COST_CURVE: list[tuple[int, float]] = [
+    (20, 20.0),
+    (25, 22.0),
+    (30, 25.5),
+    (35, 29.0),
+    (40, 30.0),
+    (45, 29.0),
+    (50, 27.5),
+]
+
+
+def base_living_cost(age: int) -> float:
+    """Return age-based baseline living cost (万円/月) via piecewise linear interpolation."""
+    if age <= _LIVING_COST_CURVE[0][0]:
+        return _LIVING_COST_CURVE[0][1]
+    if age >= _LIVING_COST_CURVE[-1][0]:
+        return _LIVING_COST_CURVE[-1][1]
+    for i in range(len(_LIVING_COST_CURVE) - 1):
+        a0, c0 = _LIVING_COST_CURVE[i]
+        a1, c1 = _LIVING_COST_CURVE[i + 1]
+        if a0 <= age <= a1:
+            t = (age - a0) / (a1 - a0)
+            return c0 + t * (c1 - c0)
+    return _LIVING_COST_CURVE[-1][1]  # pragma: no cover
+
 
 @dataclass
 class SimulationParams:
@@ -14,11 +41,11 @@ class SimulationParams:
 
     # Income parameters
     # initial_takehome_monthly: 開始時点の世帯月額手取り
-    # <35歳: young_growth_rate(3%)で成長、35歳以降: income_growth_rate(1.5%)で成長
+    # <30歳: young_growth_rate(8%)で成長、30歳以降: income_growth_rate(1.5%)で成長
     initial_takehome_monthly: float = 72.5
-    income_growth_rate: float = 0.015  # 35歳以降の成長率
-    young_growth_rate: float = 0.03  # 25-34歳の成長率（国税庁 民間給与実態統計ベース）
-    income_base_age: int = 35  # 基準年齢
+    income_growth_rate: float = 0.015  # 30歳以降の成長率
+    young_growth_rate: float = 0.08  # 20代の成長率（大手共働きベース、中小は0.03）
+    income_base_age: int = 30  # 基準年齢
     retirement_reduction: float = 0.60
     # 企業年金（確定給付+確定拠出）: 大手正社員夫婦想定
     corporate_pension_annual: float = 130
@@ -37,7 +64,7 @@ class SimulationParams:
     loan_deduction_limit: float = 3000  # 中古省エネ住宅の借入限度額（万円）
 
     # Living cost parameters
-    couple_living_cost_monthly: float = 27.0   # 夫婦のみの生活費
+    living_premium: float = 0.0  # ベースラインへの上乗せ（贅沢度、万円/月）
     child_living_cost_monthly: float = 5.0     # 子1人あたりの追加生活費（食費・衣類・日用品等）
     education_cost_monthly: float = 15.0
     # Car parameters
