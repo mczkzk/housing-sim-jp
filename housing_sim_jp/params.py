@@ -51,6 +51,9 @@ class SimulationParams:
 
     retirement_living_cost_ratio: float = 0.70
 
+    # Emergency fund (生活防衛資金: 生活費の何ヶ月分を現金で確保)
+    emergency_fund_months: float = 6.0
+
     # iDeCo parameters
     ideco_monthly_contribution: float = 4.0  # 夫婦合計（2万×2人, 企業型DC+DB上限）
 

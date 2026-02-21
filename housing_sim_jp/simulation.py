@@ -188,10 +188,20 @@ def find_earliest_purchase_age(
         price_ratio = inflated_price / original_price
         inflated_initial_cost = type(strategy).INITIAL_COST * price_ratio
 
+        # Deduct emergency fund from available investment capital
+        num_children_at_target = sum(
+            1 for start, end in child_home_ranges if start <= target_age <= end
+        )
+        inflation_at_target = (1 + params.inflation_rate) ** years_to_target
+        required_ef = (
+            params.couple_living_cost_monthly
+            + num_children_at_target * params.child_living_cost_monthly
+        ) * params.emergency_fund_months * inflation_at_target
+
         test_strategy = type(strategy)(savings)
         test_strategy.property_price = inflated_price
         test_strategy.loan_amount = inflated_price
-        test_strategy.initial_investment = savings - inflated_initial_cost
+        test_strategy.initial_investment = savings - inflated_initial_cost - required_ef
         if loan_months != test_strategy.loan_months:
             test_strategy.loan_months = loan_months
 
@@ -463,6 +473,30 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
+def _calc_required_emergency_fund(
+    age: int,
+    month: int,
+    params: SimulationParams,
+    child_home_ranges: list[tuple[int, int]],
+    is_divorced: bool = False,
+    is_spouse_dead: bool = False,
+) -> float:
+    """Calculate required emergency fund (生活防衛資金) for a given month."""
+    if params.emergency_fund_months <= 0:
+        return 0.0
+    num_children = sum(1 for start, end in child_home_ranges if start <= age <= end)
+    inflation = (1 + params.inflation_rate) ** (month / 12)
+    base_living = (
+        params.couple_living_cost_monthly
+        + num_children * params.child_living_cost_monthly
+    )
+    if age >= PENSION_AGE:
+        base_living *= params.retirement_living_cost_ratio
+    if is_divorced or is_spouse_dead:
+        base_living *= 0.7
+    return base_living * params.emergency_fund_months * inflation
+
+
 def _calc_final_assets(
     strategy: Strategy,
     params: SimulationParams,
@@ -471,9 +505,10 @@ def _calc_final_assets(
     taxable_balance: float,
     taxable_cost_basis: float,
     purchase_closing_cost: float,
+    emergency_fund: float = 0.0,
 ) -> dict:
     """Calculate final asset values at simulation end (age 80)."""
-    investment_balance = nisa_balance + taxable_balance
+    investment_balance = nisa_balance + taxable_balance + emergency_fund
 
     if strategy.property_price > 0:
         land_value_initial = strategy.property_price * strategy.land_value_ratio
@@ -634,6 +669,14 @@ def simulate_strategy(
         initial = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
     else:
         initial = max(0.0, strategy.initial_investment)
+
+    # Allocate emergency fund from initial savings
+    initial_required_ef = _calc_required_emergency_fund(
+        start_age, 0, params, child_home_ranges,
+    )
+    emergency_fund = min(initial, initial_required_ef)
+    initial -= emergency_fund
+
     nisa_deposit = min(initial, NISA_LIMIT)
     nisa_balance = nisa_deposit
     nisa_cost_basis = nisa_deposit
@@ -682,7 +725,10 @@ def simulate_strategy(
                 cost = params.car_purchase_price * inflation_factor
             else:
                 cost = params.car_purchase_price * (1 - params.car_residual_rate) * inflation_factor
-            if balance >= cost:
+            required_ef_for_car = _calc_required_emergency_fund(
+                age, month, params, child_home_ranges,
+            )
+            if balance >= cost + required_ef_for_car:
                 car_one_time = cost
                 car_owned = True
                 if car_first_purchase_age is None:
@@ -736,6 +782,7 @@ def simulate_strategy(
                 taxable_balance *= 0.5
                 taxable_cost_basis *= 0.5
                 ideco_balance *= 0.5
+                emergency_fund *= 0.5
                 # Property: sell and split proceeds
                 if strategy.property_price > 0:
                     years_owned = (month - purchase_month_offset) / 12
@@ -819,6 +866,20 @@ def simulate_strategy(
             investable += ideco_net
             ideco_balance = 0.0
 
+        # Emergency fund management: fill shortfall, release excess
+        required_ef = _calc_required_emergency_fund(
+            age, month, params, child_home_ranges, is_divorced, is_spouse_dead,
+        )
+        if emergency_fund > required_ef:
+            excess = emergency_fund - required_ef
+            emergency_fund = required_ef
+            investable += excess
+        if investable > 0:
+            ef_shortfall = max(0, required_ef - emergency_fund)
+            ef_topup = min(investable, ef_shortfall)
+            emergency_fund += ef_topup
+            investable -= ef_topup
+
         if discipline_factor < 1.0 and investable > 0:
             investable *= discipline_factor
 
@@ -852,7 +913,7 @@ def simulate_strategy(
     final = _calc_final_assets(
         strategy, params, ownership_years,
         nisa_balance, taxable_balance, taxable_cost_basis,
-        purchase_closing_cost,
+        purchase_closing_cost, emergency_fund,
     )
 
     return {
@@ -862,6 +923,7 @@ def simulate_strategy(
         "nisa_cost_basis": nisa_cost_basis,
         "taxable_balance": taxable_balance,
         "taxable_cost_basis": taxable_cost_basis,
+        "emergency_fund_final": emergency_fund,
         "bankrupt_age": bankrupt_age,
         "car_first_purchase_age": car_first_purchase_age,
         "ideco_total_contribution": ideco_total_contribution,

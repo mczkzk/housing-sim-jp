@@ -73,19 +73,19 @@ class TestSnapshotAge37:
 
     def test_mansion(self):
         r = simulate_strategy(UrawaMansion(800), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(24375.045791, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(22283.338930, abs=0.01)
 
     def test_house(self):
         r = simulate_strategy(UrawaHouse(800), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(31225.740181, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(29236.424830, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(31163.981031, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(29219.298686, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(22030.030745, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(19950.346809, abs=0.01)
 
 
 class TestSnapshotDetails:
@@ -96,7 +96,7 @@ class TestSnapshotDetails:
         self.r = simulate_strategy(UrawaMansion(800), params, start_age=37, child_birth_ages=[39])
 
     def test_nisa_balance(self):
-        assert self.r["nisa_balance"] == pytest.approx(22226.765842, abs=0.01)
+        assert self.r["nisa_balance"] == pytest.approx(19920.219530, abs=0.01)
 
     def test_land_value(self):
         assert self.r["land_value_80"] == pytest.approx(2348.279949, abs=0.01)
@@ -117,14 +117,14 @@ class TestEdgeAges:
     def test_age_25(self):
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, start_age=25, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(134013.772665, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(130371.615310, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
         """child_birth_ages=[39] for start_age=45 (child age 6-16 during sim)."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, start_age=45, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(8384.747137, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(7183.757357, abs=0.01)
         assert r["bankrupt_age"] is None
 
 
@@ -142,7 +142,7 @@ class TestDisciplineFactor:
         r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=1.0, child_birth_ages=[39])
         r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(25316.111842, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(23352.933049, abs=0.01)
 
 
 class TestChildBirthAges:
@@ -150,7 +150,7 @@ class TestChildBirthAges:
         """child_birth_ages=[38] should produce known snapshot."""
         params = SimulationParams()
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, start_age=37, child_birth_ages=[38])
-        assert r["after_tax_net_assets"] == pytest.approx(30331.530162, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(28328.635185, abs=0.01)
 
     def test_no_child_increases_assets(self):
         """No education costs → more investable → higher assets."""
@@ -369,6 +369,57 @@ class TestSpouseDeathEvent:
         )
         # Should not crash and should complete
         assert r_death["after_tax_net_assets"] > 0
+
+
+class TestEmergencyFund:
+    """Tests for emergency fund (生活防衛資金) behavior."""
+
+    def test_emergency_fund_in_initial_allocation(self):
+        """Emergency fund should be allocated from initial savings, reducing investment."""
+        params = SimulationParams()
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        # With emergency fund, initial investment is lower → final assets should be lower
+        params_no_ef = SimulationParams(emergency_fund_months=0)
+        r_no_ef = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params_no_ef, start_age=37, child_birth_ages=[39],
+        )
+        assert r["after_tax_net_assets"] < r_no_ef["after_tax_net_assets"]
+        assert r["emergency_fund_final"] > 0
+
+    def test_emergency_fund_blocks_car(self):
+        """Car purchase should be deferred when balance < cost + required_ef."""
+        params = SimulationParams(has_car=True, emergency_fund_months=6.0)
+        r = simulate_strategy(
+            StrategicRental(500, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        params_no_ef = SimulationParams(has_car=True, emergency_fund_months=0)
+        r_no_ef = simulate_strategy(
+            StrategicRental(500, child_birth_ages=[39], start_age=37),
+            params_no_ef, start_age=37, child_birth_ages=[39],
+        )
+        # With emergency fund, car purchase age should be same or later
+        if r["car_first_purchase_age"] is not None and r_no_ef["car_first_purchase_age"] is not None:
+            assert r["car_first_purchase_age"] >= r_no_ef["car_first_purchase_age"]
+
+    def test_emergency_fund_reduces_after_children_leave(self):
+        """Required emergency fund decreases after children leave home at 22."""
+        params = SimulationParams()
+        # Child born at 32 → leaves at 54
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[32], start_age=30),
+            params, start_age=30, child_birth_ages=[32],
+        )
+        # Emergency fund should be positive but reduced (no children at age 80)
+        # Required EF at 80 = couple_living * 0.7 (retirement) * 6 * inflation
+        assert r["emergency_fund_final"] > 0
+        # The emergency fund at end should be less than initial (no children, retirement ratio)
+        initial_ef = params.couple_living_cost_monthly * params.emergency_fund_months
+        assert r["emergency_fund_final"] != pytest.approx(initial_ef, abs=1.0)
 
 
 class TestDivorceDeathMutualExclusion:

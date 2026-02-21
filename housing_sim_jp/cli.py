@@ -20,6 +20,7 @@ def main():
         education_cost_monthly=r["education"],
         has_car=r["car"],
         ideco_monthly_contribution=r["ideco"],
+        emergency_fund_months=r["emergency_fund"],
     )
     strategies = [
         UrawaMansion(savings),

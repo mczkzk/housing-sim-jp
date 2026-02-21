@@ -167,6 +167,7 @@ def main():
         education_cost_monthly=r["education"],
         has_car=r["car"],
         ideco_monthly_contribution=r["ideco"],
+        emergency_fund_months=r["emergency_fund"],
     )
 
     event_risks = None if args.no_events else EventRiskConfig()
