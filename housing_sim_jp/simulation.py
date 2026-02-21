@@ -473,6 +473,55 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
+def _process_ideco(
+    age: int,
+    month: int,
+    investable: float,
+    ideco_balance: float,
+    ideco_total_contribution: float,
+    ideco_tax_benefit_total: float,
+    ideco_contribution_years: int,
+    ideco_tax_paid: float,
+    monthly_return_rate: float,
+    params: SimulationParams,
+    marginal_tax_rate: float,
+) -> tuple[float, float, float, float, int, float]:
+    """Process iDeCo contribution (before 60) and lump-sum withdrawal (at 60).
+
+    Returns (investable, ideco_balance, ideco_total_contribution,
+             ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid).
+    """
+    contribution = params.ideco_monthly_contribution
+
+    # Contribute before retirement age
+    if contribution > 0 and age < REEMPLOYMENT_AGE:
+        investable -= contribution
+        tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_tax_rate)
+        investable += tax_benefit
+        ideco_balance += contribution
+        ideco_total_contribution += contribution
+        ideco_tax_benefit_total += tax_benefit
+        if month % 12 == 0:
+            ideco_contribution_years += 1
+
+    # Apply investment returns
+    if ideco_balance > 0:
+        ideco_balance *= 1 + monthly_return_rate
+
+    # Lump-sum withdrawal at age 60
+    if contribution > 0 and age == REEMPLOYMENT_AGE and month % 12 == 0 and ideco_balance > 0:
+        retirement_tax = calc_retirement_income_tax(
+            ideco_balance, ideco_contribution_years,
+        )
+        ideco_tax_paid = retirement_tax
+        ideco_net = ideco_balance - retirement_tax
+        investable += ideco_net
+        ideco_balance = 0.0
+
+    return (investable, ideco_balance, ideco_total_contribution,
+            ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid)
+
+
 def _calc_required_emergency_fund(
     age: int,
     month: int,
@@ -838,33 +887,13 @@ def simulate_strategy(
             - event_extra_cost
         )
 
-        # iDeCo: contribute before 60, receive lump-sum at 60
-        ideco_contribution = params.ideco_monthly_contribution
-        if ideco_contribution > 0 and age < REEMPLOYMENT_AGE:
-            investable -= ideco_contribution
-            tax_benefit = calc_ideco_tax_benefit_monthly(
-                ideco_contribution, marginal_tax_rate,
-            )
-            investable += tax_benefit
-            ideco_balance += ideco_contribution
-            ideco_total_contribution += ideco_contribution
-            ideco_tax_benefit_total += tax_benefit
-            if month % 12 == 0:
-                ideco_contribution_years += 1
-
-        # iDeCo: apply investment returns
-        if ideco_balance > 0:
-            ideco_balance *= 1 + monthly_return_rate
-
-        # iDeCo lump-sum withdrawal at age 60 (first month)
-        if ideco_contribution > 0 and age == REEMPLOYMENT_AGE and month % 12 == 0 and ideco_balance > 0:
-            retirement_tax = calc_retirement_income_tax(
-                ideco_balance, ideco_contribution_years,
-            )
-            ideco_tax_paid = retirement_tax
-            ideco_net = ideco_balance - retirement_tax
-            investable += ideco_net
-            ideco_balance = 0.0
+        # iDeCo: contribute, apply returns, withdraw at 60
+        (investable, ideco_balance, ideco_total_contribution,
+         ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid) = _process_ideco(
+            age, month, investable, ideco_balance, ideco_total_contribution,
+            ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
+            monthly_return_rate, params, marginal_tax_rate,
+        )
 
         # Emergency fund management: fill shortfall, release excess
         required_ef = _calc_required_emergency_fund(
