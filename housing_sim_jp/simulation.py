@@ -473,6 +473,63 @@ def _update_investments(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt
 
 
+def _apply_divorce(
+    month: int,
+    strategy: Strategy,
+    params: SimulationParams,
+    purchase_month_offset: int,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    taxable_balance: float,
+    taxable_cost_basis: float,
+    ideco_balance: float,
+    emergency_fund: float,
+) -> tuple[float, float, float, float, float, float, float, float]:
+    """Apply divorce event: 50% asset split, property sale, set rental cost.
+
+    Returns (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+             ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost).
+    Mutates strategy (clears property/loan).
+    """
+    nisa_balance *= 0.5
+    nisa_cost_basis *= 0.5
+    taxable_balance *= 0.5
+    taxable_cost_basis *= 0.5
+    ideco_balance *= 0.5
+    emergency_fund *= 0.5
+
+    event_cost_adj = 0.0
+    if strategy.property_price > 0:
+        years_owned = (month - purchase_month_offset) / 12
+        if years_owned > 0:
+            land_value = _inflate_property_price(strategy, params, years_owned)
+        else:
+            land_value = strategy.property_price * strategy.land_value_ratio
+        sale_proceeds = land_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
+        if sale_proceeds > 0:
+            event_cost_adj = -sale_proceeds * 0.5
+        strategy.remaining_balance = 0.0
+        strategy.property_price = 0
+
+    years_elapsed = month / 12
+    divorce_rental_cost = PRE_PURCHASE_RENT * (
+        (1 + params.inflation_rate) ** years_elapsed
+    )
+
+    return (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+            ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost)
+
+
+def _apply_spouse_death(strategy: Strategy, life_insurance_payout: float) -> float:
+    """Apply spouse death event: clear mortgage (団信), insurance payout.
+
+    Returns event_cost_adjustment (negative = income). Mutates strategy.
+    """
+    if strategy.property_price > 0:
+        strategy.remaining_balance = 0.0
+    return -life_insurance_payout
+
+
 def _try_car_purchase(
     age: int,
     month: int,
@@ -844,54 +901,28 @@ def simulate_strategy(
                 monthly_income = 0
             event_extra_cost = event_timeline.get_extra_cost(month, age, params)
 
-            # Divorce event
             if event_timeline.divorce_month is not None and month == event_timeline.divorce_month and not is_divorced:
                 is_divorced = True
-                # Asset split 50%
-                nisa_balance *= 0.5
-                nisa_cost_basis *= 0.5
-                taxable_balance *= 0.5
-                taxable_cost_basis *= 0.5
-                ideco_balance *= 0.5
-                emergency_fund *= 0.5
-                # Property: sell and split proceeds
-                if strategy.property_price > 0:
-                    years_owned = (month - purchase_month_offset) / 12
-                    if years_owned > 0:
-                        land_value = _inflate_property_price(strategy, params, years_owned)
-                    else:
-                        land_value = strategy.property_price * strategy.land_value_ratio
-                    sale_proceeds = land_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
-                    if sale_proceeds > 0:
-                        event_extra_cost -= sale_proceeds * 0.5  # Add 50% of proceeds
-                    strategy.remaining_balance = 0.0
-                    strategy.property_price = 0
-                # Set post-divorce rental cost
-                years_elapsed = month / 12
-                divorce_rental_cost = PRE_PURCHASE_RENT * (
-                    (1 + params.inflation_rate) ** years_elapsed
+                (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+                 ideco_balance, emergency_fund, cost_adj, divorce_rental_cost) = _apply_divorce(
+                    month, strategy, params, purchase_month_offset,
+                    nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+                    ideco_balance, emergency_fund,
                 )
+                event_extra_cost += cost_adj
 
-            # Spouse death event
             if event_timeline.spouse_death_month is not None and month == event_timeline.spouse_death_month and not is_spouse_dead:
                 is_spouse_dead = True
-                # 団信: mortgage cleared
-                if strategy.property_price > 0:
-                    strategy.remaining_balance = 0.0
-                # Life insurance payout → invest
-                event_extra_cost -= event_timeline.life_insurance_payout
+                event_extra_cost += _apply_spouse_death(strategy, event_timeline.life_insurance_payout)
 
             # Post-event income/cost adjustments
             if is_divorced or is_spouse_dead:
                 monthly_income *= params.husband_income_ratio
                 living_cost *= 0.7
                 if is_divorced:
-                    # Override housing to 2LDK rental (nominal fixed at divorce time)
-                    housing_cost = divorce_rental_cost
-                    housing_cost += divorce_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
+                    housing_cost = divorce_rental_cost + divorce_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
                     loan_deduction = 0
 
-            # Survivor pension (death only, pension age)
             if is_spouse_dead and age >= PENSION_AGE:
                 monthly_income += event_timeline.survivor_pension_annual / 12
         else:
