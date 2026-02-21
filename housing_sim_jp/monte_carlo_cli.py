@@ -180,6 +180,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
+        pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
     )
@@ -210,6 +211,8 @@ def main():
         print(f"  子供: {', '.join(parts)}出産")
     else:
         print("  子供: なし")
+    if r["pets"] > 0:
+        print(f"  ペット: {r['pets']}匹")
     event_info = "無効" if args.no_events else "有効"
     if not args.no_events and r["relocation"]:
         event_info += f"（転勤族: 年{RELOCATION_TENSHOKUZOKU_PROB:.0%}）"

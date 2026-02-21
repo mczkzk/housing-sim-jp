@@ -57,6 +57,7 @@ def run_scenarios(
     child_living_cost_monthly: float = 5.0,
     education_cost_monthly: float = 10.0,
     has_car: bool = False,
+    pet_count: int = 0,
     ideco_monthly_contribution: float = 4.0,
     emergency_fund_months: float = 6.0,
 ):
@@ -77,6 +78,7 @@ def run_scenarios(
             child_living_cost_monthly=child_living_cost_monthly,
             education_cost_monthly=education_cost_monthly,
             has_car=has_car,
+            pet_count=pet_count,
             ideco_monthly_contribution=ideco_monthly_contribution,
             emergency_fund_months=emergency_fund_months,
         )

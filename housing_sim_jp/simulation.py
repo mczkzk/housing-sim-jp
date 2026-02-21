@@ -376,6 +376,7 @@ def _calc_expenses(
     child_home_ranges: list[tuple[int, int]],
     purchase_month_offset: int = 0,
     car_owned: bool = False,
+    pet_active: bool = False,
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
@@ -383,15 +384,18 @@ def _calc_expenses(
     ownership_month = month - purchase_month_offset
 
     housing_cost = strategy.housing_cost(age, ownership_month, params)
+    if pet_active and strategy.property_price == 0:
+        housing_cost += params.pet_rental_premium * (1 + params.inflation_rate) ** years_elapsed
 
+    extra_monthly_cost = 0
     if params.has_car and car_owned:
-        car_cost = params.car_running_cost_monthly
+        extra_monthly_cost = params.car_running_cost_monthly
         if not strategy.HAS_OWN_PARKING:
-            car_cost += params.car_parking_cost_monthly
-    else:
-        car_cost = 0
+            extra_monthly_cost += params.car_parking_cost_monthly
+    if pet_active:
+        extra_monthly_cost += params.pet_monthly_cost
     education_cost, living_cost = _calc_education_and_living(
-        age, years_elapsed, params, education_ranges, child_home_ranges, car_cost,
+        age, years_elapsed, params, education_ranges, child_home_ranges, extra_monthly_cost,
     )
 
     loan_deduction = 0
@@ -617,6 +621,45 @@ def _try_car_purchase(
         return cost, True, car_first_purchase_age, age + params.car_replacement_years
 
     return 0.0, car_owned, car_first_purchase_age, next_car_due_age
+
+
+def _try_pet_adoption(
+    age: int,
+    month: int,
+    start_age: int,
+    params: SimulationParams,
+    investment_balance: float,
+    pet_active: bool,
+    pets_adopted: int,
+    pet_first_adoption_age: int | None,
+    pet_end_age: int,
+    child_home_ranges: list[tuple[int, int]],
+) -> tuple[float, bool, int, int | None, int]:
+    """Try pet adoption at year boundary.
+
+    Returns (one_time_cost, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age).
+    """
+    # Check lifespan expiry
+    if pet_active and age >= pet_end_age:
+        pet_active = False
+
+    if not (params.pet_count > 0 and month % 12 == 0 and not pet_active
+            and pets_adopted < params.pet_count):
+        return 0.0, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age
+
+    years_from_start = age - start_age
+    inflation_factor = (1 + params.inflation_rate) ** years_from_start
+    cost = params.pet_adoption_cost * inflation_factor
+
+    required_ef = _calc_required_emergency_fund(age, month, params, child_home_ranges)
+    if investment_balance >= cost + required_ef:
+        if pet_first_adoption_age is None:
+            pet_first_adoption_age = age
+        pets_adopted += 1
+        pet_end_age = age + params.pet_lifespan_years
+        return cost, True, pets_adopted, pet_first_adoption_age, pet_end_age
+
+    return 0.0, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age
 
 
 def _process_ideco(
@@ -870,6 +913,12 @@ def simulate_strategy(
     car_first_purchase_age = None
     next_car_due_age = start_age if params.has_car else END_AGE + 1
 
+    # Pet ownership state (dynamically tracked, deferred if unaffordable)
+    pet_active = False
+    pets_adopted = 0
+    pet_first_adoption_age = None
+    pet_end_age = start_age  # triggers adoption attempt at start
+
     is_rental = strategy.property_price == 0
 
     monthly_moving_cost = 0
@@ -939,6 +988,14 @@ def simulate_strategy(
             child_home_ranges,
         )
 
+        # Pet adoption at year boundaries (after car, lower priority)
+        pet_one_time, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age = _try_pet_adoption(
+            age, month, start_age, params,
+            nisa_balance + taxable_balance - car_one_time,
+            pet_active, pets_adopted, pet_first_adoption_age, pet_end_age,
+            child_home_ranges,
+        )
+
         monthly_income, peak_income = _calc_monthly_income(
             month, start_age, params, peak_income
         )
@@ -951,13 +1008,18 @@ def simulate_strategy(
             housing_cost = rent + rent / PRE_PURCHASE_RENEWAL_DIVISOR
 
             # Pre-purchase = renting, so parking cost always applies
-            car_cost = (params.car_running_cost_monthly + params.car_parking_cost_monthly) if (params.has_car and car_owned) else 0
+            extra_monthly = 0
+            if params.has_car and car_owned:
+                extra_monthly = params.car_running_cost_monthly + params.car_parking_cost_monthly
+            if pet_active:
+                housing_cost += params.pet_rental_premium * inflation
+                extra_monthly += params.pet_monthly_cost
             education_cost, living_cost = _calc_education_and_living(
-                age, years_elapsed, params, education_ranges, child_home_ranges, car_cost,
+                age, years_elapsed, params, education_ranges, child_home_ranges, extra_monthly,
             )
             utility_cost = 0
             loan_deduction = 0
-            one_time_expense = car_one_time
+            one_time_expense = car_one_time + pet_one_time
 
             # Purchase costs at the transition month
             if month == purchase_month_offset - 1:
@@ -968,8 +1030,9 @@ def simulate_strategy(
                 education_ranges, child_home_ranges,
                 purchase_month_offset=purchase_month_offset,
                 car_owned=car_owned,
+                pet_active=pet_active,
             )
-            one_time_expense += car_one_time
+            one_time_expense += car_one_time + pet_one_time
 
         # Event risk overrides
         if event_timeline is not None:
@@ -1092,6 +1155,7 @@ def simulate_strategy(
         "emergency_fund_final": emergency_fund,
         "bankrupt_age": bankrupt_age,
         "car_first_purchase_age": car_first_purchase_age,
+        "pet_first_adoption_age": pet_first_adoption_age,
         "ideco_total_contribution": ideco_total_contribution,
         "ideco_tax_benefit_total": ideco_tax_benefit_total,
         "ideco_tax_paid": ideco_tax_paid,

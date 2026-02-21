@@ -48,6 +48,13 @@ class SimulationParams:
     car_parking_cost_monthly: float = 2.0  # 駐車場代（一戸建ては不要）
     car_running_cost_monthly: float = 3.0  # 駐車場以外の維持費（ガソリン・保険・税金・メンテ）
 
+    # Pet parameters
+    pet_count: int = 0
+    pet_adoption_cost: float = 20.0       # 迎え入れ費用（万円/回）
+    pet_monthly_cost: float = 1.5         # 飼育費（万円/月）
+    pet_rental_premium: float = 1.5       # 賃貸ペット可上乗せ（万円/月）
+    pet_lifespan_years: int = 15
+
     retirement_living_cost_ratio: float = 0.70
 
     # Emergency fund (生活防衛資金: 生活費の何ヶ月分を現金で確保)

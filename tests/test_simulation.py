@@ -422,6 +422,76 @@ class TestEmergencyFund:
         assert r["emergency_fund_final"] != pytest.approx(initial_ef, abs=1.0)
 
 
+class TestPet:
+    """Tests for pet ownership cost in simulation."""
+
+    def test_pet_reduces_assets(self):
+        """ペットあり < なし."""
+        params_pet = SimulationParams(pet_count=1)
+        params_none = SimulationParams(pet_count=0)
+        r_pet = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params_pet, start_age=37, child_birth_ages=[39],
+        )
+        r_none = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params_none, start_age=37, child_birth_ages=[39],
+        )
+        assert r_pet["after_tax_net_assets"] < r_none["after_tax_net_assets"]
+
+    def test_pet_deferred_when_poor(self):
+        """残高不足で先送り（pet_first_adoption_age > start_age）."""
+        params = SimulationParams(pet_count=1)
+        r = simulate_strategy(
+            StrategicRental(200, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        assert r["pet_first_adoption_age"] is not None
+        assert r["pet_first_adoption_age"] > 37
+
+    def test_pet_rental_premium(self):
+        """賃貸のコスト差が購入より大きい（pet_rental_premium分）."""
+        params = SimulationParams(pet_count=1)
+        r_rental = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        r_purchase = simulate_strategy(
+            UrawaHouse(800), params, start_age=37, child_birth_ages=[39],
+        )
+        # Compare pet impact: run without pet too
+        params_no = SimulationParams(pet_count=0)
+        r_rental_no = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params_no, start_age=37, child_birth_ages=[39],
+        )
+        r_purchase_no = simulate_strategy(
+            UrawaHouse(800), params_no, start_age=37, child_birth_ages=[39],
+        )
+        rental_cost = r_rental_no["after_tax_net_assets"] - r_rental["after_tax_net_assets"]
+        purchase_cost = r_purchase_no["after_tax_net_assets"] - r_purchase["after_tax_net_assets"]
+        assert rental_cost > purchase_cost
+
+    def test_pet_zero_no_effect(self):
+        """pets=0 はコストゼロ."""
+        params = SimulationParams(pet_count=0)
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        assert r["pet_first_adoption_age"] is None
+
+    def test_pet_priority_after_car(self):
+        """車+ペット同時: 車が先に購入."""
+        params = SimulationParams(has_car=True, pet_count=1)
+        r = simulate_strategy(
+            StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, start_age=37, child_birth_ages=[39],
+        )
+        if r["car_first_purchase_age"] is not None and r["pet_first_adoption_age"] is not None:
+            assert r["car_first_purchase_age"] <= r["pet_first_adoption_age"]
+
+
 class TestDivorceDeathMutualExclusion:
     """Divorce and death should be mutually exclusive in sampling."""
 

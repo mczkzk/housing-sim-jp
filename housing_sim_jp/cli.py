@@ -19,6 +19,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
+        pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
     )
@@ -44,6 +45,8 @@ def main():
         replacements = (80 - start_age) // params.car_replacement_years
         total_running = params.car_running_cost_monthly + params.car_parking_cost_monthly
         print(f"  車所有: {params.car_purchase_price:.0f}万円/{params.car_replacement_years}年買替（{replacements}回）+ 維持費{total_running:.1f}万/月（一戸建ては駐車場代{params.car_parking_cost_monthly:.1f}万不要）")
+    if r["pets"] > 0:
+        print(f"  ペット: {r['pets']}匹（1匹{params.pet_lifespan_years}年・飼育費{params.pet_monthly_cost:.1f}万/月、賃貸は+{params.pet_rental_premium:.1f}万/月）")
     ideco = r["ideco"]
     if ideco > 0:
         print(f"  iDeCo: {ideco:.1f}万円/月（夫婦合計, 60歳まで拠出）")
@@ -155,6 +158,8 @@ def main():
             )
         if r.get("car_first_purchase_age") is not None and r["car_first_purchase_age"] > start_age:
             print(f"    車: {r['car_first_purchase_age']}歳で購入（{start_age}歳時点では資金不足）")
+        if r.get("pet_first_adoption_age") is not None and r["pet_first_adoption_age"] > start_age:
+            print(f"    ペット: {r['pet_first_adoption_age']}歳で迎え入れ（{start_age}歳時点では資金不足）")
         if r["bankrupt_age"] is not None:
             print(f"    ⚠ {r['bankrupt_age']}歳で資産破綻（生活費が資産を超過）")
 
