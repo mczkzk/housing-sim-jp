@@ -22,6 +22,10 @@ python -m housing_sim_jp.cli
 # 3シナリオ×4戦略比較（確定論: 低成長/標準/高成長 + 投資規律の感度分析）
 python -m housing_sim_jp.scenario_cli
 
+# カスタム条件
+python -m housing_sim_jp.cli --age 37 --savings 1500 --income 75
+python -m housing_sim_jp.cli --pets 1 --car              # ペット1匹+車
+
 # Monte Carlo シミュレーション（確率論: N=1,000試行 + イベントリスク）
 python -m housing_sim_jp.monte_carlo_cli
 python -m housing_sim_jp.monte_carlo_cli --stress-test   # ストレステスト追加出力
@@ -57,6 +61,7 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | `--child-living` | 子1人あたりの追加生活費（万円/月） | 5.0 |
 | `--education` | 教育費ピーク（高校）金額（万円/月/人） | 10.0 |
 | `--car` | 車所有（購入300万/7年買替+維持費5万/月を計上） | なし |
+| `--pets` | ペット頭数（1匹15年・飼育費1.5万/月、賃貸は+1.5万/月） | 0 |
 | `--relocation` | 転勤族モード（転勤確率が年3%→10%に上昇） | なし |
 | `--ideco` | iDeCo拠出額（夫婦合計・万円/月、0で無効） | 4.0 |
 | `--emergency-fund` | 生活防衛資金（生活費の何ヶ月分、0で無効） | 6.0 |
@@ -154,4 +159,4 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | レポート | 条件 |
 |---------|------|
 | [report-30.md](report-30.md) | 30歳・800万・手取り62.5万・子2人（32,35歳出産）・教育費ピーク14万/月 |
-| [report-35.md](report-35.md) | 35歳・1500万・手取り75万・子1人（37歳出産）・教育費ピーク18万/月 |
+| [report-35.md](report-35.md) | 35歳・1500万・手取り75万・子1人（37歳出産）・教育費ピーク18万/月・ペット1匹 |
