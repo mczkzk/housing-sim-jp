@@ -1,7 +1,6 @@
 """Simulation parameters and financial calculation helpers."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass
@@ -30,7 +29,7 @@ class SimulationParams:
 
     # Loan parameters
     loan_years: int = 35
-    loan_rate_schedule: List[float] = field(
+    loan_rate_schedule: list[float] = field(
         default_factory=lambda: [0.0075, 0.0125, 0.0175, 0.0200, 0.0200]
     )
     loan_tax_deduction_rate: float = 0.007
@@ -58,7 +57,7 @@ class SimulationParams:
     ideco_monthly_contribution: float = 4.0  # 夫婦合計（2万×2人, 企業型DC+DB上限）
 
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
-    annual_investment_returns: Optional[List[float]] = None
+    annual_investment_returns: list[float] | None = None
 
     def get_loan_rate(self, years_elapsed: float) -> float:
         """Get monthly loan rate based on elapsed years (5-year step schedule)"""
