@@ -27,8 +27,12 @@ def _build_parser():
         help="乱数シード (default: 42)",
     )
     parser.add_argument(
+        "--loan-volatility", type=float, default=0.005,
+        help="金利シフトのボラティリティ σ (default: 0.005)",
+    )
+    parser.add_argument(
         "--no-events", action="store_true",
-        help="イベントリスク（失業・災害・介護・入居拒否・離婚・死亡）を無効化",
+        help="イベントリスク（失業・災害・介護・入居拒否・離婚・死亡・転勤）を無効化",
     )
     parser.add_argument(
         "--stress-test", action="store_true",
@@ -94,13 +98,9 @@ def _run_stress_test(
     print("\n【ストレステスト: イベントリスクの影響】")
     print("─" * 70)
 
-    # Run no-events baseline
-    config_none = MonteCarloConfig(
-        n_simulations=base_config.n_simulations,
-        seed=base_config.seed,
-        return_volatility=base_config.return_volatility,
-        event_risks=None,
-    )
+    reloc_prob = (base_config.event_risks.relocation_annual_prob
+                  if base_config.event_risks else 0.03)
+    no_reloc = dict(relocation_annual_prob=0)
     scenarios = [
         ("ベース(イベントなし)", None),
         ("失業6ヶ月(年2%)", EventRiskConfig(
@@ -109,6 +109,7 @@ def _run_stress_test(
             rental_rejection_prob_after_70=0,
             divorce_annual_prob=0,
             spouse_death_annual_prob=0,
+            **no_reloc,
         )),
         ("離婚(年1%)", EventRiskConfig(
             job_loss_annual_prob=0,
@@ -116,9 +117,21 @@ def _run_stress_test(
             care_annual_prob_after_75=0,
             rental_rejection_prob_after_70=0,
             spouse_death_annual_prob=0,
+            **no_reloc,
         )),
-        ("全イベント", EventRiskConfig()),
+        ("全イベント", EventRiskConfig(relocation_annual_prob=reloc_prob)),
     ]
+    # Add 転勤族 scenario only when elevated probability
+    if reloc_prob > 0.03:
+        scenarios.insert(-1, (f"転勤族(年{reloc_prob:.0%})", EventRiskConfig(
+            job_loss_annual_prob=0,
+            disaster_annual_prob=0,
+            care_annual_prob_after_75=0,
+            rental_rejection_prob_after_70=0,
+            divorce_annual_prob=0,
+            spouse_death_annual_prob=0,
+            relocation_annual_prob=reloc_prob,
+        )))
     all_scenario_results = []
     for i, (label, event_cfg) in enumerate(scenarios):
         print(f"\r  ストレステスト: {i + 1}/{len(scenarios)} {label}...", end="", file=sys.stderr, flush=True)
@@ -126,6 +139,7 @@ def _run_stress_test(
             n_simulations=base_config.n_simulations,
             seed=base_config.seed,
             return_volatility=base_config.return_volatility,
+            loan_rate_volatility=base_config.loan_rate_volatility,
             event_risks=event_cfg,
         )
         results = run_monte_carlo_all_strategies(
@@ -170,26 +184,36 @@ def main():
         emergency_fund_months=r["emergency_fund"],
     )
 
-    event_risks = None if args.no_events else EventRiskConfig()
+    RELOCATION_TENSHOKUZOKU_PROB = 0.10
+    if args.no_events:
+        event_risks = None
+    elif r["relocation"]:
+        event_risks = EventRiskConfig(relocation_annual_prob=RELOCATION_TENSHOKUZOKU_PROB)
+    else:
+        event_risks = EventRiskConfig()
 
     mc_config = MonteCarloConfig(
         n_simulations=args.mc_runs,
         seed=args.seed,
         return_volatility=args.volatility,
+        loan_rate_volatility=args.loan_volatility,
         event_risks=event_risks,
     )
 
     sim_years = 80 - start_age
     print("=" * 80)
     print(f"Monte Carlo 住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
-    print(f"  N={args.mc_runs:,} / σ={args.volatility:.0%} / seed={args.seed}")
+    print(f"  N={args.mc_runs:,} / σ={args.volatility:.0%} / 金利σ={args.loan_volatility:.3f} / seed={args.seed}")
     print(f"  初期資産: {initial_savings:.0f}万円 / 月収手取り: {r['income']:.1f}万円")
     if child_birth_ages:
         parts = [f"{a}歳" for a in child_birth_ages]
         print(f"  子供: {', '.join(parts)}出産")
     else:
         print("  子供: なし")
-    print(f"  イベントリスク: {'無効' if args.no_events else '有効'}")
+    event_info = "無効" if args.no_events else "有効"
+    if not args.no_events and r["relocation"]:
+        event_info += f"（転勤族: 年{RELOCATION_TENSHOKUZOKU_PROB:.0%}）"
+    print(f"  イベントリスク: {event_info}")
     print("=" * 80)
 
     results = run_monte_carlo_all_strategies(

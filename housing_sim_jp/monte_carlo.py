@@ -38,6 +38,8 @@ class MonteCarloConfig:
     inflation_volatility: float = 0.005
     land_volatility: float = 0.03
     land_inflation_correlation: float = 0.6
+    loan_rate_volatility: float = 0.0       # σ for loan rate shift (0=deterministic)
+    loan_inflation_correlation: float = 0.7  # correlation with inflation
     event_risks: EventRiskConfig | None = None
 
 
@@ -134,11 +136,23 @@ def run_monte_carlo(
             config.land_inflation_correlation,
         )
 
+        # Sample loan rate shift correlated with inflation
+        if config.loan_rate_volatility > 0 and config.inflation_volatility > 0:
+            inflation_z = (sampled_inflation - base_params.inflation_rate) / config.inflation_volatility
+            z_loan = rng.gauss(0, 1)
+            loan_z = (config.loan_inflation_correlation * inflation_z
+                      + math.sqrt(1 - config.loan_inflation_correlation ** 2) * z_loan)
+            loan_rate_shift = loan_z * config.loan_rate_volatility
+            shifted_schedule = [max(0.001, r + loan_rate_shift) for r in base_params.loan_rate_schedule]
+        else:
+            shifted_schedule = base_params.loan_rate_schedule
+
         params = dataclasses.replace(
             base_params,
             inflation_rate=sampled_inflation,
             land_appreciation=sampled_land,
             annual_investment_returns=annual_returns,
+            loan_rate_schedule=shifted_schedule,
         )
 
         # Sample event timeline

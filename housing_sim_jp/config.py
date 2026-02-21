@@ -15,6 +15,7 @@ DEFAULTS = {
     "child_living": 5.0,
     "education": 10.0,
     "car": False,
+    "relocation": False,
     "ideco": 4.0,
     "emergency_fund": 6.0,
 }
@@ -51,6 +52,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
     parser.add_argument("--education", type=float, default=None, help=f"教育費（万円/月/人）(default: {d['education']})")
     parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")
+    parser.add_argument("--relocation", action="store_true", default=None, help="転勤族モード（転勤確率が年3%%→10%%に上昇）")
     parser.add_argument("--ideco", type=float, default=None, help=f"iDeCo拠出額（夫婦合計・万円/月）(default: {d['ideco']})")
     parser.add_argument("--emergency-fund", type=float, default=None, help=f"生活防衛資金（生活費の何ヶ月分）(default: {d['emergency_fund']})")
     return parser

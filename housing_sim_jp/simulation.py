@@ -530,6 +530,61 @@ def _apply_spouse_death(strategy: Strategy, life_insurance_payout: float) -> flo
     return -life_insurance_payout
 
 
+def _apply_relocation(
+    month: int,
+    start_age: int,
+    strategy: Strategy,
+    params: SimulationParams,
+    purchase_month_offset: int,
+    relocation_cost: float,
+) -> tuple[float, int]:
+    """Apply relocation event: sell current property, buy equivalent at new location.
+
+    Purchase strategies: sell (with liquidation cost) → buy again (new initial cost + new loan).
+    Rental strategies: moving cost only.
+
+    Returns (event_cost_adj, new_purchase_month_offset). Mutates strategy (resets loan).
+    """
+    event_cost_adj = relocation_cost  # moving expense
+
+    if strategy.property_price > 0:
+        # Sell current property
+        years_owned = (month - purchase_month_offset) / 12
+        if years_owned > 0:
+            market_value = _inflate_property_price(strategy, params, years_owned)
+        else:
+            market_value = strategy.property_price
+        sale_proceeds = market_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
+
+        # Buy equivalent property at current market price
+        years_elapsed = month / 12
+        new_price = _inflate_property_price(strategy, params, years_elapsed)
+        original_price = type(strategy).PROPERTY_PRICE
+        price_ratio = new_price / original_price
+        new_initial_cost = type(strategy).INITIAL_COST * price_ratio
+
+        # Net cost: initial cost for new property - sale proceeds from old
+        event_cost_adj += new_initial_cost
+        event_cost_adj -= sale_proceeds  # positive proceeds reduce cost, negative increase it
+
+        # Reset loan for new property
+        age = start_age + month // 12
+        new_loan_months = min(35, END_AGE - age) * 12
+        if new_loan_months <= 0:
+            new_loan_months = 12  # minimum 1 year
+        strategy.property_price = new_price
+        strategy.loan_amount = new_price
+        strategy.loan_months = new_loan_months
+        strategy.remaining_balance = new_price
+        strategy.monthly_payment = _calc_equal_payment(
+            new_price, params.get_loan_rate(0), new_loan_months,
+        )
+
+        return event_cost_adj, month  # new purchase_month_offset = current month
+
+    return event_cost_adj, purchase_month_offset
+
+
 def _try_car_purchase(
     age: int,
     month: int,
@@ -843,10 +898,11 @@ def simulate_strategy(
     taxable_balance = initial - nisa_deposit
     taxable_cost_basis = initial - nisa_deposit
 
-    # Divorce / death state
+    # Divorce / death / relocation state
     is_divorced = False
     is_spouse_dead = False
-    divorce_rental_cost = 0.0  # Post-divorce 2LDK rent (set at divorce time)
+    is_relocated = False
+    forced_rental_cost = 0.0  # Post-divorce/relocation 2LDK rent
 
     # iDeCo state
     ideco_balance = 0.0
@@ -924,23 +980,37 @@ def simulate_strategy(
             if event_timeline.divorce_month is not None and month == event_timeline.divorce_month and not is_divorced:
                 is_divorced = True
                 (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-                 ideco_balance, emergency_fund, cost_adj, divorce_rental_cost) = _apply_divorce(
+                 ideco_balance, emergency_fund, cost_adj, divorce_rent) = _apply_divorce(
                     month, strategy, params, purchase_month_offset,
                     nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
                     ideco_balance, emergency_fund,
                 )
+                forced_rental_cost = divorce_rent
                 event_extra_cost += cost_adj
 
             if event_timeline.spouse_death_month is not None and month == event_timeline.spouse_death_month and not is_spouse_dead:
                 is_spouse_dead = True
                 event_extra_cost += _apply_spouse_death(strategy, event_timeline.life_insurance_payout)
 
+            if (event_timeline.relocation_month is not None
+                    and month == event_timeline.relocation_month
+                    and not is_relocated and not is_divorced):
+                is_relocated = True
+                reloc_cost, new_offset = _apply_relocation(
+                    month, start_age, strategy, params, purchase_month_offset,
+                    event_timeline.relocation_cost,
+                )
+                purchase_month_offset = new_offset
+                event_extra_cost += reloc_cost
+
             # Post-event income/cost adjustments
             if is_divorced or is_spouse_dead:
                 monthly_income *= params.husband_income_ratio
                 living_cost *= 0.7
-                if is_divorced:
-                    housing_cost = divorce_rental_cost + divorce_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
+
+            if is_divorced:
+                if strategy.property_price == 0 and forced_rental_cost > 0:
+                    housing_cost = forced_rental_cost + forced_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
                     loan_deduction = 0
 
             if is_spouse_dead and age >= PENSION_AGE:

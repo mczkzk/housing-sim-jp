@@ -26,6 +26,9 @@ class EventRiskConfig:
     spouse_death_annual_prob: float = 0.003  # 年0.3%（夫婦合計）
     life_insurance_payout: float = 3000      # 生命保険金（万円）
     survivor_pension_annual: float = 75      # 遺族年金（万円/年、簡易定額）
+    # Relocation
+    relocation_annual_prob: float = 0.03    # 一般大企業 年3%（転勤族は10%に上昇）
+    relocation_cost: float = 40.0           # 引越し費用（万円）
 
 
 @dataclass
@@ -43,6 +46,9 @@ class EventTimeline:
     spouse_death_month: int | None = None
     life_insurance_payout: float = 3000
     survivor_pension_annual: float = 75
+    # Relocation (independent of divorce/death)
+    relocation_month: int | None = None
+    relocation_cost: float = 40.0
 
     def get_extra_cost(self, month: int, age: int, params: SimulationParams) -> float:
         """Calculate extra monthly cost from care and rental rejection events."""
@@ -128,5 +134,16 @@ def sample_events(
         if rng.random() < config.spouse_death_annual_prob:
             timeline.spouse_death_month = year_idx * 12
             break
+
+    # Relocation (working age only, max 1 occurrence, opt-in)
+    timeline.relocation_cost = config.relocation_cost
+    if config.relocation_annual_prob > 0:
+        for year_idx in range(total_years):
+            age = start_age + year_idx
+            if age >= REEMPLOYMENT_AGE:
+                break
+            if rng.random() < config.relocation_annual_prob:
+                timeline.relocation_month = year_idx * 12
+                break
 
     return timeline
