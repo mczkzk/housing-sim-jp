@@ -432,7 +432,6 @@ def _update_investments(
     """Apply returns and invest/withdraw. Returns (nisa_bal, nisa_cb, tax_bal, tax_cb, bankrupt_flag).
     bankrupt_flag is True if bankruptcy occurred this month.
     """
-    # Apply monthly returns
     nisa_balance *= 1 + monthly_return_rate
     taxable_balance *= 1 + monthly_return_rate
 
@@ -639,7 +638,6 @@ def _try_pet_adoption(
 
     Returns (one_time_cost, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age).
     """
-    # Check lifespan expiry
     if pet_active and age >= pet_end_age:
         pet_active = False
 
@@ -693,7 +691,6 @@ def _process_ideco(
         if month % 12 == 0:
             ideco_contribution_years += 1
 
-    # Apply investment returns
     if ideco_balance > 0:
         ideco_balance *= 1 + monthly_return_rate
 
