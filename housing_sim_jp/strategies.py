@@ -34,7 +34,6 @@ _HOUSE_MAINTENANCE_FINAL = 1.8
 
 @dataclass
 class Strategy:
-    """Base class for housing strategies"""
 
     name: str
     initial_savings: float
@@ -130,7 +129,6 @@ class UrawaMansion(Strategy):
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
     ) -> float:
-        """Loan + management + repair reserve + tax + insurance"""
         years_elapsed = months_elapsed / 12
         building_age = self.PURCHASE_AGE_OF_BUILDING + years_elapsed
         inflation = (1 + params.inflation_rate) ** years_elapsed
@@ -181,7 +179,6 @@ class UrawaHouse(Strategy):
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
     ) -> float:
-        """Loan + property tax + maintenance + insurance + security"""
         years_elapsed = months_elapsed / 12
         house_age = self.PURCHASE_AGE_OF_BUILDING + years_elapsed
         inflation = (1 + params.inflation_rate) ** years_elapsed

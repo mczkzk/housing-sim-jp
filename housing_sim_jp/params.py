@@ -32,7 +32,6 @@ def base_living_cost(age: int) -> float:
 
 @dataclass
 class SimulationParams:
-    """Simulation parameters"""
 
     # Economic parameters
     inflation_rate: float = 0.015
