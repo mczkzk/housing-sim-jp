@@ -64,6 +64,22 @@ class EventTimeline:
         return cost
 
 
+def _sample_first_hit(
+    rng: Random, total_years: int, start_age: int, prob: float,
+    *, min_age: int = 0, max_age: int = 999,
+) -> int | None:
+    """Sample first occurrence within age range. Returns month or None."""
+    for year_idx in range(total_years):
+        age = start_age + year_idx
+        if age < min_age:
+            continue
+        if age >= max_age:
+            break
+        if rng.random() < prob:
+            return year_idx * 12
+    return None
+
+
 def sample_events(
     rng: Random,
     config: EventRiskConfig,
@@ -78,7 +94,7 @@ def sample_events(
     )
     total_years = total_months // 12
 
-    # Job loss (working age only: < REEMPLOYMENT_AGE)
+    # Job loss (working age only, multiple occurrences with duration)
     occurrences = 0
     for year_idx in range(total_years):
         age = start_age + year_idx
@@ -93,7 +109,7 @@ def sample_events(
                     timeline.job_loss_months.add(start_month + m)
             occurrences += 1
 
-    # Disaster (property owners only)
+    # Disaster (property owners only, accumulates all hits)
     if not is_rental:
         for year_idx in range(total_years):
             if rng.random() < config.disaster_annual_prob:
@@ -102,24 +118,17 @@ def sample_events(
                 )
                 timeline.disaster_events[year_idx] = net_damage
 
-    # Care need (75+ only)
-    for year_idx in range(total_years):
-        age = start_age + year_idx
-        if age < 75:
-            continue
-        if rng.random() < config.care_annual_prob_after_75:
-            timeline.care_start_month = year_idx * 12
-            break
+    # Care need (75+ only, first hit)
+    timeline.care_start_month = _sample_first_hit(
+        rng, total_years, start_age, config.care_annual_prob_after_75, min_age=75,
+    )
 
-    # Rental rejection premium (PENSION_AGE+ renters only)
+    # Rental rejection premium (PENSION_AGE+ renters only, first hit)
     if is_rental:
-        for year_idx in range(total_years):
-            age = start_age + year_idx
-            if age < PENSION_AGE:
-                continue
-            if rng.random() < config.rental_rejection_prob_after_70:
-                timeline.rental_rejection_month = year_idx * 12
-                break
+        timeline.rental_rejection_month = _sample_first_hit(
+            rng, total_years, start_age, config.rental_rejection_prob_after_70,
+            min_age=PENSION_AGE,
+        )
 
     # Divorce / spouse death (mutually exclusive, stop at PENSION_AGE)
     timeline.life_insurance_payout = config.life_insurance_payout
@@ -135,15 +144,12 @@ def sample_events(
             timeline.spouse_death_month = year_idx * 12
             break
 
-    # Relocation (working age only, max 1 occurrence, opt-in)
+    # Relocation (working age only, max 1 occurrence)
     timeline.relocation_cost = config.relocation_cost
     if config.relocation_annual_prob > 0:
-        for year_idx in range(total_years):
-            age = start_age + year_idx
-            if age >= REEMPLOYMENT_AGE:
-                break
-            if rng.random() < config.relocation_annual_prob:
-                timeline.relocation_month = year_idx * 12
-                break
+        timeline.relocation_month = _sample_first_hit(
+            rng, total_years, start_age, config.relocation_annual_prob,
+            max_age=REEMPLOYMENT_AGE,
+        )
 
     return timeline
