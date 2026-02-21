@@ -40,8 +40,8 @@ python -m pytest tests/ -v
 
 ```bash
 cp config.example-25.toml config.toml   # 25歳プリセット（200万/55万/子2人）
-cp config.example-30.toml config.toml   # 30歳プリセット（800万/75万/子2人）
-cp config.example-35.toml config.toml   # 35歳プリセット（2000万/85万/子1人/車/ペット1匹）
+cp config.example-30.toml config.toml   # 30歳プリセット（800万/65万/子2人）
+cp config.example-35.toml config.toml   # 35歳プリセット（2000万/75万/子1人/生活費P5万/教育費P20万/ペット1匹）
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
 python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個別に上書き
@@ -174,5 +174,5 @@ python -m housing_sim_jp.chart_cli --mc-runs 500 --output reports/charts/
 | レポート | 条件 |
 |---------|------|
 | [reports/report-25.md](reports/report-25.md) | 25歳・200万・手取り55万・子2人（30,32歳出産）・教育費ピーク15万/月 |
-| [reports/report-30.md](reports/report-30.md) | 30歳・800万・手取り75万・子2人（33,35歳出産）・教育費ピーク15万/月 |
-| [reports/report-35.md](reports/report-35.md) | 35歳・2000万・手取り85万・子1人（37歳出産）・教育費ピーク20万/月・車・ペット1匹 |
+| [reports/report-30.md](reports/report-30.md) | 30歳・800万・手取り65万・子2人（33,35歳出産）・教育費ピーク15万/月 |
+| [reports/report-35.md](reports/report-35.md) | 35歳・2000万・手取り75万・子1人（37歳出産）・生活費プレミアム5万・教育費ピーク20万/月・ペット1匹 |

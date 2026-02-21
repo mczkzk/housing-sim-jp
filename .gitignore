@@ -28,9 +28,9 @@ Thumbs.db
 config.toml
 
 # Personal reports
-report-my.md
-mc_fan-my.png
-trajectory-my.png
+report.md
+mc_fan.png
+trajectory.png
 
 # Claude Code
 .claude/
