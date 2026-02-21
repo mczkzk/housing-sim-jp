@@ -978,7 +978,6 @@ def simulate_strategy(
             monthly_return_rate = fixed_monthly_return
 
         age = start_age + month // 12
-        months_in_current_age = month % 12
 
         # Car purchase/replacement at year boundaries (deferred if unaffordable)
         car_one_time, car_owned, car_first_purchase_age, next_car_due_age = _try_car_purchase(
