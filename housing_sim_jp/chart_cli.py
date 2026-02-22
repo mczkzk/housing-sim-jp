@@ -59,20 +59,24 @@ def main():
     children_str = str(r["children"]).strip().lower()
     child_birth_ages = [] if children_str == "none" else [int(x) for x in children_str.split(",")]
 
-    start_age = r["age"]
+    husband_age = r["husband_age"]
+    wife_age = r["wife_age"]
+    start_age = max(husband_age, wife_age)
     savings = r["savings"]
     output_dir = args.output
     chart_name = args.name
 
     special_expenses = parse_special_expenses(r["special_expenses"])
     params = SimulationParams(
-        initial_takehome_monthly=r["income"],
+        husband_income=r["husband_income"],
+        wife_income=r["wife_income"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
         pet_count=r["pets"],
-        ideco_monthly_contribution=r["ideco"],
+        husband_ideco=r["husband_ideco"],
+        wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=special_expenses,
     )
@@ -91,14 +95,17 @@ def main():
 
     det_results = []
     for strategy in strategies:
-        purchase_age = resolve_purchase_age(strategy, params, start_age, resolved_children)
+        purchase_age = resolve_purchase_age(
+            strategy, params, husband_age, wife_age, resolved_children,
+        )
         if purchase_age == INFEASIBLE:
             print(f"  {strategy.name}: 購入不可（スキップ）", file=sys.stderr)
             continue
         try:
             result = simulate_strategy(
                 strategy, params,
-                start_age=start_age,
+                husband_start_age=husband_age,
+                wife_start_age=wife_age,
                 child_birth_ages=resolved_children,
                 purchase_age=purchase_age,
             )
@@ -139,7 +146,7 @@ def main():
             event_risks=EventRiskConfig(),
         )
         mc_results = run_monte_carlo_all_strategies(
-            params, mc_config, start_age, savings,
+            params, mc_config, husband_age, wife_age, savings,
             child_birth_ages=resolved_children,
             collect_yearly=True,
         )

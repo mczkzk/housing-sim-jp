@@ -8,33 +8,36 @@ from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, I
 
 def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth_ages: list[int]):
     sim_years = 80 - start_age
-    income = r["income"]
+    h_income = r["husband_income"]
+    w_income = r["wife_income"]
     savings = r["savings"]
     print("=" * 80)
     print(f"住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
-    print(f"  初期資産: {savings:.0f}万円 / 月収手取り: {income:.1f}万円")
+    print(f"  初期資産: {savings:.0f}万円 / 夫手取り: {h_income:.1f}万円 / 妻手取り: {w_income:.1f}万円（合計{h_income + w_income:.1f}万円）")
     schedule = params.income_growth_schedule
-    parts = []
-    prev_age = start_age
-    projected = income
-    for threshold, rate in schedule:
-        if threshold <= start_age:
-            continue
-        if prev_age < threshold:
-            projected *= (1 + rate) ** (threshold - prev_age)
-            parts.append(f"{threshold}歳 {projected:.1f}万")
-            prev_age = threshold
-    if parts:
-        print(f"  収入成長: {start_age}歳 {income:.1f}万 → {'→'.join(parts)}")
+    for label, age_val, base in [("夫", r["husband_age"], h_income), ("妻", r["wife_age"], w_income)]:
+        parts = []
+        prev_age = age_val
+        projected = base
+        for threshold, rate in schedule:
+            if threshold <= age_val:
+                continue
+            if prev_age < threshold:
+                projected *= (1 + rate) ** (threshold - prev_age)
+                parts.append(f"{threshold}歳 {projected:.1f}万")
+                prev_age = threshold
+        if parts:
+            print(f"  {label}収入成長: {age_val}歳 {base:.1f}万 → {'→'.join(parts)}")
     if r["car"]:
         replacements = (80 - start_age) // params.car_replacement_years
         total_running = params.car_running_cost_monthly + params.car_parking_cost_monthly
         print(f"  車所有: {params.car_purchase_price:.0f}万円/{params.car_replacement_years}年買替（{replacements}回）+ 維持費{total_running:.1f}万/月（一戸建ては駐車場代{params.car_parking_cost_monthly:.1f}万不要）")
     if r["pets"] > 0:
         print(f"  ペット: {r['pets']}匹（1匹{params.pet_lifespan_years}年・飼育費{params.pet_monthly_cost:.1f}万/月、賃貸は+{params.pet_rental_premium:.1f}万/月）")
-    ideco = r["ideco"]
-    if ideco > 0:
-        print(f"  iDeCo: {ideco:.1f}万円/月（夫婦合計, 60歳まで拠出）")
+    h_ideco = r["husband_ideco"]
+    w_ideco = r["wife_ideco"]
+    if h_ideco > 0 or w_ideco > 0:
+        print(f"  iDeCo: 夫{h_ideco:.1f}万 + 妻{w_ideco:.1f}万 = {h_ideco + w_ideco:.1f}万円/月（60歳まで拠出）")
     if child_birth_ages:
         parts = [f"{a}歳出産→{a+7}〜{a+22}歳" for a in child_birth_ages]
         print(f"  教育費: 子{len(child_birth_ages)}人（{', '.join(parts)}）")
@@ -166,18 +169,22 @@ def main():
     """Execute main simulation (3 strategy comparison)"""
     r, child_birth_ages = parse_args("住宅資産形成シミュレーション")
 
-    start_age = r["age"]
+    husband_age = r["husband_age"]
+    wife_age = r["wife_age"]
+    start_age = max(husband_age, wife_age)
     savings = r["savings"]
 
     special_expenses = parse_special_expenses(r["special_expenses"])
     params = SimulationParams(
-        initial_takehome_monthly=r["income"],
+        husband_income=r["husband_income"],
+        wife_income=r["wife_income"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
         pet_count=r["pets"],
-        ideco_monthly_contribution=r["ideco"],
+        husband_ideco=r["husband_ideco"],
+        wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=special_expenses,
     )
@@ -191,7 +198,9 @@ def main():
 
     results = []
     for strategy in strategies:
-        purchase_age = resolve_purchase_age(strategy, params, start_age, child_birth_ages)
+        purchase_age = resolve_purchase_age(
+            strategy, params, husband_age, wife_age, child_birth_ages,
+        )
         if purchase_age == INFEASIBLE:
             print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
             results.append(None)
@@ -201,7 +210,9 @@ def main():
         try:
             results.append(
                 simulate_strategy(
-                    strategy, params, start_age=start_age,
+                    strategy, params,
+                    husband_start_age=husband_age,
+                    wife_start_age=wife_age,
                     child_birth_ages=child_birth_ages, purchase_age=purchase_age,
                 )
             )

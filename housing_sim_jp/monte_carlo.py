@@ -116,7 +116,8 @@ def run_monte_carlo(
     strategy_factory: Callable[[], Strategy],
     base_params: SimulationParams,
     config: MonteCarloConfig,
-    start_age: int,
+    husband_start_age: int,
+    wife_start_age: int,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
     purchase_age: int | None = None,
@@ -129,6 +130,7 @@ def run_monte_carlo(
     and compute percentiles per age.
     """
     rng = Random(config.seed)
+    start_age = max(husband_start_age, wife_start_age)
     n_years = END_AGE - start_age
     results_list: list[float] = []
     bankrupt_count = 0
@@ -184,7 +186,7 @@ def run_monte_carlo(
         run_purchase_age = purchase_age
         if run_purchase_age is None and strategy.property_price > 0:
             run_purchase_age = resolve_purchase_age(
-                strategy, params, start_age, child_birth_ages,
+                strategy, params, husband_start_age, wife_start_age, child_birth_ages,
             )
             if run_purchase_age == INFEASIBLE:
                 results_list.append(0.0)
@@ -196,7 +198,8 @@ def run_monte_carlo(
         try:
             result = simulate_strategy(
                 strategy, params,
-                start_age=start_age,
+                husband_start_age=husband_start_age,
+                wife_start_age=wife_start_age,
                 discipline_factor=discipline_factor,
                 child_birth_ages=child_birth_ages,
                 purchase_age=run_purchase_age,
@@ -254,7 +257,8 @@ def run_monte_carlo(
 def run_monte_carlo_all_strategies(
     base_params: SimulationParams,
     config: MonteCarloConfig,
-    start_age: int,
+    husband_start_age: int,
+    wife_start_age: int,
     initial_savings: float,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
@@ -262,6 +266,7 @@ def run_monte_carlo_all_strategies(
     collect_yearly: bool = False,
 ) -> list[MonteCarloResult]:
     """Run Monte Carlo simulation for all 4 strategies."""
+    start_age = max(husband_start_age, wife_start_age)
     # Resolve child_birth_ages once for consistency
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
 
@@ -285,7 +290,8 @@ def run_monte_carlo_all_strategies(
             strategy_factory=factory,
             base_params=base_params,
             config=config,
-            start_age=start_age,
+            husband_start_age=husband_start_age,
+            wife_start_age=wife_start_age,
             discipline_factor=discipline_factor if discipline_factor != 1.0 else disc,
             child_birth_ages=child_birth_ages,
             quiet=quiet,

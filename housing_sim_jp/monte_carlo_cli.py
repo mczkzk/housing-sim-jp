@@ -125,7 +125,8 @@ def _build_stress_scenarios(
 def _run_stress_test(
     base_params: SimulationParams,
     base_config: MonteCarloConfig,
-    start_age: int,
+    husband_start_age: int,
+    wife_start_age: int,
     initial_savings: float,
     child_birth_ages: list[int],
 ):
@@ -145,7 +146,7 @@ def _run_stress_test(
             event_risks=event_cfg,
         )
         results = run_monte_carlo_all_strategies(
-            base_params, cfg, start_age, initial_savings,
+            base_params, cfg, husband_start_age, wife_start_age, initial_savings,
             child_birth_ages=child_birth_ages,
             quiet=True,
         )
@@ -173,18 +174,22 @@ def main():
     children_str = str(r["children"]).strip().lower()
     child_birth_ages = [] if children_str == "none" else [int(x) for x in children_str.split(",")]
 
-    start_age = r["age"]
+    husband_age = r["husband_age"]
+    wife_age = r["wife_age"]
+    start_age = max(husband_age, wife_age)
     initial_savings = r["savings"]
 
     special_expenses = parse_special_expenses(r["special_expenses"])
     base_params = SimulationParams(
-        initial_takehome_monthly=r["income"],
+        husband_income=r["husband_income"],
+        wife_income=r["wife_income"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
         pet_count=r["pets"],
-        ideco_monthly_contribution=r["ideco"],
+        husband_ideco=r["husband_ideco"],
+        wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=special_expenses,
     )
@@ -205,11 +210,13 @@ def main():
         event_risks=event_risks,
     )
 
+    h_income = r["husband_income"]
+    w_income = r["wife_income"]
     sim_years = 80 - start_age
     print("=" * 80)
     print(f"Monte Carlo 住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
     print(f"  N={args.mc_runs:,} / σ={args.volatility:.0%} / 金利σ={args.loan_volatility:.3f} / seed={args.seed}")
-    print(f"  初期資産: {initial_savings:.0f}万円 / 月収手取り: {r['income']:.1f}万円")
+    print(f"  初期資産: {initial_savings:.0f}万円 / 夫手取り: {h_income:.1f}万円 / 妻手取り: {w_income:.1f}万円（合計{h_income + w_income:.1f}万円）")
     if child_birth_ages:
         parts = [f"{a}歳" for a in child_birth_ages]
         print(f"  子供: {', '.join(parts)}出産")
@@ -224,7 +231,7 @@ def main():
     print("=" * 80)
 
     results = run_monte_carlo_all_strategies(
-        base_params, mc_config, start_age, initial_savings,
+        base_params, mc_config, husband_age, wife_age, initial_savings,
         child_birth_ages=child_birth_ages,
     )
 
@@ -232,7 +239,7 @@ def main():
 
     if args.stress_test:
         _run_stress_test(
-            base_params, mc_config, start_age, initial_savings, child_birth_ages,
+            base_params, mc_config, husband_age, wife_age, initial_savings, child_birth_ages,
         )
 
 

@@ -52,7 +52,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
 
     # Check 2: loan approval (purchase strategies only)
     if strategy.loan_amount > 0 and strategy.loan_months > 0:
-        takehome_monthly = params.initial_takehome_monthly
+        takehome_monthly = params.husband_income + params.wife_income
         gross_annual = takehome_monthly * 12 / TAKEHOME_TO_GROSS
 
         if gross_annual <= 0:
@@ -120,7 +120,8 @@ def _inflate_property_price(
 def find_earliest_purchase_age(
     strategy: Strategy,
     params: SimulationParams,
-    start_age: int,
+    husband_start_age: int,
+    wife_start_age: int,
     child_birth_ages: list[int] | None = None,
 ) -> int | None:
     """Find the earliest age at which the strategy passes loan screening.
@@ -132,6 +133,8 @@ def find_earliest_purchase_age(
     or None if purchase is never feasible.
     If the strategy is already feasible at start_age, returns None (caller uses normal flow).
     """
+    start_age = max(husband_start_age, wife_start_age)
+
     if not validate_strategy(strategy, params):
         return None  # Already feasible at start_age
 
@@ -160,10 +163,18 @@ def find_earliest_purchase_age(
         age = target_age - 1
         years_from_start = age - start_age
 
-        if age < REEMPLOYMENT_AGE:
-            projected_income = _project_working_income(years_from_start, start_age, params)
-        else:
-            projected_income = params.initial_takehome_monthly * 0.6
+        # Project combined income from both spouses
+        h_age = husband_start_age + years_from_start
+        w_age = wife_start_age + years_from_start
+        projected_income = 0.0
+        if h_age < REEMPLOYMENT_AGE:
+            projected_income += _project_working_income(
+                years_from_start, husband_start_age, params.husband_income, params,
+            )
+        if w_age < REEMPLOYMENT_AGE:
+            projected_income += _project_working_income(
+                years_from_start, wife_start_age, params.wife_income, params,
+            )
 
         # Monthly expenses during rental phase
         inflation = (1 + params.inflation_rate) ** years_from_start
@@ -177,13 +188,19 @@ def find_earliest_purchase_age(
 
         monthly_surplus = projected_income - housing - education - living
         # iDeCo contributions are locked until 71 → not available for purchase
-        if age < REEMPLOYMENT_AGE and params.ideco_monthly_contribution > 0:
-            ideco = params.ideco_monthly_contribution
-            gross_annual = projected_income * 12 / TAKEHOME_TO_GROSS
-            taxable_income = estimate_taxable_income(gross_annual)
-            marginal_rate = calc_marginal_income_tax_rate(taxable_income)
-            tax_benefit = calc_ideco_tax_benefit_monthly(ideco, marginal_rate)
-            monthly_surplus -= ideco - tax_benefit
+        total_ideco = params.husband_ideco + params.wife_ideco
+        if total_ideco > 0:
+            # Per-person iDeCo with per-person tax benefit
+            for person_age, contribution, base_inc in [
+                (h_age, params.husband_ideco, params.husband_income),
+                (w_age, params.wife_ideco, params.wife_income),
+            ]:
+                if person_age < REEMPLOYMENT_AGE and contribution > 0:
+                    gross_annual = base_inc * 12 / TAKEHOME_TO_GROSS
+                    taxable_income = estimate_taxable_income(gross_annual)
+                    marginal_rate = calc_marginal_income_tax_rate(taxable_income)
+                    tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_rate)
+                    monthly_surplus -= contribution - tax_benefit
         # Accumulate 12 months of surplus with investment returns
         for _ in range(12):
             savings *= (1 + monthly_return_rate)
@@ -203,7 +220,12 @@ def find_earliest_purchase_age(
 
         # Check feasibility at target_age with inflated property price
         years_to_target = target_age - start_age
-        projected_income_at_target = _project_working_income(years_to_target, start_age, params)
+        h_projected = _project_working_income(
+            years_to_target, husband_start_age, params.husband_income, params,
+        )
+        w_projected = _project_working_income(
+            years_to_target, wife_start_age, params.wife_income, params,
+        )
         loan_months = min(35, 80 - target_age) * 12
         if loan_months <= 0:
             continue
@@ -234,7 +256,7 @@ def find_earliest_purchase_age(
             test_strategy.loan_months = loan_months
 
         test_params = dataclasses.replace(
-            params, initial_takehome_monthly=projected_income_at_target
+            params, husband_income=h_projected, wife_income=w_projected,
         )
         errors = validate_strategy(test_strategy, test_params)
         if not errors:
@@ -249,7 +271,8 @@ INFEASIBLE = -1
 def resolve_purchase_age(
     strategy: Strategy,
     params: SimulationParams,
-    start_age: int,
+    husband_start_age: int,
+    wife_start_age: int,
     child_birth_ages: list[int] | None = None,
 ) -> int | None:
     """Determine the purchase age for a strategy.
@@ -263,7 +286,9 @@ def resolve_purchase_age(
         return None
     if not validate_strategy(strategy, params):
         return None
-    age = find_earliest_purchase_age(strategy, params, start_age, child_birth_ages)
+    age = find_earliest_purchase_age(
+        strategy, params, husband_start_age, wife_start_age, child_birth_ages,
+    )
     return age if age is not None else INFEASIBLE
 
 
@@ -275,28 +300,23 @@ CAREER_AVG_RATIO = 0.85        # ピーク月収→生涯平均 推定比率
 STANDARD_MONTHLY_CAP = 65.0    # 標準報酬月額上限 万円
 
 
-def _estimate_annual_pension(
-    peak_takehome_monthly: float, params: SimulationParams
-) -> float:
-    """Estimate annual pension from peak take-home income (公的年金+企業年金)."""
-    gross_peak = peak_takehome_monthly / TAKEHOME_TO_GROSS
+def _estimate_individual_pension(peak_monthly: float) -> float:
+    """Estimate annual public pension for one person (基礎年金+厚生年金, 企業年金含まず)."""
+    gross_peak = peak_monthly / TAKEHOME_TO_GROSS
     avg_gross = gross_peak * CAREER_AVG_RATIO
-    h_ratio = params.husband_income_ratio
-    h_avg = min(avg_gross * h_ratio, STANDARD_MONTHLY_CAP)
-    w_avg = min(avg_gross * (1 - h_ratio), STANDARD_MONTHLY_CAP)
-    h_kosei = h_avg * KOSEI_RATE * CAREER_MONTHS
-    w_kosei = w_avg * KOSEI_RATE * CAREER_MONTHS
-    public = (h_kosei + KISO_PENSION_ANNUAL) + (w_kosei + KISO_PENSION_ANNUAL)
-    return public + params.corporate_pension_annual
+    avg_standard = min(avg_gross, STANDARD_MONTHLY_CAP)
+    kosei = avg_standard * KOSEI_RATE * CAREER_MONTHS
+    return kosei + KISO_PENSION_ANNUAL
 
 
 def _project_working_income(
-    years_elapsed: float, start_age: int, params: SimulationParams
+    years_elapsed: float, person_start_age: int,
+    base_income: float, params: SimulationParams,
 ) -> float:
     """Project pre-retirement (< REEMPLOYMENT_AGE) working income based on years elapsed."""
-    current_age = start_age + years_elapsed
-    income = params.initial_takehome_monthly
-    prev_age = start_age
+    current_age = person_start_age + years_elapsed
+    income = base_income
+    prev_age = person_start_age
     for threshold, rate in params.income_growth_schedule:
         if current_age <= threshold:
             income *= (1 + rate) ** (current_age - prev_age)
@@ -309,31 +329,57 @@ def _project_working_income(
     return income
 
 
-def _calc_monthly_income(
-    month: int, start_age: int, params: SimulationParams, peak_income: float
+def _calc_individual_income(
+    month: int, person_start_age: int, base_income: float,
+    peak: float, corp_pension_share: float, params: SimulationParams,
 ) -> tuple[float, float]:
-    """Calculate monthly income. Returns (income, updated_peak_income)."""
+    """Calculate one person's monthly income. Returns (income, updated_peak)."""
     years_elapsed = month / 12
-    age = start_age + month // 12
+    person_age = person_start_age + month // 12
 
-    if age < REEMPLOYMENT_AGE:
-        monthly_income = _project_working_income(years_elapsed, start_age, params)
-        peak_income = monthly_income
-    elif age < PENSION_AGE:
-        years_since_reemploy = (month - (REEMPLOYMENT_AGE - start_age) * 12) / 12
-        monthly_income = peak_income * params.retirement_reduction * (
+    if person_age < REEMPLOYMENT_AGE:
+        monthly_income = _project_working_income(
+            years_elapsed, person_start_age, base_income, params,
+        )
+        peak = monthly_income
+    elif person_age < PENSION_AGE:
+        years_since_reemploy = (month - (REEMPLOYMENT_AGE - person_start_age) * 12) / 12
+        monthly_income = peak * params.retirement_reduction * (
             (1 + params.inflation_rate * 0.5) ** years_since_reemploy
         )
     else:
-        years_since_pension = age - PENSION_AGE
-        annual_pension = _estimate_annual_pension(peak_income, params)
+        years_since_pension = person_age - PENSION_AGE
+        public_pension = _estimate_individual_pension(peak)
+        annual_pension = public_pension + corp_pension_share
         annual_pension *= (
             (1 + params.inflation_rate - params.pension_real_reduction)
             ** years_since_pension
         )
         monthly_income = annual_pension / 12
 
-    return monthly_income, peak_income
+    return monthly_income, peak
+
+
+def _calc_monthly_income(
+    month: int, husband_start_age: int, wife_start_age: int,
+    params: SimulationParams, h_peak: float, w_peak: float,
+) -> tuple[float, float, float, float, float]:
+    """Calculate combined monthly income. Returns (total, h_income, w_income, h_peak, w_peak)."""
+    # Corporate pension split by initial income ratio
+    total_base = params.husband_income + params.wife_income
+    if total_base > 0:
+        h_corp_share = params.corporate_pension_annual * params.husband_income / total_base
+        w_corp_share = params.corporate_pension_annual * params.wife_income / total_base
+    else:
+        h_corp_share = w_corp_share = 0.0
+
+    h_income, h_peak = _calc_individual_income(
+        month, husband_start_age, params.husband_income, h_peak, h_corp_share, params,
+    )
+    w_income, w_peak = _calc_individual_income(
+        month, wife_start_age, params.wife_income, w_peak, w_corp_share, params,
+    )
+    return h_income + w_income, h_income, w_income, h_peak, w_peak
 
 
 # child_birth_age + offset → education cost period
@@ -686,7 +732,7 @@ def _try_pet_adoption(
 
 
 def _process_ideco(
-    age: int,
+    person_age: int,
     month: int,
     investable: float,
     ideco_balance: float,
@@ -695,18 +741,17 @@ def _process_ideco(
     ideco_contribution_years: int,
     ideco_tax_paid: float,
     monthly_return_rate: float,
-    params: SimulationParams,
+    contribution: float,
     marginal_tax_rate: float,
-) -> tuple[float, float, float, float, int, float]:
+) -> tuple[float, float, float, float, int, float, float]:
     """Process iDeCo contribution (before 60) and lump-sum withdrawal (at 71).
 
     Returns (investable, ideco_balance, ideco_total_contribution,
-             ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid).
+             ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
+             ideco_withdrawal_gross).
     """
-    contribution = params.ideco_monthly_contribution
-
     # Contribute before retirement age
-    if contribution > 0 and age < REEMPLOYMENT_AGE:
+    if contribution > 0 and person_age < REEMPLOYMENT_AGE:
         investable -= contribution
         tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_tax_rate)
         investable += tax_benefit
@@ -719,9 +764,9 @@ def _process_ideco(
     if ideco_balance > 0:
         ideco_balance *= 1 + monthly_return_rate
 
-    # Lump-sum withdrawal at age 71 (separate from retirement benefits by 1+ year)
+    # Lump-sum withdrawal at person's age 71
     ideco_withdrawal_gross = 0.0
-    if contribution > 0 and age == IDECO_WITHDRAWAL_AGE and month % 12 == 0 and ideco_balance > 0:
+    if contribution > 0 and person_age == IDECO_WITHDRAWAL_AGE and month % 12 == 0 and ideco_balance > 0:
         ideco_withdrawal_gross = ideco_balance
         retirement_tax = calc_retirement_income_tax(
             ideco_balance, ideco_contribution_years,
@@ -853,17 +898,20 @@ def resolve_child_birth_ages(
 def simulate_strategy(
     strategy: Strategy,
     params: SimulationParams,
-    start_age: int = 30,
+    husband_start_age: int = 30,
+    wife_start_age: int = 28,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
     purchase_age: int | None = None,
     event_timeline=None,
 ) -> dict:
-    """Execute simulation from start_age to 80.
+    """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
     child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
     purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
+    start_age = max(husband_start_age, wife_start_age)
+
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
     if child_birth_ages:
         if len(child_birth_ages) > MAX_CHILDREN:
@@ -983,20 +1031,28 @@ def simulate_strategy(
     is_relocated = False
     forced_rental_cost = 0.0  # Post-divorce/relocation 2LDK rent
 
-    # iDeCo state
-    ideco_balance = 0.0
-    ideco_total_contribution = 0.0
-    ideco_tax_benefit_total = 0.0
-    ideco_tax_paid = 0.0
-    ideco_withdrawal_gross = 0.0
-    ideco_contribution_years = 0
+    # iDeCo state — separate accounts for husband and wife
+    h_ideco_balance = 0.0
+    h_ideco_total_contribution = 0.0
+    h_ideco_tax_benefit_total = 0.0
+    h_ideco_tax_paid = 0.0
+    h_ideco_withdrawal_gross = 0.0
+    h_ideco_contribution_years = 0
+    w_ideco_balance = 0.0
+    w_ideco_total_contribution = 0.0
+    w_ideco_tax_benefit_total = 0.0
+    w_ideco_tax_paid = 0.0
+    w_ideco_withdrawal_gross = 0.0
+    w_ideco_contribution_years = 0
 
-    # Estimate marginal tax rate from initial income (for iDeCo tax benefit)
-    gross_annual = params.initial_takehome_monthly * 12 / TAKEHOME_TO_GROSS
-    taxable_income = estimate_taxable_income(gross_annual)
-    marginal_tax_rate = calc_marginal_income_tax_rate(taxable_income)
+    # Per-person marginal tax rates
+    h_gross_annual = params.husband_income * 12 / TAKEHOME_TO_GROSS
+    h_marginal_rate = calc_marginal_income_tax_rate(estimate_taxable_income(h_gross_annual))
+    w_gross_annual = params.wife_income * 12 / TAKEHOME_TO_GROSS
+    w_marginal_rate = calc_marginal_income_tax_rate(estimate_taxable_income(w_gross_annual))
 
-    peak_income = 0.0
+    h_peak = 0.0
+    w_peak = 0.0
     monthly_log = []
     bankrupt_age = None
     fixed_monthly_return = params.investment_return / 12
@@ -1009,6 +1065,8 @@ def simulate_strategy(
             monthly_return_rate = fixed_monthly_return
 
         age = start_age + month // 12
+        h_age = husband_start_age + month // 12
+        w_age = wife_start_age + month // 12
 
         # Car purchase/replacement at year boundaries (deferred if unaffordable)
         car_one_time, car_owned, car_first_purchase_age, next_car_due_age = _try_car_purchase(
@@ -1026,8 +1084,8 @@ def simulate_strategy(
             child_home_ranges,
         )
 
-        monthly_income, peak_income = _calc_monthly_income(
-            month, start_age, params, peak_income
+        monthly_income, h_income, w_income, h_peak, w_peak = _calc_monthly_income(
+            month, husband_start_age, wife_start_age, params, h_peak, w_peak,
         )
 
         if has_pre_purchase_rental and month < purchase_month_offset:
@@ -1068,22 +1126,27 @@ def simulate_strategy(
         if event_timeline is not None:
             if month in event_timeline.job_loss_months:
                 monthly_income = 0
+                h_income = 0
+                w_income = 0
             event_extra_cost = event_timeline.get_extra_cost(month, age, params)
 
             if event_timeline.divorce_month is not None and month == event_timeline.divorce_month and not is_divorced:
                 is_divorced = True
                 (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-                 ideco_balance, emergency_fund, cost_adj, divorce_rent) = _apply_divorce(
+                 _, emergency_fund, cost_adj, divorce_rent) = _apply_divorce(
                     month, strategy, params, purchase_month_offset,
                     nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-                    ideco_balance, emergency_fund,
+                    h_ideco_balance, emergency_fund,
                 )
+                # Husband keeps his iDeCo; wife's iDeCo leaves the simulation
+                w_ideco_balance = 0.0
                 forced_rental_cost = divorce_rent
                 event_extra_cost += cost_adj
 
             if event_timeline.spouse_death_month is not None and month == event_timeline.spouse_death_month and not is_spouse_dead:
                 is_spouse_dead = True
                 event_extra_cost += _apply_spouse_death(strategy, event_timeline.life_insurance_payout)
+                # Wife's iDeCo inherited by husband (stays in sim)
 
             if (event_timeline.relocation_month is not None
                     and month == event_timeline.relocation_month
@@ -1098,7 +1161,7 @@ def simulate_strategy(
 
             # Post-event income/cost adjustments
             if is_divorced or is_spouse_dead:
-                monthly_income *= params.husband_income_ratio
+                monthly_income = h_income  # husband's income only
                 living_cost *= 0.7
 
             if is_divorced:
@@ -1134,16 +1197,42 @@ def simulate_strategy(
         )
         investable_core = investable_running
 
-        # iDeCo: contribute, apply returns, withdraw at 60
-        (investable, ideco_balance, ideco_total_contribution,
-         ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
-         _ideco_gross) = _process_ideco(
-            age, month, investable, ideco_balance, ideco_total_contribution,
-            ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
-            monthly_return_rate, params, marginal_tax_rate,
+        # iDeCo: husband's account
+        (investable, h_ideco_balance, h_ideco_total_contribution,
+         h_ideco_tax_benefit_total, h_ideco_contribution_years, h_ideco_tax_paid,
+         _h_gross) = _process_ideco(
+            h_age, month, investable,
+            h_ideco_balance, h_ideco_total_contribution,
+            h_ideco_tax_benefit_total, h_ideco_contribution_years, h_ideco_tax_paid,
+            monthly_return_rate, params.husband_ideco, h_marginal_rate,
         )
-        if _ideco_gross > 0:
-            ideco_withdrawal_gross = _ideco_gross
+        if _h_gross > 0:
+            h_ideco_withdrawal_gross = _h_gross
+
+        # iDeCo: wife's account (skip if divorced or spouse dead)
+        if not is_divorced and not is_spouse_dead:
+            (investable, w_ideco_balance, w_ideco_total_contribution,
+             w_ideco_tax_benefit_total, w_ideco_contribution_years, w_ideco_tax_paid,
+             _w_gross) = _process_ideco(
+                w_age, month, investable,
+                w_ideco_balance, w_ideco_total_contribution,
+                w_ideco_tax_benefit_total, w_ideco_contribution_years, w_ideco_tax_paid,
+                monthly_return_rate, params.wife_ideco, w_marginal_rate,
+            )
+            if _w_gross > 0:
+                w_ideco_withdrawal_gross = _w_gross
+        elif w_ideco_balance > 0:
+            # Wife's iDeCo still grows (inherited/remaining balance)
+            w_ideco_balance *= 1 + monthly_return_rate
+            # Withdraw at husband's age 71 if still balance
+            if h_age == IDECO_WITHDRAWAL_AGE and month % 12 == 0:
+                retirement_tax = calc_retirement_income_tax(
+                    w_ideco_balance, w_ideco_contribution_years,
+                )
+                w_ideco_tax_paid = retirement_tax
+                investable += w_ideco_balance - retirement_tax
+                w_ideco_withdrawal_gross = w_ideco_balance
+                w_ideco_balance = 0.0
 
         # Emergency fund management: release excess / top up shortfall
         required_ef = _calc_required_emergency_fund(
@@ -1184,6 +1273,8 @@ def simulate_strategy(
                 {
                     "age": age,
                     "income": monthly_income,
+                    "husband_income": h_income,
+                    "wife_income": w_income,
                     "housing": housing_cost,
                     "education": education_cost,
                     "living": living_cost,
@@ -1193,6 +1284,12 @@ def simulate_strategy(
                     "balance": investment_balance,
                 }
             )
+
+    # Combine iDeCo totals for result
+    ideco_total_contribution = h_ideco_total_contribution + w_ideco_total_contribution
+    ideco_tax_benefit_total = h_ideco_tax_benefit_total + w_ideco_tax_benefit_total
+    ideco_tax_paid = h_ideco_tax_paid + w_ideco_tax_paid
+    ideco_withdrawal_gross = h_ideco_withdrawal_gross + w_ideco_withdrawal_gross
 
     if bankrupt_age is not None:
         return {

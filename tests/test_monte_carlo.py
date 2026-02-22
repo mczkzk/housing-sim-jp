@@ -24,14 +24,14 @@ class TestDeterministicUnchanged:
     """annual_investment_returns=None preserves existing snapshot values."""
 
     def test_mansion_snapshot(self):
-        params = SimulationParams()
-        r = simulate_strategy(UrawaMansion(800), params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(18856.302400, abs=0.01)
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        r = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r["after_tax_net_assets"] == pytest.approx(18761.431675, abs=0.01)
 
     def test_house_snapshot(self):
-        params = SimulationParams()
-        r = simulate_strategy(UrawaHouse(800), params, start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(25729.137245, abs=0.01)
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        r = simulate_strategy(UrawaHouse(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r["after_tax_net_assets"] == pytest.approx(25635.017204, abs=0.01)
 
 
 class TestLogNormalMean:
@@ -86,15 +86,15 @@ class TestReproducibility:
     """Same seed should produce identical results."""
 
     def test_same_seed_same_result(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         config = MonteCarloConfig(n_simulations=10, seed=42)
         r1 = run_monte_carlo(
             lambda: StrategicRental(800, child_birth_ages=[39], start_age=37),
-            params, config, start_age=37, child_birth_ages=[39],
+            params, config, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         r2 = run_monte_carlo(
             lambda: StrategicRental(800, child_birth_ages=[39], start_age=37),
-            params, config, start_age=37, child_birth_ages=[39],
+            params, config, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         assert r1.after_tax_net_assets == pytest.approx(r2.after_tax_net_assets, abs=0.001)
 
@@ -103,16 +103,16 @@ class TestHigherVolWiderSpread:
     """Higher volatility should produce wider P5-P95 spread."""
 
     def test_spread_increases_with_vol(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         config_low = MonteCarloConfig(n_simulations=200, seed=42, return_volatility=0.05)
         config_high = MonteCarloConfig(n_simulations=200, seed=42, return_volatility=0.30)
         r_low = run_monte_carlo(
             lambda: StrategicRental(800, child_birth_ages=[39], start_age=37),
-            params, config_low, start_age=37, child_birth_ages=[39],
+            params, config_low, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         r_high = run_monte_carlo(
             lambda: StrategicRental(800, child_birth_ages=[39], start_age=37),
-            params, config_high, start_age=37, child_birth_ages=[39],
+            params, config_high, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         spread_low = r_low.percentiles[95] - r_low.percentiles[5]
         spread_high = r_high.percentiles[95] - r_high.percentiles[5]
@@ -162,10 +162,10 @@ class TestBasicRunCompletes:
     """All 4 strategies should complete without error."""
 
     def test_all_strategies_complete(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         config = MonteCarloConfig(n_simulations=10, seed=42)
         results = run_monte_carlo_all_strategies(
-            params, config, start_age=37, initial_savings=800,
+            params, config, husband_start_age=37, wife_start_age=37, initial_savings=800,
             child_birth_ages=[39],
         )
         assert len(results) == 4
@@ -174,13 +174,13 @@ class TestBasicRunCompletes:
             assert len(r.after_tax_net_assets) > 0
 
     def test_with_events(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         config = MonteCarloConfig(
             n_simulations=10, seed=42,
             event_risks=EventRiskConfig(),
         )
         results = run_monte_carlo_all_strategies(
-            params, config, start_age=37, initial_savings=800,
+            params, config, husband_start_age=37, wife_start_age=37, initial_savings=800,
             child_birth_ages=[39],
         )
         assert len(results) == 4
@@ -190,7 +190,7 @@ class TestLoanRateShift:
     """Loan rate volatility should widen spread for purchase strategies."""
 
     def test_std_increases_for_purchase(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         config_zero = MonteCarloConfig(
             n_simulations=500, seed=42, loan_rate_volatility=0.0,
         )
@@ -199,11 +199,11 @@ class TestLoanRateShift:
         )
         r_zero = run_monte_carlo(
             lambda: UrawaMansion(800), params, config_zero,
-            start_age=37, child_birth_ages=[39],
+            husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         r_vol = run_monte_carlo(
             lambda: UrawaMansion(800), params, config_vol,
-            start_age=37, child_birth_ages=[39],
+            husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         assert r_vol.std > r_zero.std
 
@@ -239,18 +239,18 @@ class TestLoanRateZeroVolBackcompat:
     """volatility=0 should produce identical results to no loan volatility."""
 
     def test_zero_vol_unchanged(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         config_default = MonteCarloConfig(n_simulations=10, seed=42)
         config_explicit = MonteCarloConfig(
             n_simulations=10, seed=42, loan_rate_volatility=0.0,
         )
         r1 = run_monte_carlo(
             lambda: UrawaHouse(800), params, config_default,
-            start_age=37, child_birth_ages=[39],
+            husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         r2 = run_monte_carlo(
             lambda: UrawaHouse(800), params, config_explicit,
-            start_age=37, child_birth_ages=[39],
+            husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         assert r1.after_tax_net_assets == pytest.approx(r2.after_tax_net_assets, abs=0.001)
 
@@ -292,15 +292,15 @@ class TestRelocationPurchaseEffect:
 
     def test_relocation_reduces_assets(self):
         """Sell+rebuy transaction costs should reduce net assets vs no relocation."""
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         timeline_none = EventTimeline()
         r_none = simulate_strategy(
-            UrawaHouse(6000), params, start_age=37,
+            UrawaHouse(6000), params, husband_start_age=37, wife_start_age=37,
             child_birth_ages=[39], event_timeline=timeline_none,
         )
         timeline_reloc = EventTimeline(relocation_month=60)
         r_reloc = simulate_strategy(
-            UrawaHouse(6000), params, start_age=37,
+            UrawaHouse(6000), params, husband_start_age=37, wife_start_age=37,
             child_birth_ages=[39], event_timeline=timeline_reloc,
         )
         # Double transaction costs (sell liquidation + buy initial) should hurt
@@ -308,10 +308,10 @@ class TestRelocationPurchaseEffect:
 
     def test_relocation_keeps_property(self):
         """After relocation, homeowner still owns property (rebought)."""
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         timeline_reloc = EventTimeline(relocation_month=60)
         r_reloc = simulate_strategy(
-            UrawaHouse(6000), params, start_age=37,
+            UrawaHouse(6000), params, husband_start_age=37, wife_start_age=37,
             child_birth_ages=[39], event_timeline=timeline_reloc,
         )
         assert r_reloc["land_value_80"] > 0
@@ -322,17 +322,17 @@ class TestRelocationRentalMinimalEffect:
     """Relocation should have minimal effect on rental strategies."""
 
     def test_rental_small_impact(self):
-        params = SimulationParams()
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
         timeline_none = EventTimeline()
         r_none = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
-            params, start_age=37, child_birth_ages=[39],
+            params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
             event_timeline=timeline_none,
         )
         timeline_reloc = EventTimeline(relocation_month=60, relocation_cost=40.0)
         r_reloc = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
-            params, start_age=37, child_birth_ages=[39],
+            params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
             event_timeline=timeline_reloc,
         )
         # Rental: only moving cost (40万), impact should be small

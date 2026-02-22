@@ -7,9 +7,11 @@ from pathlib import Path
 DEFAULT_CONFIG_PATH = Path("config.toml")
 
 DEFAULTS = {
-    "age": 30,
+    "husband_age": 30,
+    "wife_age": 28,
     "savings": 800.0,
-    "income": 62.5,
+    "husband_income": 40.0,
+    "wife_income": 22.5,
     "children": "32,35",
     "living_premium": 0.0,
     "child_living": 5.0,
@@ -17,7 +19,8 @@ DEFAULTS = {
     "car": False,
     "pets": 0,
     "relocation": False,
-    "ideco": 4.0,
+    "husband_ideco": 2.0,
+    "wife_ideco": 2.0,
     "emergency_fund": 6.0,
     "special_expenses": "",
 }
@@ -56,9 +59,11 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     d = DEFAULTS
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--config", type=Path, default=None, help="設定ファイルパス (default: config.toml)")
-    parser.add_argument("--age", type=int, default=None, help=f"開始年齢 (default: {d['age']})")
+    parser.add_argument("--husband-age", type=int, default=None, help=f"夫の開始年齢 (default: {d['husband_age']})")
+    parser.add_argument("--wife-age", type=int, default=None, help=f"妻の開始年齢 (default: {d['wife_age']})")
     parser.add_argument("--savings", type=float, default=None, help=f"初期金融資産・万円 (default: {d['savings']:.0f})")
-    parser.add_argument("--income", type=float, default=None, help=f"現在の世帯月額手取り・万円 (default: {d['income']})")
+    parser.add_argument("--husband-income", type=float, default=None, help=f"夫の月額手取り・万円 (default: {d['husband_income']})")
+    parser.add_argument("--wife-income", type=float, default=None, help=f"妻の月額手取り・万円 (default: {d['wife_income']})")
     parser.add_argument("--children", type=str, default=None, help=f"出産時の親の年齢（カンマ区切り、例: 28,32 / noneで子なし）(default: {d['children']})")
     parser.add_argument("--living-premium", type=float, default=None, help=f"生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月）(default: {d['living_premium']})")
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
@@ -66,7 +71,8 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")
     parser.add_argument("--pets", type=int, default=None, help=f"ペット頭数（1匹15年・飼育費1.5万/月、賃貸は+1.5万/月）(default: {d['pets']})")
     parser.add_argument("--relocation", action="store_true", default=None, help="転勤族モード（転勤確率が年3%%→10%%に上昇）")
-    parser.add_argument("--ideco", type=float, default=None, help=f"iDeCo拠出額（夫婦合計・万円/月）(default: {d['ideco']})")
+    parser.add_argument("--husband-ideco", type=float, default=None, help=f"夫のiDeCo拠出額（万円/月）(default: {d['husband_ideco']})")
+    parser.add_argument("--wife-ideco", type=float, default=None, help=f"妻のiDeCo拠出額（万円/月）(default: {d['wife_ideco']})")
     parser.add_argument("--emergency-fund", type=float, default=None, help=f"生活防衛資金（生活費の何ヶ月分）(default: {d['emergency_fund']})")
     parser.add_argument("--special-expenses", type=str, default=None, help="特別支出（年齢:金額のカンマ区切り、例: 55:500,65:300）")
     return parser

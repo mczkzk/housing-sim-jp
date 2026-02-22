@@ -38,8 +38,9 @@ class SimulationParams:
     investment_return: float = 0.055
     land_appreciation: float = 0.005
 
-    # Income parameters
-    initial_takehome_monthly: float = 72.5
+    # Income parameters (per-person)
+    husband_income: float = 40.0   # 夫の月額手取り（万円）
+    wife_income: float = 22.5     # 妻の月額手取り（万円）
     # 年齢別収入成長率スケジュール: [(閾値年齢, 年率), ...]
     # 各レートはその閾値年齢未満の区間に適用（賃金構造基本統計調査ベース）
     income_growth_schedule: list[tuple[int, float]] = field(
@@ -49,9 +50,6 @@ class SimulationParams:
     # 企業年金（確定給付+確定拠出）: 大手正社員夫婦想定
     corporate_pension_annual: float = 130
     pension_real_reduction: float = 0.01
-    # 共働き世帯の夫収入比率（総務省 家計調査2023: フルタイム共働き推定値）
-    # 年金分割計算にも使用
-    husband_income_ratio: float = 0.65
 
     # Loan parameters
     loan_years: int = 35
@@ -86,8 +84,9 @@ class SimulationParams:
     # Emergency fund (生活防衛資金: 生活費の何ヶ月分を現金で確保)
     emergency_fund_months: float = 6.0
 
-    # iDeCo parameters
-    ideco_monthly_contribution: float = 4.0  # 夫婦合計（2万×2人, 企業型DC+DB上限）
+    # iDeCo parameters (per-person)
+    husband_ideco: float = 2.0  # 夫のiDeCo拠出（万円/月, 企業型DC+DB上限）
+    wife_ideco: float = 2.0    # 妻のiDeCo拠出（万円/月）
 
     # Special one-time expenses at specific ages (age → amount in 万円, 2026年価値)
     special_expenses: dict[int, float] = field(default_factory=dict)

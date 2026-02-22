@@ -173,35 +173,31 @@ def main():
     r, child_birth_ages = parse_args("3シナリオ比較シミュレーション")
     special_expenses = parse_special_expenses(r["special_expenses"])
 
-    print_parameters()
-    results = run_scenarios(
-        start_age=r["age"], initial_savings=r["savings"], income=r["income"],
+    common_kwargs = dict(
+        husband_start_age=r["husband_age"],
+        wife_start_age=r["wife_age"],
+        initial_savings=r["savings"],
+        husband_income=r["husband_income"],
+        wife_income=r["wife_income"],
         child_birth_ages=child_birth_ages,
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
         pet_count=r["pets"],
-        ideco_monthly_contribution=r["ideco"],
+        husband_ideco=r["husband_ideco"],
+        wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=special_expenses,
     )
+
+    print_parameters()
+    results = run_scenarios(**common_kwargs)
     print_results(results)
 
     discipline_results = run_scenarios(
-        start_age=r["age"],
-        initial_savings=r["savings"],
-        income=r["income"],
+        **common_kwargs,
         discipline_factors=DISCIPLINE_FACTORS,
-        child_birth_ages=child_birth_ages,
-        living_premium=r["living_premium"],
-        child_living_cost_monthly=r["child_living"],
-        education_cost_monthly=r["education"],
-        has_car=r["car"],
-        pet_count=r["pets"],
-        ideco_monthly_contribution=r["ideco"],
-        emergency_fund_months=r["emergency_fund"],
-        special_expenses=special_expenses,
     )
     print_discipline_analysis(results, discipline_results)
 

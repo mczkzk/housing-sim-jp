@@ -50,9 +50,11 @@ DISCIPLINE_FACTORS = {
 
 
 def run_scenarios(
-    start_age: int = 30,
+    husband_start_age: int = 30,
+    wife_start_age: int = 28,
     initial_savings: float = 800,
-    income: float = 62.5,
+    husband_income: float = 40.0,
+    wife_income: float = 22.5,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
     living_premium: float = 0.0,
@@ -60,7 +62,8 @@ def run_scenarios(
     education_cost_monthly: float = 10.0,
     has_car: bool = False,
     pet_count: int = 0,
-    ideco_monthly_contribution: float = 4.0,
+    husband_ideco: float = 2.0,
+    wife_ideco: float = 2.0,
     emergency_fund_months: float = 6.0,
     special_expenses: dict[int, float] | None = None,
 ):
@@ -68,6 +71,7 @@ def run_scenarios(
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
     child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
     """
+    start_age = max(husband_start_age, wife_start_age)
     # StrategicRentalのフェーズ計算とsimulate_strategyの教育費計算を一致させるため、
     # Noneを事前に解決してから両方に渡す
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
@@ -76,13 +80,15 @@ def run_scenarios(
 
     for scenario_name, scenario_params in SCENARIOS.items():
         base_params = SimulationParams(
-            initial_takehome_monthly=income,
+            husband_income=husband_income,
+            wife_income=wife_income,
             living_premium=living_premium,
             child_living_cost_monthly=child_living_cost_monthly,
             education_cost_monthly=education_cost_monthly,
             has_car=has_car,
             pet_count=pet_count,
-            ideco_monthly_contribution=ideco_monthly_contribution,
+            husband_ideco=husband_ideco,
+            wife_ideco=wife_ideco,
             emergency_fund_months=emergency_fund_months,
             special_expenses=special_expenses or {},
         )
@@ -96,7 +102,9 @@ def run_scenarios(
         ]
         results = []
         for strategy in strategies:
-            purchase_age = resolve_purchase_age(strategy, params, start_age, child_birth_ages)
+            purchase_age = resolve_purchase_age(
+                strategy, params, husband_start_age, wife_start_age, child_birth_ages,
+            )
             if purchase_age == INFEASIBLE:
                 results.append(None)
                 continue
@@ -107,7 +115,8 @@ def run_scenarios(
                 simulate_strategy(
                     strategy,
                     params,
-                    start_age=start_age,
+                    husband_start_age=husband_start_age,
+                    wife_start_age=wife_start_age,
                     discipline_factor=factor,
                     child_birth_ages=child_birth_ages,
                     purchase_age=purchase_age,
