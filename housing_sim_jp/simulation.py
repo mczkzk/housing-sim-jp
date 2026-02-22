@@ -1262,6 +1262,8 @@ def simulate_strategy(
                 "education": education_cost,
                 "living": living_cost,
                 "investable": investable,
+                "investable_core": investable_core,
+                "investable_running": investable_running,
                 "balance": 0,
             })
             break

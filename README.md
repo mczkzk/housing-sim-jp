@@ -23,7 +23,7 @@ python -m housing_sim_jp.cli
 python -m housing_sim_jp.scenario_cli
 
 # カスタム条件
-python -m housing_sim_jp.cli --age 37 --savings 1500 --income 75
+python -m housing_sim_jp.cli --husband-age 37 --wife-age 35 --savings 1500 --husband-income 45 --wife-income 30
 python -m housing_sim_jp.cli --pets 1 --car              # ペット1匹+車
 python -m housing_sim_jp.cli --special-expenses 55:500,65:300  # 特別支出
 
@@ -40,12 +40,12 @@ python -m pytest tests/ -v
 `config.example-*.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
 
 ```bash
-cp config.example-25.toml config.toml   # 25歳プリセット（200万/55万/子2人）
-cp config.example-30.toml config.toml   # 30歳プリセット（800万/65万/子2人）
-cp config.example-35.toml config.toml   # 35歳プリセット（2000万/75万/子1人/生活費P5万/教育費P20万/ペット1匹）
+cp config.example-25.toml config.toml   # 25歳プリセット（300万/手取り50万/子2人）
+cp config.example-30.toml config.toml   # 30歳プリセット（800万/手取り65万/子2人）
+cp config.example-35.toml config.toml   # 35歳プリセット（2000万/手取り75万/子1人/生活費P5万/教育費P20万/ペット1匹）
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
-python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個別に上書き
+python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラグで個別に上書き
 ```
 
 **優先順位**: CLIフラグ > config.toml > ハードコードデフォルト
@@ -55,9 +55,11 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | フラグ | 説明 | デフォルト |
 |--------|------|-----------|
 | `--config` | 設定ファイルパス | config.toml（存在時のみ） |
-| `--age` | 開始年齢（20〜45歳） | 30 |
+| `--husband-age` | 夫の開始年齢（20〜45歳） | 30 |
+| `--wife-age` | 妻の開始年齢（20〜45歳） | 28 |
 | `--savings` | 初期金融資産（万円） | 800 |
-| `--income` | 世帯月額手取り（万円） | 62.5 |
+| `--husband-income` | 夫の月額手取り（万円） | 40.0 |
+| `--wife-income` | 妻の月額手取り（万円） | 22.5 |
 | `--children` | 出産時の親の年齢（カンマ区切り、最大2人、`none`で子なし） | 32,35 |
 | `--living-premium` | 生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月） | 0.0 |
 | `--child-living` | 子1人あたりの追加生活費（万円/月） | 5.0 |
@@ -65,7 +67,8 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | `--car` | 車所有（購入300万/7年買替+維持費5万/月を計上） | なし |
 | `--pets` | ペット頭数（1匹15年・飼育費1.5万/月、賃貸は+1.5万/月） | 0 |
 | `--relocation` | 転勤族モード（転勤確率が年3%→10%に上昇） | なし |
-| `--ideco` | iDeCo拠出額（夫婦合計・万円/月、0で無効） | 4.0 |
+| `--husband-ideco` | 夫のiDeCo拠出額（万円/月、0で無効） | 2.0 |
+| `--wife-ideco` | 妻のiDeCo拠出額（万円/月、0で無効） | 2.0 |
 | `--emergency-fund` | 生活防衛資金（生活費の何ヶ月分、0で無効） | 6.0 |
 | `--special-expenses` | 特別支出（年齢:金額のカンマ区切り、例: `55:500,65:300`） | なし |
 
@@ -84,7 +87,7 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 
 ### 世帯・ライフプラン
 
-- **対象世帯**: 一都三県勤務の共働きカップル（同い年）、大手企業正社員
+- **対象世帯**: 一都三県勤務の共働きカップル（夫婦別年齢対応）、大手企業正社員
 - **居住エリア**: 職住近接・都心まで30分以内（浦和駅エリア想定）
 - **シミュレーション期間**: 開始年齢（20〜45歳）から80歳まで。80歳で老人ホーム入居を出口戦略とし、以降のバリアフリー改修等は考慮外
 
@@ -105,8 +108,8 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 
 ### 収入・年金
 
-- **収入モデル**: 賃金構造基本統計調査ベースの4段階成長（20代5.5%→30代3.0%→40代1.5%→50代0.0%）、60歳で再雇用（ピークの60%）、70歳で年金生活
-- **年金**: 公的年金（基礎年金+厚生年金）をピーク収入から動的計算 + 企業年金（デフォルト130万/年）
+- **収入モデル**: 夫婦各人の月額手取りを入力。賃金構造基本統計調査ベースの5段階成長（20代5.5%→30代3.0%→40代1.5%→50-54歳0.5%→55-59歳0.0%）でピーク55歳。60歳で再雇用（ピークの60%）、70歳で年金生活
+- **年金**: 夫婦各人のピーク収入から公的年金（基礎年金+厚生年金）を個別計算し合算 + 企業年金（デフォルト130万/年、初期収入比率で按分）
 
 ### 住宅購入
 
@@ -117,7 +120,7 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 ### 資産運用・税務
 
 - **投資口座**: iDeCo → NISA → 特定口座の順で投資。取り崩しは逆順
-  - **iDeCo**: 60歳まで拠出（デフォルト夫婦合計4万/月）、毎月の税軽減（拠出額×限界税率）を投資に加算。71歳で一時金受取（退職金と1年以上ずらす税務最適化、退職所得控除適用後に課税）。実運用では71〜75歳の間で相場状況を見て判断（暴落時は後ろ倒し）
+  - **iDeCo**: 夫婦各人が60歳まで拠出（デフォルト各2万/月）、毎月の税軽減（各人の拠出額×各人の限界税率）を投資に加算。各人71歳で一時金受取（退職金と1年以上ずらす税務最適化、退職所得控除適用後に課税）
   - **NISA**: 夫婦合計3,600万円上限・非課税
   - **特定口座**: NISA超過分（課税20.315%）
 - **不動産売却**: 居住用財産3,000万円特別控除を適用
@@ -175,6 +178,6 @@ python -m housing_sim_jp.chart_cli --mc-runs 500 --output reports/charts/
 
 | レポート | 条件 |
 |---------|------|
-| [reports/report-25.md](reports/report-25.md) | 25歳・200万・手取り55万・子2人（30,32歳出産）・教育費ピーク15万/月 |
-| [reports/report-30.md](reports/report-30.md) | 30歳・800万・手取り65万・子2人（33,35歳出産）・教育費ピーク15万/月 |
-| [reports/report-35.md](reports/report-35.md) | 35歳・2000万・手取り75万・子1人（37歳出産）・生活費プレミアム5万・教育費ピーク20万/月・ペット1匹 |
+| [reports/report-25.md](reports/report-25.md) | 夫25歳/妻23歳・金融資産300万・手取り50万（夫30+妻20）・子2人（30,33歳出産）・教育費ピーク12万/月 |
+| [reports/report-30.md](reports/report-30.md) | 夫30歳/妻28歳・金融資産800万・手取り65万（夫40+妻25）・子2人（33,35歳出産）・教育費ピーク15万/月 |
+| [reports/report-35.md](reports/report-35.md) | 夫35歳/妻33歳・金融資産2000万・手取り75万（夫45+妻30）・子1人（37歳出産）・生活費P5万・教育費P20万・ペット1匹 |

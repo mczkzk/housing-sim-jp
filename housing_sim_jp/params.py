@@ -44,7 +44,7 @@ class SimulationParams:
     # 年齢別収入成長率スケジュール: [(閾値年齢, 年率), ...]
     # 各レートはその閾値年齢未満の区間に適用（賃金構造基本統計調査ベース）
     income_growth_schedule: list[tuple[int, float]] = field(
-        default_factory=lambda: [(30, 0.055), (40, 0.030), (50, 0.015), (60, 0.000)]
+        default_factory=lambda: [(30, 0.055), (40, 0.030), (50, 0.015), (55, 0.005), (60, 0.000)]
     )
     retirement_reduction: float = 0.60
     # 企業年金（確定給付+確定拠出）: 大手正社員夫婦想定
