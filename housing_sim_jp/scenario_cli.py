@@ -2,6 +2,7 @@
 
 from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
+from housing_sim_jp.simulation import wife_to_sim_birth_ages
 
 STRATEGY_LABELS = [
     "マンション購入派",
@@ -22,19 +23,20 @@ def print_parameters():
     print("【パラメータ設定】")
     print("-" * 120)
     print(
-        f"{'シナリオ':<12} {'インフレ率':>10} {'運用利回り':>10} {'土地上昇率':>10} {'ローン金利':>16}"
+        f"{'シナリオ':<12} {'インフレ率':>10} {'賃金上昇率':>10} {'運用利回り':>10} {'土地上昇率':>10} {'ローン金利':>16}"
     )
     print("-" * 120)
 
     for name in SCENARIO_ORDER:
         scenario = SCENARIOS[name]
         inflation = scenario["inflation_rate"] * 100
+        wage = scenario["wage_inflation"] * 100
         investment = scenario["investment_return"] * 100
         land = scenario["land_appreciation"] * 100
         rates = scenario["loan_rate_schedule"]
         loan = f"{rates[0]*100:.2f}→{rates[-1]*100:.2f}%"
         print(
-            f"{name:<12} {inflation:>9.1f}% {investment:>9.1f}% {land:>9.1f}% {loan:>15}"
+            f"{name:<12} {inflation:>9.1f}% {wage:>9.1f}% {investment:>9.1f}% {land:>9.1f}% {loan:>15}"
         )
     print("-" * 120)
     print()
@@ -172,6 +174,9 @@ def print_discipline_analysis(base_results, discipline_results):
 def main():
     r, child_birth_ages = parse_args("3シナリオ比較シミュレーション")
     special_expenses = parse_special_expenses(r["special_expenses"])
+
+    start_age = max(r["husband_age"], r["wife_age"])
+    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, r["wife_age"], start_age)
 
     common_kwargs = dict(
         husband_start_age=r["husband_age"],

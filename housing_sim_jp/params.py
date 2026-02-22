@@ -35,6 +35,7 @@ class SimulationParams:
 
     # Economic parameters
     inflation_rate: float = 0.015
+    wage_inflation: float = 0.015  # 名目賃金上昇率（ベースアップ、≒インフレ率で実質横ばい）
     investment_return: float = 0.055
     land_appreciation: float = 0.005
 
@@ -44,7 +45,7 @@ class SimulationParams:
     # 年齢別収入成長率スケジュール: [(閾値年齢, 年率), ...]
     # 各レートはその閾値年齢未満の区間に適用（賃金構造基本統計調査ベース）
     income_growth_schedule: list[tuple[int, float]] = field(
-        default_factory=lambda: [(30, 0.055), (40, 0.030), (50, 0.015), (55, 0.005), (60, 0.000)]
+        default_factory=lambda: [(30, 0.030), (40, 0.020), (50, 0.010), (55, 0.000), (60, -0.030)]
     )
     retirement_reduction: float = 0.60
     # 企業年金（確定給付+確定拠出）: 大手正社員夫婦想定

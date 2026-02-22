@@ -3,7 +3,7 @@
 from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
-from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, INFEASIBLE
+from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, wife_to_sim_birth_ages, INFEASIBLE
 
 
 def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth_ages: list[int]):
@@ -15,6 +15,7 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
     print(f"住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
     print(f"  初期資産: {savings:.0f}万円 / 夫手取り: {h_income:.1f}万円 / 妻手取り: {w_income:.1f}万円（合計{h_income + w_income:.1f}万円）")
     schedule = params.income_growth_schedule
+    wi = params.wage_inflation
     for label, age_val, base in [("夫", r["husband_age"], h_income), ("妻", r["wife_age"], w_income)]:
         parts = []
         prev_age = age_val
@@ -23,11 +24,14 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
             if threshold <= age_val:
                 continue
             if prev_age < threshold:
-                projected *= (1 + rate) ** (threshold - prev_age)
-                parts.append(f"{threshold}歳 {projected:.1f}万")
+                years = threshold - prev_age
+                projected *= (1 + rate) ** years
+                wage_years = threshold - age_val
+                wage_factor = (1 + wi) ** wage_years
+                parts.append(f"{threshold}歳 {projected * wage_factor:.1f}万")
                 prev_age = threshold
         if parts:
-            print(f"  {label}収入成長: {age_val}歳 {base:.1f}万 → {'→'.join(parts)}")
+            print(f"  {label}収入成長: {age_val}歳 {base:.1f}万 → {'→'.join(parts)}（賃金上昇{wi*100:.1f}%/年込み）")
     if r["car"]:
         replacements = (80 - start_age) // params.car_replacement_years
         total_running = params.car_running_cost_monthly + params.car_parking_cost_monthly
@@ -39,7 +43,7 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
     if h_ideco > 0 or w_ideco > 0:
         print(f"  iDeCo: 夫{h_ideco:.1f}万 + 妻{w_ideco:.1f}万 = {h_ideco + w_ideco:.1f}万円/月（60歳まで拠出）")
     if child_birth_ages:
-        parts = [f"{a}歳出産→{a+7}〜{a+22}歳" for a in child_birth_ages]
+        parts = [f"妻{a}歳出産" for a in child_birth_ages]
         print(f"  教育費: 子{len(child_birth_ages)}人（{', '.join(parts)}）")
     else:
         print("  教育費: なし")
@@ -174,6 +178,10 @@ def main():
     start_age = max(husband_age, wife_age)
     savings = r["savings"]
 
+    # child_birth_ages is wife-age based from config/CLI; convert to sim-age (start_age based)
+    wife_birth_ages = child_birth_ages
+    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, wife_age, start_age)
+
     special_expenses = parse_special_expenses(r["special_expenses"])
     params = SimulationParams(
         husband_income=r["husband_income"],
@@ -194,7 +202,7 @@ def main():
         StrategicRental(savings, child_birth_ages=child_birth_ages, start_age=start_age),
     ]
 
-    _print_header(r, params, start_age, child_birth_ages)
+    _print_header(r, params, start_age, wife_birth_ages)
 
     results = []
     for strategy in strategies:

@@ -3,6 +3,7 @@
 import sys
 
 from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses
+from housing_sim_jp.simulation import wife_to_sim_birth_ages
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -177,6 +178,9 @@ def main():
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
     start_age = max(husband_age, wife_age)
+
+    wife_birth_ages = child_birth_ages
+    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, wife_age, start_age)
     initial_savings = r["savings"]
 
     special_expenses = parse_special_expenses(r["special_expenses"])
@@ -217,8 +221,8 @@ def main():
     print(f"Monte Carlo 住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
     print(f"  N={args.mc_runs:,} / σ={args.volatility:.0%} / 金利σ={args.loan_volatility:.3f} / seed={args.seed}")
     print(f"  初期資産: {initial_savings:.0f}万円 / 夫手取り: {h_income:.1f}万円 / 妻手取り: {w_income:.1f}万円（合計{h_income + w_income:.1f}万円）")
-    if child_birth_ages:
-        parts = [f"{a}歳" for a in child_birth_ages]
+    if wife_birth_ages:
+        parts = [f"妻{a}歳" for a in wife_birth_ages]
         print(f"  子供: {', '.join(parts)}出産")
     else:
         print("  子供: なし")

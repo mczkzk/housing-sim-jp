@@ -16,6 +16,7 @@ from housing_sim_jp.simulation import (
     resolve_child_birth_ages,
     resolve_purchase_age,
     simulate_strategy,
+    wife_to_sim_birth_ages,
 )
 from housing_sim_jp.strategies import (
     NormalRental,
@@ -62,6 +63,8 @@ def main():
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
     start_age = max(husband_age, wife_age)
+
+    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, wife_age, start_age)
     savings = r["savings"]
     output_dir = args.output
     chart_name = args.name

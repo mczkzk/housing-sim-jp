@@ -313,19 +313,24 @@ def _project_working_income(
     years_elapsed: float, person_start_age: int,
     base_income: float, params: SimulationParams,
 ) -> float:
-    """Project pre-retirement (< REEMPLOYMENT_AGE) working income based on years elapsed."""
+    """Project pre-retirement (< REEMPLOYMENT_AGE) working income based on years elapsed.
+
+    Applies both career curve (cross-sectional) and nominal wage inflation (base-up).
+    """
     current_age = person_start_age + years_elapsed
     income = base_income
     prev_age = person_start_age
     for threshold, rate in params.income_growth_schedule:
         if current_age <= threshold:
             income *= (1 + rate) ** (current_age - prev_age)
+            income *= (1 + params.wage_inflation) ** years_elapsed
             return income
         if prev_age < threshold:
             income *= (1 + rate) ** (threshold - prev_age)
             prev_age = threshold
     last_rate = params.income_growth_schedule[-1][1]
     income *= (1 + last_rate) ** (current_age - prev_age)
+    income *= (1 + params.wage_inflation) ** years_elapsed
     return income
 
 
@@ -881,6 +886,14 @@ def _calc_final_assets(
 
 
 DEFAULT_CHILD_BIRTH_AGES = [32, 35]
+
+
+def wife_to_sim_birth_ages(
+    child_birth_ages: list[int], wife_start_age: int, start_age: int,
+) -> list[int]:
+    """Convert wife-age-based birth ages to sim-age (start_age) based."""
+    offset = start_age - wife_start_age
+    return [a + offset for a in child_birth_ages]
 
 
 def resolve_child_birth_ages(

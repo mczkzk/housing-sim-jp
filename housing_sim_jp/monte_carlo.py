@@ -41,6 +41,8 @@ class MonteCarloConfig:
     land_inflation_correlation: float = 0.6
     loan_rate_volatility: float = 0.0       # σ for loan rate shift (0=deterministic)
     loan_inflation_correlation: float = 0.7  # correlation with inflation
+    wage_inflation_volatility: float = 0.005  # σ for wage inflation shift
+    wage_inflation_correlation: float = 0.8   # correlation with inflation
     event_risks: EventRiskConfig | None = None
 
 
@@ -164,11 +166,24 @@ def run_monte_carlo(
             loan_rate_shift = loan_z * config.loan_rate_volatility
             shifted_schedule = [max(0.001, r + loan_rate_shift) for r in base_params.loan_rate_schedule]
         else:
+            inflation_z = None
             shifted_schedule = base_params.loan_rate_schedule
+
+        # Sample wage inflation shift correlated with inflation
+        if config.wage_inflation_volatility > 0 and config.inflation_volatility > 0:
+            if inflation_z is None:
+                inflation_z = (sampled_inflation - base_params.inflation_rate) / config.inflation_volatility
+            z_wage = rng.gauss(0, 1)
+            wage_z = (config.wage_inflation_correlation * inflation_z
+                      + math.sqrt(1 - config.wage_inflation_correlation ** 2) * z_wage)
+            sampled_wage_inflation = base_params.wage_inflation + wage_z * config.wage_inflation_volatility
+        else:
+            sampled_wage_inflation = base_params.wage_inflation
 
         params = dataclasses.replace(
             base_params,
             inflation_rate=sampled_inflation,
+            wage_inflation=sampled_wage_inflation,
             land_appreciation=sampled_land,
             annual_investment_returns=annual_returns,
             loan_rate_schedule=shifted_schedule,
