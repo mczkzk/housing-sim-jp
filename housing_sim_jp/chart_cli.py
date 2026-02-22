@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from housing_sim_jp.charts import plot_mc_fan, plot_trajectory
+from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
 from housing_sim_jp.config import create_parser, load_config, resolve
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
@@ -106,6 +106,8 @@ def main():
 
     if det_results:
         path = plot_trajectory(det_results, output_dir, name=chart_name)
+        print(f"  → {path}", file=sys.stderr)
+        path = plot_cashflow_stack(det_results, output_dir, name=chart_name)
         print(f"  → {path}", file=sys.stderr)
     else:
         print("  確定論: 有効な結果なし", file=sys.stderr)

@@ -1113,6 +1113,17 @@ def simulate_strategy(
             - one_time_expense
             - event_extra_cost
         )
+        investable_running = (
+            monthly_income
+            - housing_cost
+            - education_cost
+            - living_cost
+            - utility_cost
+            - monthly_moving_cost
+            + loan_deduction
+            - event_extra_cost
+        )
+        investable_core = investable_running
 
         # iDeCo: contribute, apply returns, withdraw at 60
         (investable, ideco_balance, ideco_total_contribution,
@@ -1165,6 +1176,8 @@ def simulate_strategy(
                     "education": education_cost,
                     "living": living_cost,
                     "investable": investable,
+                    "investable_core": investable_core,
+                    "investable_running": investable_running,
                     "balance": investment_balance,
                 }
             )

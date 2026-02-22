@@ -89,12 +89,17 @@ def _print_results(results: list[MonteCarloResult], n: int, vol: float, has_even
 
 def _isolated_risk(**overrides) -> EventRiskConfig:
     """EventRiskConfig with all probabilities zeroed, then selectively re-enabled."""
-    return EventRiskConfig(
-        job_loss_annual_prob=0, disaster_annual_prob=0,
-        care_annual_prob_after_75=0, rental_rejection_prob_after_70=0,
-        divorce_annual_prob=0, spouse_death_annual_prob=0,
-        relocation_annual_prob=0, **overrides,
-    )
+    base = {
+        "job_loss_annual_prob": 0,
+        "disaster_annual_prob": 0,
+        "care_annual_prob_after_75": 0,
+        "rental_rejection_prob_after_70": 0,
+        "divorce_annual_prob": 0,
+        "spouse_death_annual_prob": 0,
+        "relocation_annual_prob": 0,
+    }
+    base.update(overrides)
+    return EventRiskConfig(**base)
 
 
 def _build_stress_scenarios(

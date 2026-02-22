@@ -156,3 +156,102 @@ def plot_mc_fan(
     fig.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return filepath
+
+
+def plot_cashflow_stack(
+    results: list[dict],
+    output_path: Path,
+    name: str = "",
+) -> Path:
+    """Generate stacked cashflow charts (income vs expenses) per strategy."""
+    _setup_japanese_font()
+
+    if not results:
+        raise ValueError("No results for cashflow chart")
+
+    cols = 2
+    rows = (len(results) + 1) // 2
+    fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+    if len(results) == 1:
+        axes = [[axes]]
+    elif rows == 1:
+        axes = [axes]
+
+    expense_colors = {
+        "housing": "#8da0cb",
+        "education": "#fc8d62",
+        "living": "#66c2a5",
+    }
+
+    # Determine consistent x-axis range across all strategies
+    all_start_ages = [r["monthly_log"][0]["age"] for r in results if r["monthly_log"]]
+    x_min = min(all_start_ages) if all_start_ages else 25
+    x_max = 80
+
+    for idx, r in enumerate(results):
+        row, col = divmod(idx, cols)
+        ax = axes[row][col]
+        log = r["monthly_log"]
+        ages = [entry["age"] for entry in log]
+        housing = [entry["housing"] for entry in log]
+        education = [entry["education"] for entry in log]
+        living = [entry["living"] for entry in log]
+        income = [entry["income"] for entry in log]
+        investable = [
+            entry.get("investable_running", entry.get("investable_core", entry["investable"]))
+            for entry in log
+        ]
+
+        ax.stackplot(
+            ages,
+            housing,
+            education,
+            living,
+            labels=["住居費", "教育費", "生活費"],
+            colors=[expense_colors["housing"], expense_colors["education"], expense_colors["living"]],
+            alpha=0.75,
+        )
+        ax.plot(ages, income, color="#1f77b4", linewidth=2, label="手取り収入")
+        ax.plot(
+            ages,
+            investable,
+            color="#d62728",
+            linewidth=1.8,
+            linestyle="--",
+            label="投資余力（一時イベント除外）",
+        )
+
+        # Bankrupt marker
+        bankrupt_age = r.get("bankrupt_age")
+        if bankrupt_age is not None:
+            ax.axvline(bankrupt_age, color="#d62728", linewidth=2, linestyle=":")
+            ax.annotate(
+                f"{bankrupt_age}歳 破綻",
+                xy=(bankrupt_age, ax.get_ylim()[1] * 0.85),
+                fontsize=11, fontweight="bold", color="#d62728",
+                ha="right",
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#d62728", alpha=0.9),
+            )
+
+        ax.set_xlim(x_min, x_max)
+        ax.set_title(r["strategy"])
+        ax.set_xlabel("年齢")
+        ax.set_ylabel("月次キャッシュフロー（万円）")
+        ax.axhline(0, color="black", linewidth=2.0, linestyle="-", zorder=5)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper left", fontsize=9)
+
+    # Hide unused subplots
+    for idx in range(len(results), rows * cols):
+        row, col = divmod(idx, cols)
+        axes[row][col].set_visible(False)
+
+    fig.suptitle("キャッシュフロー積み上げ（年次）", fontsize=14, y=1.01)
+    fig.tight_layout()
+
+    output_path.mkdir(parents=True, exist_ok=True)
+    suffix = f"-{name}" if name else ""
+    filepath = output_path / f"cashflow{suffix}.png"
+    fig.savefig(filepath, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return filepath
