@@ -1,6 +1,6 @@
 """CLI entry point for scenario comparison."""
 
-from housing_sim_jp.config import parse_args
+from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
 
 STRATEGY_LABELS = [
@@ -171,6 +171,7 @@ def print_discipline_analysis(base_results, discipline_results):
 
 def main():
     r, child_birth_ages = parse_args("3シナリオ比較シミュレーション")
+    special_expenses = parse_special_expenses(r["special_expenses"])
 
     print_parameters()
     results = run_scenarios(
@@ -183,6 +184,7 @@ def main():
         pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
+        special_expenses=special_expenses,
     )
     print_results(results)
 
@@ -199,6 +201,7 @@ def main():
         pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
+        special_expenses=special_expenses,
     )
     print_discipline_analysis(results, discipline_results)
 

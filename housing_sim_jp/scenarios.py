@@ -62,6 +62,7 @@ def run_scenarios(
     pet_count: int = 0,
     ideco_monthly_contribution: float = 4.0,
     emergency_fund_months: float = 6.0,
+    special_expenses: dict[int, float] | None = None,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
@@ -83,6 +84,7 @@ def run_scenarios(
             pet_count=pet_count,
             ideco_monthly_contribution=ideco_monthly_contribution,
             emergency_fund_months=emergency_fund_months,
+            special_expenses=special_expenses or {},
         )
         params = dataclasses.replace(base_params, **scenario_params)
 

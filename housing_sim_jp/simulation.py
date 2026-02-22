@@ -930,6 +930,11 @@ def simulate_strategy(
             if start_age <= owner_age < END_AGE:
                 one_time_expenses[owner_age] = cost
 
+    # Merge user-defined special expenses (additive with strategy one-time expenses)
+    for age, amount in params.special_expenses.items():
+        if start_age <= age < END_AGE:
+            one_time_expenses[age] = one_time_expenses.get(age, 0) + amount
+
     # Car ownership state (dynamically tracked, deferred if unaffordable)
     car_owned = False
     car_first_purchase_age = None

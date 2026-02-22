@@ -494,6 +494,43 @@ class TestPet:
             assert r["car_first_purchase_age"] <= r["pet_first_adoption_age"]
 
 
+class TestSpecialExpenses:
+    """Special expenses should reduce final net assets."""
+
+    def test_special_expenses_reduce_assets(self):
+        """Adding large special expenses should decrease after_tax_net_assets."""
+        params_base = SimulationParams(initial_takehome_monthly=75.0)
+        params_special = SimulationParams(
+            initial_takehome_monthly=75.0,
+            special_expenses={55: 500, 65: 300},
+        )
+        s1 = UrawaHouse(1500)
+        s2 = UrawaHouse(1500)
+        r_base = simulate_strategy(s1, params_base, start_age=37, child_birth_ages=[39])
+        r_special = simulate_strategy(s2, params_special, start_age=37, child_birth_ages=[39])
+        assert r_special["after_tax_net_assets"] < r_base["after_tax_net_assets"]
+
+    def test_empty_special_expenses_no_change(self):
+        """Empty special_expenses dict should not change results."""
+        params1 = SimulationParams(initial_takehome_monthly=75.0)
+        params2 = SimulationParams(initial_takehome_monthly=75.0, special_expenses={})
+        s1 = UrawaHouse(1500)
+        s2 = UrawaHouse(1500)
+        r1 = simulate_strategy(s1, params1, start_age=37, child_birth_ages=[39])
+        r2 = simulate_strategy(s2, params2, start_age=37, child_birth_ages=[39])
+        assert r1["after_tax_net_assets"] == pytest.approx(r2["after_tax_net_assets"], abs=0.01)
+
+    def test_special_expenses_additive_with_strategy(self):
+        """Special expenses at same age as strategy one-time expense should stack."""
+        params = SimulationParams(
+            initial_takehome_monthly=75.0,
+            special_expenses={55: 100},
+        )
+        s = UrawaHouse(1500)
+        r = simulate_strategy(s, params, start_age=37, child_birth_ages=[39])
+        assert r["after_tax_net_assets"] > 0  # should complete without error
+
+
 class TestDivorceDeathMutualExclusion:
     """Divorce and death should be mutually exclusive in sampling."""
 

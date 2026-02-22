@@ -89,6 +89,9 @@ class SimulationParams:
     # iDeCo parameters
     ideco_monthly_contribution: float = 4.0  # 夫婦合計（2万×2人, 企業型DC+DB上限）
 
+    # Special one-time expenses at specific ages (age → amount in 万円, 2026年価値)
+    special_expenses: dict[int, float] = field(default_factory=dict)
+
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: list[float] | None = None
 

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
-from housing_sim_jp.config import create_parser, load_config, resolve
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -64,6 +64,7 @@ def main():
     output_dir = args.output
     chart_name = args.name
 
+    special_expenses = parse_special_expenses(r["special_expenses"])
     params = SimulationParams(
         initial_takehome_monthly=r["income"],
         living_premium=r["living_premium"],
@@ -73,6 +74,7 @@ def main():
         pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
+        special_expenses=special_expenses,
     )
 
     resolved_children = resolve_child_birth_ages(child_birth_ages, start_age)

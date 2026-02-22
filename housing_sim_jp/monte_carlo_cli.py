@@ -2,7 +2,7 @@
 
 import sys
 
-from housing_sim_jp.config import create_parser, load_config, resolve
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -176,6 +176,7 @@ def main():
     start_age = r["age"]
     initial_savings = r["savings"]
 
+    special_expenses = parse_special_expenses(r["special_expenses"])
     base_params = SimulationParams(
         initial_takehome_monthly=r["income"],
         living_premium=r["living_premium"],
@@ -185,6 +186,7 @@ def main():
         pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
+        special_expenses=special_expenses,
     )
 
     RELOCATION_TENSHOKUZOKU_PROB = 0.10

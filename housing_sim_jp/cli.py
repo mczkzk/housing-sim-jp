@@ -1,6 +1,6 @@
 """CLI entry point for single simulation (3 strategy comparison)."""
 
-from housing_sim_jp.config import parse_args
+from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, INFEASIBLE
@@ -40,6 +40,9 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
         print(f"  教育費: 子{len(child_birth_ages)}人（{', '.join(parts)}）")
     else:
         print("  教育費: なし")
+    if params.special_expenses:
+        parts = [f"{age}歳:{amount:.0f}万" for age, amount in sorted(params.special_expenses.items())]
+        print(f"  特別支出: {', '.join(parts)}（2026年価値、計上時インフレ調整）")
     print("=" * 80)
     print()
 
@@ -166,6 +169,7 @@ def main():
     start_age = r["age"]
     savings = r["savings"]
 
+    special_expenses = parse_special_expenses(r["special_expenses"])
     params = SimulationParams(
         initial_takehome_monthly=r["income"],
         living_premium=r["living_premium"],
@@ -175,6 +179,7 @@ def main():
         pet_count=r["pets"],
         ideco_monthly_contribution=r["ideco"],
         emergency_fund_months=r["emergency_fund"],
+        special_expenses=special_expenses,
     )
     strategies = [
         UrawaMansion(savings),

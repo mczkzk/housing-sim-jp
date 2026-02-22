@@ -25,6 +25,7 @@ python -m housing_sim_jp.scenario_cli
 # カスタム条件
 python -m housing_sim_jp.cli --age 37 --savings 1500 --income 75
 python -m housing_sim_jp.cli --pets 1 --car              # ペット1匹+車
+python -m housing_sim_jp.cli --special-expenses 55:500,65:300  # 特別支出
 
 # Monte Carlo シミュレーション（確率論: N=1,000試行 + イベントリスク）
 python -m housing_sim_jp.monte_carlo_cli
@@ -66,6 +67,7 @@ python -m housing_sim_jp.cli --config config.toml --age 40  # CLIフラグで個
 | `--relocation` | 転勤族モード（転勤確率が年3%→10%に上昇） | なし |
 | `--ideco` | iDeCo拠出額（夫婦合計・万円/月、0で無効） | 4.0 |
 | `--emergency-fund` | 生活防衛資金（生活費の何ヶ月分、0で無効） | 6.0 |
+| `--special-expenses` | 特別支出（年齢:金額のカンマ区切り、例: `55:500,65:300`） | なし |
 
 ### Monte Carlo 固有オプション
 
