@@ -3,6 +3,7 @@
 import sys
 
 from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_ages, parse_pet_ages, build_params
+from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.simulation import to_sim_ages
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
