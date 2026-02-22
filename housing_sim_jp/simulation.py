@@ -447,7 +447,6 @@ def _calc_expenses(
     strategy: Strategy,
     params: SimulationParams,
     one_time_expenses: dict[int, float],
-    monthly_moving_cost: float,
     education_ranges: list[tuple[int, int]],
     child_home_ranges: list[tuple[int, int]],
     purchase_month_offset: int = 0,
@@ -1136,7 +1135,7 @@ def simulate_strategy(
                 one_time_expense += purchase_closing_cost
         else:
             housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense = _calc_expenses(
-                month, age, start_age, strategy, params, one_time_expenses, monthly_moving_cost,
+                month, age, start_age, strategy, params, one_time_expenses,
                 education_ranges, child_home_ranges,
                 purchase_month_offset=purchase_month_offset,
                 car_owned=car_owned,
