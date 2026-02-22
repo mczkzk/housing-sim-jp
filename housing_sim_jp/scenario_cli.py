@@ -97,7 +97,6 @@ def print_results(all_results):
             suffix = f" ⚠{bankrupt}歳破綻" if bankrupt else ""
             purchase_info = ""
             if result.get("purchase_age") and result["purchase_age"] > 0:
-                # Check if purchase was deferred (purchase_age in result)
                 pa = result.get("purchase_age")
                 if pa and pa > result["monthly_log"][0]["age"]:
                     purchase_info = f" ({pa}歳購入)"

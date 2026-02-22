@@ -719,7 +719,6 @@ def _try_pet_adoption(
 
     Returns (one_time_cost, pet_active_ends, next_pet_idx, pet_first_adoption_age).
     """
-    # Remove deceased pets
     pet_active_ends = [end for end in pet_active_ends if age < end]
 
     if not (month % 12 == 0 and next_pet_idx < len(params.pet_adoption_ages)):
@@ -763,7 +762,6 @@ def _process_ideco(
              ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
              ideco_withdrawal_gross).
     """
-    # Contribute before retirement age
     if contribution > 0 and person_age < REEMPLOYMENT_AGE:
         investable -= contribution
         tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_tax_rate)
@@ -777,7 +775,6 @@ def _process_ideco(
     if ideco_balance > 0:
         ideco_balance *= 1 + monthly_return_rate
 
-    # Lump-sum withdrawal at person's age 71
     ideco_withdrawal_gross = 0.0
     if contribution > 0 and person_age == IDECO_WITHDRAWAL_AGE and month % 12 == 0 and ideco_balance > 0:
         ideco_withdrawal_gross = ideco_balance
@@ -1309,7 +1306,6 @@ def simulate_strategy(
                 }
             )
 
-    # Combine iDeCo totals for result
     ideco_total_contribution = h_ideco_total_contribution + w_ideco_total_contribution
     ideco_tax_benefit_total = h_ideco_tax_benefit_total + w_ideco_tax_benefit_total
     ideco_tax_paid = h_ideco_tax_paid + w_ideco_tax_paid
