@@ -900,9 +900,6 @@ def to_sim_ages(
     return [a + offset for a in ages]
 
 
-# Backward-compatible alias
-wife_to_sim_birth_ages = to_sim_ages
-
 
 def resolve_child_birth_ages(
     child_birth_ages: list[int] | None, start_age: int,
