@@ -1331,6 +1331,8 @@ def simulate_strategy(
             "ideco_tax_benefit_total": ideco_tax_benefit_total,
             "ideco_tax_paid": ideco_tax_paid,
             "ideco_withdrawal_gross": ideco_withdrawal_gross,
+            "h_ideco_withdrawal_gross": h_ideco_withdrawal_gross,
+            "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
             "monthly_log": monthly_log,
             "investment_balance_80": 0,
             "securities_tax": 0,
@@ -1365,6 +1367,8 @@ def simulate_strategy(
         "ideco_tax_benefit_total": ideco_tax_benefit_total,
         "ideco_tax_paid": ideco_tax_paid,
         "ideco_withdrawal_gross": ideco_withdrawal_gross,
+        "h_ideco_withdrawal_gross": h_ideco_withdrawal_gross,
+        "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
         "monthly_log": monthly_log,
         **final,
     }

@@ -127,11 +127,20 @@ def main():
         for age, base_amount, label in special_labels:
             nominal = base_amount * (1 + inflation) ** (age - start_age)
             shared_markers.append((age, -nominal, label))
-        # iDeCo (use first result that has it)
+        # iDeCo: husband and wife may withdraw at different sim-ages
         for result in det_results:
-            ideco_gross = result.get("ideco_withdrawal_gross", 0)
-            if ideco_gross > 0:
-                shared_markers.append((71, ideco_gross, "iDeCo受取"))
+            h_gross = result.get("h_ideco_withdrawal_gross", 0)
+            w_gross = result.get("w_ideco_withdrawal_gross", 0)
+            if h_gross > 0 or w_gross > 0:
+                h_sim_age = 71 + (start_age - husband_age)
+                w_sim_age = 71 + (start_age - wife_age)
+                if h_sim_age == w_sim_age:
+                    shared_markers.append((h_sim_age, h_gross + w_gross, "iDeCo受取"))
+                else:
+                    if h_gross > 0:
+                        shared_markers.append((h_sim_age, h_gross, "夫iDeCo受取"))
+                    if w_gross > 0:
+                        shared_markers.append((w_sim_age, w_gross, "妻iDeCo受取"))
                 break
         shared_markers.sort()
 
