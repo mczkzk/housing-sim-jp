@@ -24,7 +24,7 @@ python -m housing_sim_jp.scenario_cli
 
 # カスタム条件
 python -m housing_sim_jp.cli --husband-age 37 --wife-age 35 --savings 1500 --husband-income 45 --wife-income 30
-python -m housing_sim_jp.cli --pets 1 --car              # ペット1匹+車
+python -m housing_sim_jp.cli --pets 38,40 --car           # ペット2匹（夫38歳・40歳迎え入れ）+車
 python -m housing_sim_jp.cli --special-expenses 55:500,65:300  # 特別支出
 
 # Monte Carlo シミュレーション（確率論: N=1,000試行 + イベントリスク）
@@ -40,9 +40,9 @@ python -m pytest tests/ -v
 `config.example-*.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
 
 ```bash
-cp config.example-25.toml config.toml   # 25歳プリセット（300万/手取り50万/子2人）
-cp config.example-30.toml config.toml   # 30歳プリセット（800万/手取り65万/子2人）
-cp config.example-35.toml config.toml   # 35歳プリセット（2000万/手取り75万/子1人/生活費P5万/教育費P20万/ペット1匹）
+cp config.example-25.toml config.toml   # 25歳プリセット（250万/手取り57万/子2人）
+cp config.example-30.toml config.toml   # 30歳プリセット（600万/手取り67万/子2人/生活費P5万/ペット1匹）
+cp config.example-35.toml config.toml   # 35歳プリセット（1200万/手取り74万/子1人/生活費P5万/教育費P20万/車/ペット2匹）
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
 python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラグで個別に上書き
@@ -60,12 +60,12 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 | `--savings` | 初期金融資産（万円） | 800 |
 | `--husband-income` | 夫の月額手取り（万円） | 40.0 |
 | `--wife-income` | 妻の月額手取り（万円） | 22.5 |
-| `--children` | 出産時の親の年齢（カンマ区切り、最大2人、`none`で子なし） | 32,35 |
+| `--children` | 出産時の妻の年齢（カンマ区切り、最大2人、`none`で子なし） | 30,33 |
 | `--living-premium` | 生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月） | 0.0 |
 | `--child-living` | 子1人あたりの追加生活費（万円/月） | 5.0 |
 | `--education` | 教育費ピーク（高校）金額（万円/月/人） | 10.0 |
 | `--car` | 車所有（購入300万/7年買替+維持費5万/月を計上） | なし |
-| `--pets` | ペット頭数（1匹15年・飼育費1.5万/月、賃貸は+1.5万/月） | 0 |
+| `--pets` | ペット迎え入れ時の夫の年齢（カンマ区切り、1匹15年・飼育費1.5万/月、賃貸は+1.5万/月） | なし |
 | `--relocation` | 転勤族モード（転勤確率が年3%→10%に上昇） | なし |
 | `--husband-ideco` | 夫のiDeCo拠出額（万円/月、0で無効） | 2.0 |
 | `--wife-ideco` | 妻のiDeCo拠出額（万円/月、0で無効） | 2.0 |
@@ -108,7 +108,7 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 
 ### 収入・年金
 
-- **収入モデル**: 夫婦各人の月額手取りを入力。賃金構造基本統計調査ベースの5段階成長（20代5.5%→30代3.0%→40代1.5%→50-54歳0.5%→55-59歳0.0%）でピーク55歳。60歳で再雇用（ピークの60%）、70歳で年金生活
+- **収入モデル**: 夫婦各人の月額手取りを入力。賃金構造基本統計調査ベースの5段階キャリアカーブ（20代+3.0%→30代+2.0%→40代+1.0%→50-54歳±0%→55-59歳-3.0%）で55歳ピーク。これに名目賃金上昇率（標準1.5%/年）を重畳。60歳で再雇用（ピークの60%）、70歳で年金生活
 - **年金**: 夫婦各人のピーク収入から公的年金（基礎年金+厚生年金）を個別計算し合算 + 企業年金（デフォルト130万/年、初期収入比率で按分）
 
 ### 住宅購入
@@ -134,6 +134,7 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 | パラメータ | 低成長 | 標準 | 高成長 |
 |-----------|--------|------|--------|
 | インフレ率 | 0.5% | 1.5% | 2.5% |
+| 賃金上昇率 | 0.5% | 1.5% | 2.5% |
 | 運用利回り | 4.0% | 5.5% | 7.0% |
 | 土地上昇率 | 0.0% | 0.5% | 1.0% |
 | ローン金利 | 0.75→1.25% | 0.75→2.00% | 1.00→3.00% |
@@ -145,6 +146,7 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 **市場変動（年次サンプリング）:**
 - 投資リターン: 対数正規分布（期待値5.5%、σ=15%）— 年ごとに変動
 - インフレ率・土地上昇率: 正規分布（ラン単位で固定、相関0.6）
+- 賃金上昇率: インフレとの条件付き正規分布（相関0.8、σ=0.005）
 - 金利シフト: インフレとの条件付き正規分布（ラン単位で `loan_rate_schedule` 全体に一律加算、相関0.7）。σ=0で確定論と同一
 
 **生活イベント（事前サンプリング）:**
@@ -178,6 +180,6 @@ python -m housing_sim_jp.chart_cli --mc-runs 500 --output reports/charts/
 
 | レポート | 条件 |
 |---------|------|
-| [reports/report-25.md](reports/report-25.md) | 夫25歳/妻23歳・金融資産300万・手取り50万（夫30+妻20）・子2人（30,33歳出産）・教育費ピーク12万/月 |
-| [reports/report-30.md](reports/report-30.md) | 夫30歳/妻28歳・金融資産800万・手取り65万（夫40+妻25）・子2人（33,35歳出産）・教育費ピーク15万/月 |
-| [reports/report-35.md](reports/report-35.md) | 夫35歳/妻33歳・金融資産2000万・手取り75万（夫45+妻30）・子1人（37歳出産）・生活費P5万・教育費P20万・ペット1匹 |
+| [reports/report-25.md](reports/report-25.md) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産） |
+| [reports/report-30.md](reports/report-30.md) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・生活費P5万・ペット1匹 |
+| [reports/report-35.md](reports/report-35.md) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・生活費P5万・教育費P20万・車・ペット2匹 |
