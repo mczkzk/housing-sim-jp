@@ -4,6 +4,8 @@ import argparse
 import tomllib
 from pathlib import Path
 
+from housing_sim_jp.params import SimulationParams
+
 DEFAULT_CONFIG_PATH = Path("config.toml")
 
 DEFAULTS = {
@@ -129,6 +131,31 @@ def parse_pet_ages(s: str) -> list[int]:
     return sorted(int(x) for x in s.split(","))
 
 
+def parse_children_ages(s: str) -> list[int]:
+    """Parse children string → list of wife's ages at birth. "none"/empty → []."""
+    s = str(s).strip().lower()
+    if not s or s == "none":
+        return []
+    return [int(x) for x in s.split(",")]
+
+
+def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParams:
+    """Build SimulationParams from resolved config dict."""
+    return SimulationParams(
+        husband_income=r["husband_income"],
+        wife_income=r["wife_income"],
+        living_premium=r["living_premium"],
+        child_living_cost_monthly=r["child_living"],
+        education_cost_monthly=r["education"],
+        has_car=r["car"],
+        pet_adoption_ages=pet_sim_ages,
+        husband_ideco=r["husband_ideco"],
+        wife_ideco=r["wife_ideco"],
+        emergency_fund_months=r["emergency_fund"],
+        special_expenses=parse_special_expenses(r["special_expenses"]),
+    )
+
+
 def parse_args(description: str) -> tuple[dict, list[int], list[int]]:
     """Parse CLI args, load config, resolve values.
 
@@ -139,8 +166,7 @@ def parse_args(description: str) -> tuple[dict, list[int], list[int]]:
     args = parser.parse_args()
     config = load_config(args.config)
     r = resolve(args, config)
-    children_str = str(r["children"]).strip().lower()
-    child_birth_ages = [] if children_str == "none" else [int(x) for x in children_str.split(",")]
+    child_birth_ages = parse_children_ages(r["children"])
     pet_ages = parse_pet_ages(r["pets"])
     return r, child_birth_ages, pet_ages
 

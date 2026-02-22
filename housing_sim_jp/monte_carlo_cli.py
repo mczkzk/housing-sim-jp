@@ -2,7 +2,7 @@
 
 import sys
 
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses, parse_pet_ages
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_ages, parse_pet_ages, build_params
 from housing_sim_jp.simulation import to_sim_ages
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
@@ -10,7 +10,6 @@ from housing_sim_jp.monte_carlo import (
     MonteCarloResult,
     run_monte_carlo_all_strategies,
 )
-from housing_sim_jp.params import SimulationParams
 
 
 def _build_parser():
@@ -172,8 +171,7 @@ def main():
     config_file = load_config(args.config)
     r = resolve(args, config_file)
 
-    children_str = str(r["children"]).strip().lower()
-    child_birth_ages = [] if children_str == "none" else [int(x) for x in children_str.split(",")]
+    child_birth_ages = parse_children_ages(r["children"])
 
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
@@ -187,20 +185,7 @@ def main():
     pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
     initial_savings = r["savings"]
 
-    special_expenses = parse_special_expenses(r["special_expenses"])
-    base_params = SimulationParams(
-        husband_income=r["husband_income"],
-        wife_income=r["wife_income"],
-        living_premium=r["living_premium"],
-        child_living_cost_monthly=r["child_living"],
-        education_cost_monthly=r["education"],
-        has_car=r["car"],
-        pet_adoption_ages=pet_sim_ages,
-        husband_ideco=r["husband_ideco"],
-        wife_ideco=r["wife_ideco"],
-        emergency_fund_months=r["emergency_fund"],
-        special_expenses=special_expenses,
-    )
+    base_params = build_params(r, pet_sim_ages)
 
     RELOCATION_TENSHOKUZOKU_PROB = 0.10
     if args.no_events:

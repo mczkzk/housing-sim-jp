@@ -1,6 +1,6 @@
 """CLI entry point for single simulation (3 strategy comparison)."""
 
-from housing_sim_jp.config import parse_args, parse_special_expenses
+from housing_sim_jp.config import parse_args, build_params
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, to_sim_ages, INFEASIBLE
@@ -189,20 +189,7 @@ def main():
     husband_pet_ages = pet_ages  # keep original for display
     pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
 
-    special_expenses = parse_special_expenses(r["special_expenses"])
-    params = SimulationParams(
-        husband_income=r["husband_income"],
-        wife_income=r["wife_income"],
-        living_premium=r["living_premium"],
-        child_living_cost_monthly=r["child_living"],
-        education_cost_monthly=r["education"],
-        has_car=r["car"],
-        pet_adoption_ages=pet_sim_ages,
-        husband_ideco=r["husband_ideco"],
-        wife_ideco=r["wife_ideco"],
-        emergency_fund_months=r["emergency_fund"],
-        special_expenses=special_expenses,
-    )
+    params = build_params(r, pet_sim_ages)
     strategies = [
         UrawaMansion(savings),
         UrawaHouse(savings),

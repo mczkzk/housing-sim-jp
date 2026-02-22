@@ -4,13 +4,12 @@ import sys
 from pathlib import Path
 
 from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses, parse_special_expense_labels, parse_pet_ages
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_ages, parse_special_expense_labels, parse_pet_ages, build_params
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
     run_monte_carlo_all_strategies,
 )
-from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.simulation import (
     INFEASIBLE,
     resolve_child_birth_ages,
@@ -57,8 +56,7 @@ def main():
     config_file = load_config(args.config)
     r = resolve(args, config_file)
 
-    children_str = str(r["children"]).strip().lower()
-    child_birth_ages = [] if children_str == "none" else [int(x) for x in children_str.split(",")]
+    child_birth_ages = parse_children_ages(r["children"])
 
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
@@ -72,20 +70,7 @@ def main():
     output_dir = args.output
     chart_name = args.name
 
-    special_expenses = parse_special_expenses(r["special_expenses"])
-    params = SimulationParams(
-        husband_income=r["husband_income"],
-        wife_income=r["wife_income"],
-        living_premium=r["living_premium"],
-        child_living_cost_monthly=r["child_living"],
-        education_cost_monthly=r["education"],
-        has_car=r["car"],
-        pet_adoption_ages=pet_sim_ages,
-        husband_ideco=r["husband_ideco"],
-        wife_ideco=r["wife_ideco"],
-        emergency_fund_months=r["emergency_fund"],
-        special_expenses=special_expenses,
-    )
+    params = build_params(r, pet_sim_ages)
 
     resolved_children = resolve_child_birth_ages(child_birth_ages, start_age)
     num_children = len(resolved_children)
