@@ -27,6 +27,10 @@ MAX_REPAYMENT_RATIO = 0.35  # 返済比率上限（年収400万以上）
 MAX_INCOME_MULTIPLIER = 7  # 年収倍率上限
 TAKEHOME_TO_GROSS = 0.75  # 手取り→額面 概算変換率
 
+# Divorce / death event constants
+DIVORCE_ASSET_SPLIT_RATIO = 0.5   # 離婚時の財産分与比率
+SINGLE_LIVING_COST_RATIO = 0.7    # 離婚/死別後の生活費比率（1人世帯化）
+
 
 def validate_age(start_age: int) -> None:
     """Validate start age range. Raises ValueError if out of bounds."""
@@ -569,12 +573,12 @@ def _apply_divorce(
              ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost).
     Mutates strategy (clears property/loan).
     """
-    nisa_balance *= 0.5
-    nisa_cost_basis *= 0.5
-    taxable_balance *= 0.5
-    taxable_cost_basis *= 0.5
-    ideco_balance *= 0.5
-    emergency_fund *= 0.5
+    nisa_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    nisa_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
+    taxable_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    taxable_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
+    ideco_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    emergency_fund *= DIVORCE_ASSET_SPLIT_RATIO
 
     event_cost_adj = 0.0
     if strategy.property_price > 0:
@@ -585,7 +589,7 @@ def _apply_divorce(
             land_value = strategy.property_price * strategy.land_value_ratio
         sale_proceeds = land_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
         if sale_proceeds > 0:
-            event_cost_adj = -sale_proceeds * 0.5
+            event_cost_adj = -sale_proceeds * DIVORCE_ASSET_SPLIT_RATIO
         strategy.remaining_balance = 0.0
         strategy.property_price = 0
 
@@ -830,7 +834,7 @@ def _calc_required_emergency_fund(
     if age >= PENSION_AGE:
         base_living *= params.retirement_living_cost_ratio
     if is_divorced or is_spouse_dead:
-        base_living *= 0.7
+        base_living *= SINGLE_LIVING_COST_RATIO
     return base_living * params.emergency_fund_months * inflation
 
 
@@ -1179,8 +1183,8 @@ def simulate_strategy(
 
             # Post-event income/cost adjustments
             if is_divorced or is_spouse_dead:
-                monthly_income = h_income  # husband's income only
-                living_cost *= 0.7
+                monthly_income = h_income
+                living_cost *= SINGLE_LIVING_COST_RATIO
 
             if is_divorced:
                 if strategy.property_price == 0 and forced_rental_cost > 0:
