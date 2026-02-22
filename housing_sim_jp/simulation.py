@@ -452,7 +452,7 @@ def _calc_expenses(
     child_home_ranges: list[tuple[int, int]],
     purchase_month_offset: int = 0,
     car_owned: bool = False,
-    pet_active: bool = False,
+    pet_active_count: int = 0,
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
@@ -460,7 +460,7 @@ def _calc_expenses(
     ownership_month = month - purchase_month_offset
 
     housing_cost = strategy.housing_cost(age, ownership_month, params)
-    if pet_active and strategy.property_price == 0:
+    if pet_active_count > 0 and strategy.property_price == 0:
         housing_cost += params.pet_rental_premium * (1 + params.inflation_rate) ** years_elapsed
 
     extra_monthly_cost = 0
@@ -468,8 +468,8 @@ def _calc_expenses(
         extra_monthly_cost = params.car_running_cost_monthly
         if not strategy.HAS_OWN_PARKING:
             extra_monthly_cost += params.car_parking_cost_monthly
-    if pet_active:
-        extra_monthly_cost += params.pet_monthly_cost
+    if pet_active_count > 0:
+        extra_monthly_cost += params.pet_monthly_cost * pet_active_count
     education_cost, living_cost = _calc_education_and_living(
         age, years_elapsed, params, education_ranges, child_home_ranges, extra_monthly_cost,
     )
@@ -704,22 +704,27 @@ def _try_pet_adoption(
     start_age: int,
     params: SimulationParams,
     investment_balance: float,
-    pet_active: bool,
-    pets_adopted: int,
+    pet_active_ends: list[int],
+    next_pet_idx: int,
     pet_first_adoption_age: int | None,
-    pet_end_age: int,
     child_home_ranges: list[tuple[int, int]],
-) -> tuple[float, bool, int, int | None, int]:
-    """Try pet adoption at year boundary.
+) -> tuple[float, list[int], int, int | None]:
+    """Try pet adoption at year boundary. Supports concurrent pets.
 
-    Returns (one_time_cost, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age).
+    pet_active_ends: list of end-ages for currently active pets.
+    next_pet_idx: index into pet_adoption_ages for next pet to adopt.
+
+    Returns (one_time_cost, pet_active_ends, next_pet_idx, pet_first_adoption_age).
     """
-    if pet_active and age >= pet_end_age:
-        pet_active = False
+    # Remove deceased pets
+    pet_active_ends = [end for end in pet_active_ends if age < end]
 
-    if not (params.pet_count > 0 and month % 12 == 0 and not pet_active
-            and pets_adopted < params.pet_count):
-        return 0.0, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age
+    if not (month % 12 == 0 and next_pet_idx < len(params.pet_adoption_ages)):
+        return 0.0, pet_active_ends, next_pet_idx, pet_first_adoption_age
+
+    target_age = params.pet_adoption_ages[next_pet_idx]
+    if age < target_age:
+        return 0.0, pet_active_ends, next_pet_idx, pet_first_adoption_age
 
     years_from_start = age - start_age
     inflation_factor = (1 + params.inflation_rate) ** years_from_start
@@ -729,11 +734,11 @@ def _try_pet_adoption(
     if investment_balance >= cost + required_ef:
         if pet_first_adoption_age is None:
             pet_first_adoption_age = age
-        pets_adopted += 1
-        pet_end_age = age + params.pet_lifespan_years
-        return cost, True, pets_adopted, pet_first_adoption_age, pet_end_age
+        pet_active_ends.append(age + params.pet_lifespan_years)
+        next_pet_idx += 1
+        return cost, pet_active_ends, next_pet_idx, pet_first_adoption_age
 
-    return 0.0, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age
+    return 0.0, pet_active_ends, next_pet_idx, pet_first_adoption_age
 
 
 def _process_ideco(
@@ -888,12 +893,16 @@ def _calc_final_assets(
 DEFAULT_CHILD_BIRTH_AGES = [32, 35]
 
 
-def wife_to_sim_birth_ages(
-    child_birth_ages: list[int], wife_start_age: int, start_age: int,
+def to_sim_ages(
+    ages: list[int], person_start_age: int, start_age: int,
 ) -> list[int]:
-    """Convert wife-age-based birth ages to sim-age (start_age) based."""
-    offset = start_age - wife_start_age
-    return [a + offset for a in child_birth_ages]
+    """Convert person-age-based ages to sim-age (start_age) based."""
+    offset = start_age - person_start_age
+    return [a + offset for a in ages]
+
+
+# Backward-compatible alias
+wife_to_sim_birth_ages = to_sim_ages
 
 
 def resolve_child_birth_ages(
@@ -1004,11 +1013,10 @@ def simulate_strategy(
     car_first_purchase_age = None
     next_car_due_age = start_age if params.has_car else END_AGE + 1
 
-    # Pet ownership state (dynamically tracked, deferred if unaffordable)
-    pet_active = False
-    pets_adopted = 0
+    # Pet ownership state (supports concurrent pets via age-list)
+    pet_active_ends: list[int] = []  # end-ages of currently active pets
+    next_pet_idx = 0
     pet_first_adoption_age = None
-    pet_end_age = start_age  # triggers adoption attempt at start
 
     is_rental = strategy.property_price == 0
 
@@ -1090,12 +1098,13 @@ def simulate_strategy(
         )
 
         # Pet adoption at year boundaries (after car, lower priority)
-        pet_one_time, pet_active, pets_adopted, pet_first_adoption_age, pet_end_age = _try_pet_adoption(
+        pet_one_time, pet_active_ends, next_pet_idx, pet_first_adoption_age = _try_pet_adoption(
             age, month, start_age, params,
             nisa_balance + taxable_balance - car_one_time,
-            pet_active, pets_adopted, pet_first_adoption_age, pet_end_age,
+            pet_active_ends, next_pet_idx, pet_first_adoption_age,
             child_home_ranges,
         )
+        pet_active_count = len(pet_active_ends)
 
         monthly_income, h_income, w_income, h_peak, w_peak = _calc_monthly_income(
             month, husband_start_age, wife_start_age, params, h_peak, w_peak,
@@ -1112,9 +1121,9 @@ def simulate_strategy(
             extra_monthly = 0
             if params.has_car and car_owned:
                 extra_monthly = params.car_running_cost_monthly + params.car_parking_cost_monthly
-            if pet_active:
+            if pet_active_count > 0:
                 housing_cost += params.pet_rental_premium * inflation
-                extra_monthly += params.pet_monthly_cost
+                extra_monthly += params.pet_monthly_cost * pet_active_count
             education_cost, living_cost = _calc_education_and_living(
                 age, years_elapsed, params, education_ranges, child_home_ranges, extra_monthly,
             )
@@ -1131,7 +1140,7 @@ def simulate_strategy(
                 education_ranges, child_home_ranges,
                 purchase_month_offset=purchase_month_offset,
                 car_owned=car_owned,
-                pet_active=pet_active,
+                pet_active_count=pet_active_count,
             )
             one_time_expense += car_one_time + pet_one_time
 

@@ -74,7 +74,7 @@ class SimulationParams:
     car_running_cost_monthly: float = 3.0  # 駐車場以外の維持費（ガソリン・保険・税金・メンテ）
 
     # Pet parameters
-    pet_count: int = 0
+    pet_adoption_ages: tuple[int, ...] = ()  # 迎え入れ時のsim-age（start_age基準、ソート済み）
     pet_adoption_cost: float = 20.0       # 迎え入れ費用（万円/回）
     pet_monthly_cost: float = 1.5         # 飼育費（万円/月）
     pet_rental_premium: float = 1.5       # 賃貸ペット可上乗せ（万円/月）

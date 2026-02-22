@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses, parse_special_expense_labels
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses, parse_special_expense_labels, parse_pet_ages
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -16,7 +16,7 @@ from housing_sim_jp.simulation import (
     resolve_child_birth_ages,
     resolve_purchase_age,
     simulate_strategy,
-    wife_to_sim_birth_ages,
+    to_sim_ages,
 )
 from housing_sim_jp.strategies import (
     NormalRental,
@@ -64,7 +64,10 @@ def main():
     wife_age = r["wife_age"]
     start_age = max(husband_age, wife_age)
 
-    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, wife_age, start_age)
+    child_birth_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
+
+    pet_ages = parse_pet_ages(r["pets"])
+    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
     savings = r["savings"]
     output_dir = args.output
     chart_name = args.name
@@ -77,7 +80,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
-        pet_count=r["pets"],
+        pet_adoption_ages=pet_sim_ages,
         husband_ideco=r["husband_ideco"],
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],

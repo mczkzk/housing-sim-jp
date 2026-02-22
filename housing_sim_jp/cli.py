@@ -3,10 +3,12 @@
 from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
-from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, wife_to_sim_birth_ages, INFEASIBLE
+from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, to_sim_ages, INFEASIBLE
 
 
-def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth_ages: list[int]):
+def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth_ages: list[int], pet_ages: list[int] | None = None):
+    if pet_ages is None:
+        pet_ages = []
     sim_years = 80 - start_age
     h_income = r["husband_income"]
     w_income = r["wife_income"]
@@ -36,8 +38,9 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
         replacements = (80 - start_age) // params.car_replacement_years
         total_running = params.car_running_cost_monthly + params.car_parking_cost_monthly
         print(f"  車所有: {params.car_purchase_price:.0f}万円/{params.car_replacement_years}年買替（{replacements}回）+ 維持費{total_running:.1f}万/月（一戸建ては駐車場代{params.car_parking_cost_monthly:.1f}万不要）")
-    if r["pets"] > 0:
-        print(f"  ペット: {r['pets']}匹（1匹{params.pet_lifespan_years}年・飼育費{params.pet_monthly_cost:.1f}万/月、賃貸は+{params.pet_rental_premium:.1f}万/月）")
+    if pet_ages:
+        parts = [f"夫{a}歳" for a in pet_ages]
+        print(f"  ペット: {len(pet_ages)}匹（{', '.join(parts)}迎え入れ、1匹{params.pet_lifespan_years}年・飼育費{params.pet_monthly_cost:.1f}万/月、賃貸は+{params.pet_rental_premium:.1f}万/月）")
     h_ideco = r["husband_ideco"]
     w_ideco = r["wife_ideco"]
     if h_ideco > 0 or w_ideco > 0:
@@ -171,7 +174,7 @@ def _print_yearly_log(valid_results: list[dict]):
 
 def main():
     """Execute main simulation (3 strategy comparison)"""
-    r, child_birth_ages = parse_args("住宅資産形成シミュレーション")
+    r, child_birth_ages, pet_ages = parse_args("住宅資産形成シミュレーション")
 
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
@@ -180,7 +183,11 @@ def main():
 
     # child_birth_ages is wife-age based from config/CLI; convert to sim-age (start_age based)
     wife_birth_ages = child_birth_ages
-    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, wife_age, start_age)
+    child_birth_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
+
+    # pet_ages is husband-age based from config/CLI; convert to sim-age
+    husband_pet_ages = pet_ages  # keep original for display
+    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
 
     special_expenses = parse_special_expenses(r["special_expenses"])
     params = SimulationParams(
@@ -190,7 +197,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
-        pet_count=r["pets"],
+        pet_adoption_ages=pet_sim_ages,
         husband_ideco=r["husband_ideco"],
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
@@ -202,7 +209,7 @@ def main():
         StrategicRental(savings, child_birth_ages=child_birth_ages, start_age=start_age),
     ]
 
-    _print_header(r, params, start_age, wife_birth_ages)
+    _print_header(r, params, start_age, wife_birth_ages, husband_pet_ages)
 
     results = []
     for strategy in strategies:

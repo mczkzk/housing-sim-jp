@@ -17,7 +17,7 @@ DEFAULTS = {
     "child_living": 5.0,
     "education": 10.0,
     "car": False,
-    "pets": 0,
+    "pets": "",
     "relocation": False,
     "husband_ideco": 2.0,
     "wife_ideco": 2.0,
@@ -41,6 +41,16 @@ def load_config(path: Path | None = None) -> dict:
             raw["children"] = ",".join(str(x) for x in v) if v else "none"
         elif v is False:
             raw["children"] = "none"
+    # Normalize pets: TOML list/int/bool → CLI-compatible string
+    if "pets" in raw:
+        v = raw["pets"]
+        if isinstance(v, list):
+            raw["pets"] = ",".join(str(x) for x in v) if v else ""
+        elif isinstance(v, bool) and v is False:
+            raw["pets"] = ""
+        elif isinstance(v, int):
+            # Backward compat: bare integer → empty (0) or error guidance
+            raw["pets"] = "" if v == 0 else str(v)
     # Normalize special_expenses: TOML [[age, amount, label?], ...] → "age:amount:label,..." string
     if "special_expenses" in raw:
         v = raw["special_expenses"]
@@ -69,7 +79,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
     parser.add_argument("--education", type=float, default=None, help=f"教育費（万円/月/人）(default: {d['education']})")
     parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")
-    parser.add_argument("--pets", type=int, default=None, help=f"ペット頭数（1匹15年・飼育費1.5万/月、賃貸は+1.5万/月）(default: {d['pets']})")
+    parser.add_argument("--pets", type=str, default=None, help="ペット迎え入れ時の夫の年齢（カンマ区切り、例: 38,40 / noneでペットなし）")
     parser.add_argument("--relocation", action="store_true", default=None, help="転勤族モード（転勤確率が年3%%→10%%に上昇）")
     parser.add_argument("--husband-ideco", type=float, default=None, help=f"夫のiDeCo拠出額（万円/月）(default: {d['husband_ideco']})")
     parser.add_argument("--wife-ideco", type=float, default=None, help=f"妻のiDeCo拠出額（万円/月）(default: {d['wife_ideco']})")
@@ -111,15 +121,28 @@ def parse_special_expense_labels(s: str) -> list[tuple[int, float, str]]:
     return sorted(result)
 
 
-def parse_args(description: str) -> tuple[dict, list[int]]:
-    """Parse CLI args, load config, resolve values, and return (resolved_dict, child_birth_ages)."""
+def parse_pet_ages(s: str) -> list[int]:
+    """Parse pets string → list of husband's ages at adoption. Empty/none → []."""
+    s = str(s).strip().lower()
+    if not s or s == "none":
+        return []
+    return sorted(int(x) for x in s.split(","))
+
+
+def parse_args(description: str) -> tuple[dict, list[int], list[int]]:
+    """Parse CLI args, load config, resolve values.
+
+    Returns (resolved_dict, child_birth_ages, pet_ages).
+    pet_ages: list of husband's ages at pet adoption.
+    """
     parser = create_parser(description)
     args = parser.parse_args()
     config = load_config(args.config)
     r = resolve(args, config)
     children_str = str(r["children"]).strip().lower()
     child_birth_ages = [] if children_str == "none" else [int(x) for x in children_str.split(",")]
-    return r, child_birth_ages
+    pet_ages = parse_pet_ages(r["pets"])
+    return r, child_birth_ages, pet_ages
 
 
 def resolve(args: argparse.Namespace, config: dict) -> dict:

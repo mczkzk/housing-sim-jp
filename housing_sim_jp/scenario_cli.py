@@ -2,7 +2,7 @@
 
 from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
-from housing_sim_jp.simulation import wife_to_sim_birth_ages
+from housing_sim_jp.simulation import to_sim_ages
 
 STRATEGY_LABELS = [
     "マンション購入派",
@@ -172,14 +172,16 @@ def print_discipline_analysis(base_results, discipline_results):
 
 
 def main():
-    r, child_birth_ages = parse_args("3シナリオ比較シミュレーション")
+    r, child_birth_ages, pet_ages = parse_args("3シナリオ比較シミュレーション")
     special_expenses = parse_special_expenses(r["special_expenses"])
 
-    start_age = max(r["husband_age"], r["wife_age"])
-    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, r["wife_age"], start_age)
+    husband_age = r["husband_age"]
+    start_age = max(husband_age, r["wife_age"])
+    child_birth_ages = to_sim_ages(child_birth_ages, r["wife_age"], start_age)
+    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
 
     common_kwargs = dict(
-        husband_start_age=r["husband_age"],
+        husband_start_age=husband_age,
         wife_start_age=r["wife_age"],
         initial_savings=r["savings"],
         husband_income=r["husband_income"],
@@ -189,7 +191,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
-        pet_count=r["pets"],
+        pet_adoption_ages=pet_sim_ages,
         husband_ideco=r["husband_ideco"],
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],

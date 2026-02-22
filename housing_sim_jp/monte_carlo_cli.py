@@ -2,8 +2,8 @@
 
 import sys
 
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses
-from housing_sim_jp.simulation import wife_to_sim_birth_ages
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses, parse_pet_ages
+from housing_sim_jp.simulation import to_sim_ages
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -180,7 +180,11 @@ def main():
     start_age = max(husband_age, wife_age)
 
     wife_birth_ages = child_birth_ages
-    child_birth_ages = wife_to_sim_birth_ages(child_birth_ages, wife_age, start_age)
+    child_birth_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
+
+    pet_ages = parse_pet_ages(r["pets"])
+    husband_pet_ages = pet_ages
+    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
     initial_savings = r["savings"]
 
     special_expenses = parse_special_expenses(r["special_expenses"])
@@ -191,7 +195,7 @@ def main():
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],
         has_car=r["car"],
-        pet_count=r["pets"],
+        pet_adoption_ages=pet_sim_ages,
         husband_ideco=r["husband_ideco"],
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
@@ -226,8 +230,9 @@ def main():
         print(f"  子供: {', '.join(parts)}出産")
     else:
         print("  子供: なし")
-    if r["pets"] > 0:
-        print(f"  ペット: {r['pets']}匹")
+    if husband_pet_ages:
+        parts = [f"夫{a}歳" for a in husband_pet_ages]
+        print(f"  ペット: {len(husband_pet_ages)}匹（{', '.join(parts)}迎え入れ）")
     event_info = "無効" if args.no_events else "有効"
     if not args.no_events and r["relocation"]:
         event_info += f"（転勤族: 年{RELOCATION_TENSHOKUZOKU_PROB:.0%}）"
