@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_special_expenses, parse_special_expense_labels
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -107,8 +107,24 @@ def main():
             print(f"  {strategy.name}: {e}（スキップ）", file=sys.stderr)
 
     if det_results:
-        path = plot_trajectory(det_results, output_dir, name=chart_name)
+        # Shared life events → trajectory chart (shown once)
+        special_labels = parse_special_expense_labels(r["special_expenses"])
+        inflation = params.inflation_rate
+        shared_markers: list[tuple[int, float, str]] = []
+        for age, base_amount, label in special_labels:
+            nominal = base_amount * (1 + inflation) ** (age - start_age)
+            shared_markers.append((age, -nominal, label))
+        # iDeCo (use first result that has it)
+        for result in det_results:
+            ideco_gross = result.get("ideco_withdrawal_gross", 0)
+            if ideco_gross > 0:
+                shared_markers.append((71, ideco_gross, "iDeCo受取"))
+                break
+        shared_markers.sort()
+
+        path = plot_trajectory(det_results, output_dir, name=chart_name, event_markers=shared_markers)
         print(f"  → {path}", file=sys.stderr)
+
         path = plot_cashflow_stack(det_results, output_dir, name=chart_name)
         print(f"  → {path}", file=sys.stderr)
     else:

@@ -720,7 +720,9 @@ def _process_ideco(
         ideco_balance *= 1 + monthly_return_rate
 
     # Lump-sum withdrawal at age 71 (separate from retirement benefits by 1+ year)
+    ideco_withdrawal_gross = 0.0
     if contribution > 0 and age == IDECO_WITHDRAWAL_AGE and month % 12 == 0 and ideco_balance > 0:
+        ideco_withdrawal_gross = ideco_balance
         retirement_tax = calc_retirement_income_tax(
             ideco_balance, ideco_contribution_years,
         )
@@ -730,7 +732,8 @@ def _process_ideco(
         ideco_balance = 0.0
 
     return (investable, ideco_balance, ideco_total_contribution,
-            ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid)
+            ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
+            ideco_withdrawal_gross)
 
 
 def _manage_emergency_fund(
@@ -985,6 +988,7 @@ def simulate_strategy(
     ideco_total_contribution = 0.0
     ideco_tax_benefit_total = 0.0
     ideco_tax_paid = 0.0
+    ideco_withdrawal_gross = 0.0
     ideco_contribution_years = 0
 
     # Estimate marginal tax rate from initial income (for iDeCo tax benefit)
@@ -1132,11 +1136,14 @@ def simulate_strategy(
 
         # iDeCo: contribute, apply returns, withdraw at 60
         (investable, ideco_balance, ideco_total_contribution,
-         ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid) = _process_ideco(
+         ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
+         _ideco_gross) = _process_ideco(
             age, month, investable, ideco_balance, ideco_total_contribution,
             ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
             monthly_return_rate, params, marginal_tax_rate,
         )
+        if _ideco_gross > 0:
+            ideco_withdrawal_gross = _ideco_gross
 
         # Emergency fund management: release excess / top up shortfall
         required_ef = _calc_required_emergency_fund(
@@ -1202,6 +1209,7 @@ def simulate_strategy(
             "ideco_total_contribution": ideco_total_contribution,
             "ideco_tax_benefit_total": ideco_tax_benefit_total,
             "ideco_tax_paid": ideco_tax_paid,
+            "ideco_withdrawal_gross": ideco_withdrawal_gross,
             "monthly_log": monthly_log,
             "investment_balance_80": 0,
             "securities_tax": 0,
@@ -1235,6 +1243,7 @@ def simulate_strategy(
         "ideco_total_contribution": ideco_total_contribution,
         "ideco_tax_benefit_total": ideco_tax_benefit_total,
         "ideco_tax_paid": ideco_tax_paid,
+        "ideco_withdrawal_gross": ideco_withdrawal_gross,
         "monthly_log": monthly_log,
         **final,
     }

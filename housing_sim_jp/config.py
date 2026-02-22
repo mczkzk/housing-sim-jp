@@ -38,13 +38,16 @@ def load_config(path: Path | None = None) -> dict:
             raw["children"] = ",".join(str(x) for x in v) if v else "none"
         elif v is False:
             raw["children"] = "none"
-    # Normalize special_expenses: TOML [[age, amount], ...] → "age:amount,..." string
+    # Normalize special_expenses: TOML [[age, amount, label?], ...] → "age:amount:label,..." string
     if "special_expenses" in raw:
         v = raw["special_expenses"]
         if isinstance(v, list):
-            raw["special_expenses"] = ",".join(
-                f"{int(pair[0])}:{pair[1]}" for pair in v
-            ) if v else ""
+            parts = []
+            for pair in v:
+                age, amount = int(pair[0]), pair[1]
+                label = pair[2] if len(pair) >= 3 else ""
+                parts.append(f"{age}:{amount}:{label}" if label else f"{age}:{amount}")
+            raw["special_expenses"] = ",".join(parts) if parts else ""
     return raw
 
 
@@ -70,7 +73,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
 
 
 def parse_special_expenses(s: str) -> dict[int, float]:
-    """Parse special expenses string "age:amount,age:amount,..." → {age: amount}."""
+    """Parse special expenses string "age:amount[:label],..." → {age: amount}."""
     if not s or not s.strip():
         return {}
     result: dict[int, float] = {}
@@ -78,11 +81,28 @@ def parse_special_expenses(s: str) -> dict[int, float]:
         pair = pair.strip()
         if not pair:
             continue
-        age_str, amount_str = pair.split(":")
-        age = int(age_str.strip())
-        amount = float(amount_str.strip())
+        parts = pair.split(":")
+        age = int(parts[0].strip())
+        amount = float(parts[1].strip())
         result[age] = result.get(age, 0) + amount
     return result
+
+
+def parse_special_expense_labels(s: str) -> list[tuple[int, float, str]]:
+    """Parse special expenses string → [(age, amount, label), ...] for chart annotations."""
+    if not s or not s.strip():
+        return []
+    result: list[tuple[int, float, str]] = []
+    for pair in s.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        parts = pair.split(":")
+        age = int(parts[0].strip())
+        amount = float(parts[1].strip())
+        label = parts[2].strip() if len(parts) >= 3 else f"{amount:.0f}万"
+        result.append((age, amount, label))
+    return sorted(result)
 
 
 def parse_args(description: str) -> tuple[dict, list[int]]:
