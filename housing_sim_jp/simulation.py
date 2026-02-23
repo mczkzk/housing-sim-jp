@@ -31,6 +31,27 @@ TAKEHOME_TO_GROSS = 0.75  # 手取り→額面 概算変換率
 DIVORCE_ASSET_SPLIT_RATIO = 0.5   # 離婚時の財産分与比率
 SINGLE_LIVING_COST_RATIO = 0.7    # 離婚/死別後の生活費比率（1人世帯化）
 
+# 児童手当（2024年改正: 所得制限撤廃・18歳まで延長）
+CHILD_ALLOWANCE_SCHEDULE: tuple[tuple[int, int, float], ...] = (
+    (0, 2, 1.5),   # 0〜2歳: 月1.5万円/人
+    (3, 18, 1.0),   # 3〜18歳: 月1.0万円/人
+)
+
+
+def _calc_child_allowance(age: int, child_birth_ages: list[int]) -> float:
+    """Calculate monthly child allowance (児童手当) based on children's ages.
+
+    Fixed nominal amount (not inflation-adjusted) per statutory schedule.
+    """
+    total = 0.0
+    for birth_age in child_birth_ages:
+        child_age = age - birth_age
+        for lo, hi, amount in CHILD_ALLOWANCE_SCHEDULE:
+            if lo <= child_age <= hi:
+                total += amount
+                break
+    return total
+
 
 def validate_age(start_age: int) -> None:
     """Validate start age range. Raises ValueError if out of bounds."""
@@ -1214,8 +1235,11 @@ def simulate_strategy(
         else:
             event_extra_cost = 0
 
+        child_allowance = _calc_child_allowance(age, child_birth_ages)
+
         investable = (
             monthly_income
+            + child_allowance
             - housing_cost
             - education_cost
             - living_cost
@@ -1227,6 +1251,7 @@ def simulate_strategy(
         )
         investable_running = (
             monthly_income
+            + child_allowance
             - housing_cost
             - education_cost
             - living_cost
@@ -1297,7 +1322,7 @@ def simulate_strategy(
             bankrupt_age = age
             monthly_log.append({
                 "age": age,
-                "income": monthly_income,
+                "income": monthly_income + child_allowance,
                 "housing": housing_cost,
                 "education": education_cost,
                 "living": living_cost,
@@ -1314,7 +1339,7 @@ def simulate_strategy(
             monthly_log.append(
                 {
                     "age": age,
-                    "income": monthly_income,
+                    "income": monthly_income + child_allowance,
                     "husband_income": h_income,
                     "wife_income": w_income,
                     "housing": housing_cost,
