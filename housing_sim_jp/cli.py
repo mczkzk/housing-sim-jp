@@ -174,7 +174,7 @@ def _print_yearly_log(valid_results: list[dict]):
 
 def main():
     """Execute main simulation (3 strategy comparison)"""
-    r, child_birth_ages, pet_ages = parse_args("住宅資産形成シミュレーション")
+    r, child_birth_ages, independence_ages, pet_ages = parse_args("住宅資産形成シミュレーション")
 
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
@@ -193,7 +193,8 @@ def main():
     strategies = [
         UrawaMansion(savings),
         UrawaHouse(savings),
-        StrategicRental(savings, child_birth_ages=child_birth_ages, start_age=start_age),
+        StrategicRental(savings, child_birth_ages=child_birth_ages,
+                        child_independence_ages=independence_ages or None, start_age=start_age),
     ]
 
     _print_header(r, params, start_age, wife_birth_ages, husband_pet_ages)
@@ -201,7 +202,8 @@ def main():
     results = []
     for strategy in strategies:
         purchase_age = resolve_purchase_age(
-            strategy, params, husband_age, wife_age, child_birth_ages,
+            strategy, params, husband_age, wife_age,
+            child_birth_ages, independence_ages or None,
         )
         if purchase_age == INFEASIBLE:
             print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
@@ -215,7 +217,9 @@ def main():
                     strategy, params,
                     husband_start_age=husband_age,
                     wife_start_age=wife_age,
-                    child_birth_ages=child_birth_ages, purchase_age=purchase_age,
+                    child_birth_ages=child_birth_ages,
+                    child_independence_ages=independence_ages or None,
+                    purchase_age=purchase_age,
                 )
             )
         except ValueError as e:

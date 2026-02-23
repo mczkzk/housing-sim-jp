@@ -108,6 +108,18 @@ class TestStrategicRentalInit:
         assert s.age_phase2_start == 37
         assert s.age_phase2_end == 51  # 28 + 22 + 1
 
+    def test_phase_boundaries_phd_child(self):
+        """博士の子(39歳出産, independence=27) → Phase2: 46〜67歳（22→27で+5年）"""
+        s = StrategicRental(800, child_birth_ages=[39], child_independence_ages=[27], start_age=37)
+        assert s.age_phase2_start == 46  # 39 + 7
+        assert s.age_phase2_end == 67    # 39 + 27 + 1
+
+    def test_phase_boundaries_mixed_grad(self):
+        """1人目学部(39歳出産), 2人目博士(41歳出産) → Phase2 end は 41+27+1=69"""
+        s = StrategicRental(800, child_birth_ages=[39, 41], child_independence_ages=[22, 27], start_age=37)
+        assert s.age_phase2_start == 46   # min(39+7, 41+7) = 46
+        assert s.age_phase2_end == 69     # max(39+22, 41+27) + 1 = 69
+
 
 class TestNormalRentalInit:
     def test_initial_investment(self):

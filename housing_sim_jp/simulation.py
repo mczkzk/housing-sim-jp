@@ -127,6 +127,7 @@ def find_earliest_purchase_age(
     husband_start_age: int,
     wife_start_age: int,
     child_birth_ages: list[int] | None = None,
+    child_independence_ages: list[int] | None = None,
 ) -> int | None:
     """Find the earliest age at which the strategy passes loan screening.
 
@@ -145,14 +146,15 @@ def find_earliest_purchase_age(
     monthly_return_rate = params.investment_return / 12
 
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
+    indep_ages = resolve_independence_ages(child_independence_ages, child_birth_ages)
 
     education_ranges = [
-        (a + EDUCATION_CHILD_AGE_START, a + EDUCATION_CHILD_AGE_END)
-        for a in child_birth_ages
+        (ba + EDUCATION_CHILD_AGE_START, ba + ia)
+        for ba, ia in zip(child_birth_ages, indep_ages)
     ]
     child_home_ranges = [
-        (ba, ba + CHILD_HOME_AGE_END)
-        for ba in child_birth_ages
+        (ba, ba + ia)
+        for ba, ia in zip(child_birth_ages, indep_ages)
     ]
 
     # Project savings year-by-year while living in 2LDK rental
@@ -278,6 +280,7 @@ def resolve_purchase_age(
     husband_start_age: int,
     wife_start_age: int,
     child_birth_ages: list[int] | None = None,
+    child_independence_ages: list[int] | None = None,
 ) -> int | None:
     """Determine the purchase age for a strategy.
 
@@ -291,7 +294,8 @@ def resolve_purchase_age(
     if not validate_strategy(strategy, params):
         return None
     age = find_earliest_purchase_age(
-        strategy, params, husband_start_age, wife_start_age, child_birth_ages,
+        strategy, params, husband_start_age, wife_start_age,
+        child_birth_ages, child_independence_ages,
     )
     return age if age is not None else INFEASIBLE
 
@@ -393,18 +397,22 @@ def _calc_monthly_income(
 
 # child_birth_age + offset → education cost period
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
-EDUCATION_CHILD_AGE_END = 22    # 大学卒業
+EDUCATION_CHILD_AGE_END = 22    # 大学卒業（デフォルト）
 
 # ステージ別教育費割合（education_cost_monthly = ピーク（高校）金額に対する比率）
 EDUCATION_COST_RATIOS: tuple[tuple[int, int, float], ...] = (
     (7, 12, 0.4),   # 小学校（習い事・学童）
     (13, 15, 0.7),  # 中学校（塾開始・部活）
     (16, 18, 1.0),  # 高校（塾・予備校・受験）← ピーク
-    (19, 22, 0.85), # 大学（学費のみ、塾なし）
+    (19, 27, 0.5),  # 大学・大学院（10=国立60万/年, 15=私立文系90万/年, 20=私立理系120万/年）
 )
 
 # 子供が同居する期間（生活費計算用）
-CHILD_HOME_AGE_END = 22  # 大学卒業で独立
+CHILD_HOME_AGE_END = 22  # 大学卒業で独立（デフォルト）
+
+# 大学院進学マッピング（進路 → 独立年齢）
+GRAD_SCHOOL_MAP = {"修士": 24, "博士": 27}
+DEFAULT_INDEPENDENCE_AGE = 22  # 学部卒
 
 
 def _calc_education_and_living(
@@ -914,6 +922,16 @@ def resolve_child_birth_ages(
     ]
 
 
+def resolve_independence_ages(
+    child_independence_ages: list[int] | None,
+    child_birth_ages: list[int],
+) -> list[int]:
+    """Resolve None → all DEFAULT_INDEPENDENCE_AGE (22). Pass-through if already a list."""
+    if child_independence_ages is not None:
+        return child_independence_ages
+    return [DEFAULT_INDEPENDENCE_AGE] * len(child_birth_ages)
+
+
 def simulate_strategy(
     strategy: Strategy,
     params: SimulationParams,
@@ -921,28 +939,31 @@ def simulate_strategy(
     wife_start_age: int = 28,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
+    child_independence_ages: list[int] | None = None,
     purchase_age: int | None = None,
     event_timeline=None,
 ) -> dict:
     """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
     child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
+    child_independence_ages: per-child independence age (22=学部, 24=修士, 27=博士). None=all 22.
     purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
     start_age = max(husband_start_age, wife_start_age)
 
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
+    indep_ages = resolve_independence_ages(child_independence_ages, child_birth_ages)
     if child_birth_ages:
         if len(child_birth_ages) > MAX_CHILDREN:
             raise ValueError(
                 f"子供の人数{len(child_birth_ages)}人は上限{MAX_CHILDREN}人を超えています"
                 f"（3LDKの部屋数制約）"
             )
-        for birth_age in child_birth_ages:
-            if birth_age + EDUCATION_CHILD_AGE_END < start_age:
+        for birth_age, ia in zip(child_birth_ages, indep_ages):
+            if birth_age + ia < start_age:
                 raise ValueError(
                     f"出産年齢{birth_age}歳の子は開始年齢{start_age}歳時点で"
-                    f"{start_age - birth_age}歳（大学卒業済み）: 教育費が発生しません"
+                    f"{start_age - birth_age}歳（卒業済み）: 教育費が発生しません"
                 )
 
     validate_age(start_age)
@@ -982,13 +1003,13 @@ def simulate_strategy(
     purchase_month_offset = (effective_purchase_age - start_age) * 12
 
     education_ranges = [
-        (age + EDUCATION_CHILD_AGE_START, age + EDUCATION_CHILD_AGE_END)
-        for age in child_birth_ages
+        (ba + EDUCATION_CHILD_AGE_START, ba + ia)
+        for ba, ia in zip(child_birth_ages, indep_ages)
     ]
 
     child_home_ranges = [
-        (birth_age, birth_age + CHILD_HOME_AGE_END)
-        for birth_age in child_birth_ages
+        (ba, ba + ia)
+        for ba, ia in zip(child_birth_ages, indep_ages)
     ]
 
     # Convert building-age milestones to owner-age for this simulation

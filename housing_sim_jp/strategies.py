@@ -214,7 +214,8 @@ class StrategicRental(Strategy):
     RENT_PHASE2_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
     RENT_PHASE3_BASE = 18.0
 
-    def __init__(self, initial_savings: float = 800, child_birth_ages=None, start_age: int = 37):
+    def __init__(self, initial_savings: float = 800, child_birth_ages=None,
+                 child_independence_ages=None, start_age: int = 37):
         super().__init__(
             name="戦略的賃貸",
             initial_savings=initial_savings,
@@ -229,8 +230,9 @@ class StrategicRental(Strategy):
         self.rent_phase2 = self.RENT_PHASE2_BASE + max(0, num_children - 1) * self.RENT_PHASE2_EXTRA
 
         if child_birth_ages:
+            indep = child_independence_ages or [CHILD_ROOM_AGE_END] * len(child_birth_ages)
             self.age_phase2_start = min(ba + CHILD_ROOM_AGE_START for ba in child_birth_ages)
-            self.age_phase2_end = max(ba + CHILD_ROOM_AGE_END for ba in child_birth_ages) + 1
+            self.age_phase2_end = max(ba + ia for ba, ia in zip(child_birth_ages, indep)) + 1
             # Phase2開始がstart_ageより前なら、最初からPhase2
             if self.age_phase2_start < start_age:
                 self.age_phase2_start = start_age

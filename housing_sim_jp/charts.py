@@ -34,6 +34,65 @@ def _setup_japanese_font():
     plt.rcParams["axes.unicode_minus"] = False
 
 
+def _merge_consecutive_markers(
+    markers: list[tuple[int | float, float, str]],
+) -> list[tuple[float, float, str]]:
+    """Merge consecutive same-label events into single markers.
+
+    E.g., "子の大学院修士" at 62 (80万) and 63 (55万) → one marker at 62.5 (135万).
+    """
+    if not markers:
+        return []
+
+    sorted_markers = sorted(markers, key=lambda m: (m[2], m[0]))
+    merged: list[tuple[float, float, str]] = []
+    i = 0
+    while i < len(sorted_markers):
+        age, amount, label = sorted_markers[i]
+        group = [(age, amount)]
+        j = i + 1
+        while (
+            j < len(sorted_markers)
+            and sorted_markers[j][2] == label
+            and sorted_markers[j][0] - group[-1][0] <= 2
+        ):
+            group.append((sorted_markers[j][0], sorted_markers[j][1]))
+            j += 1
+
+        if len(group) > 1:
+            total = sum(a for _, a in group)
+            mid = (group[0][0] + group[-1][0]) / 2
+            merged.append((mid, total, label))
+        else:
+            merged.append((age, amount, label))
+        i = j
+
+    merged.sort(key=lambda m: m[0])
+    return merged
+
+
+def _assign_marker_levels(
+    markers: list[tuple[float, float, str]],
+    threshold: float = 8.0,
+    max_levels: int = 6,
+) -> list[int]:
+    """Assign vertical levels to markers so nearby ones don't overlap."""
+    levels: dict[int, float] = {}
+    assignments = []
+    for age, _, _ in markers:
+        for level in range(max_levels):
+            last_age = levels.get(level, -999.0)
+            if age - last_age >= threshold:
+                levels[level] = age
+                assignments.append(level)
+                break
+        else:
+            best = min(levels, key=levels.get)
+            levels[best] = age
+            assignments.append(best)
+    return assignments
+
+
 def _format_oku_axis(ax: plt.Axes):
     """Add 億円 labels on Y axis (secondary tick labels)."""
     ax.yaxis.set_major_formatter(
@@ -80,26 +139,30 @@ def plot_trajectory(
     ax.grid(True, alpha=0.3)
     _format_oku_axis(ax)
 
-    # Shared life event markers
+    # Shared life event markers (merge consecutive same-label events)
     if event_markers:
         COLOR_EXPENSE = "#c0392b"
         COLOR_INCOME = "#27ae60"
+        merged = _merge_consecutive_markers(event_markers)
+        levels = _assign_marker_levels(merged)
         y_lo, y_hi = ax.get_ylim()
-        for i, (evt_age, evt_amount, evt_label) in enumerate(event_markers):
+        drawn_vlines: set[float] = set()
+        for (evt_age, evt_amount, evt_label), level in zip(merged, levels):
             color = COLOR_INCOME if evt_amount > 0 else COLOR_EXPENSE
-            ax.axvline(evt_age, color="#888888", linewidth=0.7, linestyle=":", alpha=0.4, zorder=3)
+            if evt_age not in drawn_vlines:
+                ax.axvline(evt_age, color="#888888", linewidth=0.7, linestyle=":", alpha=0.4, zorder=3)
+                drawn_vlines.add(evt_age)
             if evt_amount > 0:
                 label = f"+{evt_label} {evt_amount:,.0f}万"
             else:
                 label = f"▲{evt_label} {abs(evt_amount):,.0f}万"
-            # Alternate y-position across 4 levels in the lower portion
-            y_pos = y_lo + (y_hi - y_lo) * (0.05 + 0.07 * (i % 4))
+            y_pos = y_lo + (y_hi - y_lo) * (0.05 + 0.06 * level)
             ax.annotate(
                 label,
                 xy=(evt_age, y_pos),
                 fontsize=11, color=color,
                 ha="center", va="bottom",
-                bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=color, alpha=0.9, linewidth=0.8),
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.9, linewidth=0.8),
                 zorder=10,
             )
 
@@ -264,18 +327,18 @@ def plot_cashflow_stack(
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#d62728", alpha=0.9),
             )
 
-        # One-time event markers (per-strategy, individual boxes)
-        markers = per_result_markers[idx] if per_result_markers and idx < len(per_result_markers) else []
-        if markers:
-            COLOR_EXPENSE = "#c0392b"  # red
-            COLOR_INCOME = "#27ae60"   # green
+        # One-time event markers (merge consecutive same-label, then smart layout)
+        raw_markers = per_result_markers[idx] if per_result_markers and idx < len(per_result_markers) else []
+        visible = [(a, v, l) for a, v, l in raw_markers if x_min <= a <= x_max]
+        if visible:
+            COLOR_EXPENSE = "#c0392b"
+            COLOR_INCOME = "#27ae60"
+            merged_m = _merge_consecutive_markers(visible)
+            levels_m = _assign_marker_levels(merged_m)
             y_lo, y_hi = ax.get_ylim()
-            drawn_ages = set()
-            for i, (evt_age, evt_amount, evt_label) in enumerate(markers):
-                if not (x_min <= evt_age <= x_max):
-                    continue
+            drawn_ages: set[float] = set()
+            for (evt_age, evt_amount, evt_label), level in zip(merged_m, levels_m):
                 color = COLOR_INCOME if evt_amount > 0 else COLOR_EXPENSE
-                # Draw vertical line once per age
                 if evt_age not in drawn_ages:
                     ax.axvline(evt_age, color="#888888", linewidth=0.7, linestyle=":", alpha=0.4, zorder=3)
                     drawn_ages.add(evt_age)
@@ -283,13 +346,13 @@ def plot_cashflow_stack(
                     label = f"+{evt_label} {evt_amount:,.0f}万"
                 else:
                     label = f"▲{evt_label} {abs(evt_amount):,.0f}万"
-                y_pos = y_lo + (y_hi - y_lo) * (0.04 + 0.07 * (i % 5))
+                y_pos = y_lo + (y_hi - y_lo) * (0.04 + 0.06 * level)
                 ax.annotate(
                     label,
                     xy=(evt_age, y_pos),
                     fontsize=11, color=color,
                     ha="center", va="bottom",
-                    bbox=dict(boxstyle="round,pad=0.5", fc="white", ec=color, alpha=0.9, linewidth=0.8),
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.9, linewidth=0.8),
                     zorder=10,
                 )
 

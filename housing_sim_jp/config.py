@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 from housing_sim_jp.params import SimulationParams
+from housing_sim_jp.simulation import GRAD_SCHOOL_MAP, DEFAULT_INDEPENDENCE_AGE
 
 DEFAULT_CONFIG_PATH = Path("config.toml")
 
@@ -37,10 +38,17 @@ def load_config(path: Path | None = None) -> dict:
     with open(path, "rb") as f:
         raw = tomllib.load(f)
     # Normalize children: TOML list/bool/string → CLI-compatible string
+    # Supports: [30, 33], ["30:修士", "33:博士"], [[30, "修士"], [33]]
     if "children" in raw:
         v = raw["children"]
         if isinstance(v, list):
-            raw["children"] = ",".join(str(x) for x in v) if v else "none"
+            parts = []
+            for item in v:
+                if isinstance(item, list):
+                    parts.append(":".join(str(x) for x in item))
+                else:
+                    parts.append(str(item))
+            raw["children"] = ",".join(parts) if parts else "none"
         elif v is False:
             raw["children"] = "none"
     # Normalize pets: TOML list/int/bool → CLI-compatible string
@@ -76,10 +84,10 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--savings", type=float, default=None, help=f"初期金融資産・万円 (default: {d['savings']:.0f})")
     parser.add_argument("--husband-income", type=float, default=None, help=f"夫の月額手取り・万円 (default: {d['husband_income']})")
     parser.add_argument("--wife-income", type=float, default=None, help=f"妻の月額手取り・万円 (default: {d['wife_income']})")
-    parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、例: 28,32 / noneで子なし）(default: {d['children']})")
+    parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、:修士/:博士で大学院進学、例: 30,33:博士 / noneで子なし）(default: {d['children']})")
     parser.add_argument("--living-premium", type=float, default=None, help=f"生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月）(default: {d['living_premium']})")
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
-    parser.add_argument("--education", type=float, default=None, help=f"教育費（万円/月/人）(default: {d['education']})")
+    parser.add_argument("--education", type=float, default=None, help=f"教育費ピーク/高校（万円/月/人）10=公立+予備校, 15=私立+予備校, 20=私立一貫+エリート塾 (default: {d['education']})")
     parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")
     parser.add_argument("--pets", type=str, default=None, help="ペット迎え入れ時の夫の年齢（カンマ区切り、例: 38,40 / noneでペットなし）")
     parser.add_argument("--relocation", action="store_true", default=None, help="転勤族モード（転勤確率が年3%%→10%%に上昇）")
@@ -136,7 +144,30 @@ def parse_children_ages(s: str) -> list[int]:
     s = str(s).strip().lower()
     if not s or s == "none":
         return []
-    return [int(x) for x in s.split(",")]
+    return [int(x.split(":")[0]) for x in s.split(",")]
+
+
+def parse_children_config(s: str) -> tuple[list[int], list[int]]:
+    """Parse children string → (birth_ages, independence_ages).
+
+    Format: "30,33:博士" → ([30, 33], [22, 27])
+    Supports: plain ages, age:修士, age:博士
+    """
+    s = str(s).strip().lower()
+    if not s or s == "none":
+        return [], []
+    birth_ages = []
+    independence_ages = []
+    for part in s.split(","):
+        part = part.strip()
+        if ":" in part:
+            age_str, grad = part.split(":", 1)
+            birth_ages.append(int(age_str))
+            independence_ages.append(GRAD_SCHOOL_MAP[grad])
+        else:
+            birth_ages.append(int(part))
+            independence_ages.append(DEFAULT_INDEPENDENCE_AGE)
+    return birth_ages, independence_ages
 
 
 def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParams:
@@ -156,19 +187,21 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
     )
 
 
-def parse_args(description: str) -> tuple[dict, list[int], list[int]]:
+def parse_args(description: str) -> tuple[dict, list[int], list[int], list[int]]:
     """Parse CLI args, load config, resolve values.
 
-    Returns (resolved_dict, child_birth_ages, pet_ages).
+    Returns (resolved_dict, child_birth_ages, independence_ages, pet_ages).
+    child_birth_ages: list of wife's ages at birth.
+    independence_ages: per-child independence age (22=学部, 24=修士, 27=博士).
     pet_ages: list of husband's ages at pet adoption.
     """
     parser = create_parser(description)
     args = parser.parse_args()
     config = load_config(args.config)
     r = resolve(args, config)
-    child_birth_ages = parse_children_ages(r["children"])
+    child_birth_ages, independence_ages = parse_children_config(r["children"])
     pet_ages = parse_pet_ages(r["pets"])
-    return r, child_birth_ages, pet_ages
+    return r, child_birth_ages, independence_ages, pet_ages
 
 
 def resolve(args: argparse.Namespace, config: dict) -> dict:

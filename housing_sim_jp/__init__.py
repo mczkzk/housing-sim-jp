@@ -15,6 +15,7 @@ from housing_sim_jp.simulation import (
     simulate_strategy,
     find_earliest_purchase_age,
     resolve_purchase_age,
+    resolve_independence_ages,
     INFEASIBLE,
     validate_age,
     validate_strategy,
@@ -26,6 +27,8 @@ from housing_sim_jp.simulation import (
     MAX_INCOME_MULTIPLIER,
     TAKEHOME_TO_GROSS,
     DEFAULT_CHILD_BIRTH_AGES,
+    GRAD_SCHOOL_MAP,
+    DEFAULT_INDEPENDENCE_AGE,
 )
 from housing_sim_jp.events import EventRiskConfig, EventTimeline
 from housing_sim_jp.monte_carlo import MonteCarloConfig, MonteCarloResult, run_monte_carlo
@@ -61,6 +64,9 @@ __all__ = [
     "MAX_INCOME_MULTIPLIER",
     "TAKEHOME_TO_GROSS",
     "DEFAULT_CHILD_BIRTH_AGES",
+    "GRAD_SCHOOL_MAP",
+    "DEFAULT_INDEPENDENCE_AGE",
+    "resolve_independence_ages",
     "EventRiskConfig",
     "EventTimeline",
     "MonteCarloConfig",

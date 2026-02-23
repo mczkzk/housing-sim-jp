@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_ages, parse_special_expense_labels, parse_pet_ages, build_params
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_config, parse_special_expense_labels, parse_pet_ages, build_params
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -56,13 +56,13 @@ def main():
     config_file = load_config(args.config)
     r = resolve(args, config_file)
 
-    child_birth_ages = parse_children_ages(r["children"])
+    wife_birth_ages, independence_ages = parse_children_config(r["children"])
 
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
     start_age = max(husband_age, wife_age)
 
-    child_birth_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
+    child_birth_ages = to_sim_ages(wife_birth_ages, wife_age, start_age)
 
     pet_ages = parse_pet_ages(r["pets"])
     pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
@@ -77,17 +77,20 @@ def main():
 
     # --- Deterministic trajectory ---
     print(f"確定論シミュレーション（{start_age}歳→80歳）...", file=sys.stderr)
+    resolved_indep = independence_ages or None
     strategies = [
         UrawaMansion(savings),
         UrawaHouse(savings),
-        StrategicRental(savings, child_birth_ages=resolved_children, start_age=start_age),
+        StrategicRental(savings, child_birth_ages=resolved_children,
+                        child_independence_ages=resolved_indep, start_age=start_age),
         NormalRental(savings, num_children=num_children),
     ]
 
     det_results = []
     for strategy in strategies:
         purchase_age = resolve_purchase_age(
-            strategy, params, husband_age, wife_age, resolved_children,
+            strategy, params, husband_age, wife_age,
+            resolved_children, resolved_indep,
         )
         if purchase_age == INFEASIBLE:
             print(f"  {strategy.name}: 購入不可（スキップ）", file=sys.stderr)
@@ -98,6 +101,7 @@ def main():
                 husband_start_age=husband_age,
                 wife_start_age=wife_age,
                 child_birth_ages=resolved_children,
+                child_independence_ages=resolved_indep,
                 purchase_age=purchase_age,
             )
             det_results.append(result)
@@ -148,6 +152,7 @@ def main():
         mc_results = run_monte_carlo_all_strategies(
             params, mc_config, husband_age, wife_age, savings,
             child_birth_ages=resolved_children,
+            child_independence_ages=resolved_indep,
             collect_yearly=True,
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]

@@ -13,6 +13,7 @@ from housing_sim_jp.simulation import (
     simulate_strategy,
     resolve_purchase_age,
     resolve_child_birth_ages,
+    resolve_independence_ages,
     INFEASIBLE,
 )
 
@@ -64,6 +65,7 @@ def run_scenarios(
     wife_income: float = 22.5,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
+    child_independence_ages: list[int] | None = None,
     living_premium: float = 0.0,
     child_living_cost_monthly: float = 5.0,
     education_cost_monthly: float = 10.0,
@@ -77,11 +79,13 @@ def run_scenarios(
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
     child_birth_ages: list of parent's age at each child's birth. None=default [32, 35]. []=no children.
+    child_independence_ages: per-child independence age (22=学部, 24=修士, 27=博士). None=all 22.
     """
     start_age = max(husband_start_age, wife_start_age)
     # StrategicRentalのフェーズ計算とsimulate_strategyの教育費計算を一致させるため、
     # Noneを事前に解決してから両方に渡す
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
+    child_independence_ages = resolve_independence_ages(child_independence_ages, child_birth_ages)
 
     all_results = {}
 
@@ -104,13 +108,15 @@ def run_scenarios(
         strategies = [
             UrawaMansion(initial_savings),
             UrawaHouse(initial_savings),
-            StrategicRental(initial_savings, child_birth_ages=child_birth_ages, start_age=start_age),
+            StrategicRental(initial_savings, child_birth_ages=child_birth_ages,
+                            child_independence_ages=child_independence_ages, start_age=start_age),
             NormalRental(initial_savings, num_children=len(child_birth_ages)),
         ]
         results = []
         for strategy in strategies:
             purchase_age = resolve_purchase_age(
-                strategy, params, husband_start_age, wife_start_age, child_birth_ages,
+                strategy, params, husband_start_age, wife_start_age,
+                child_birth_ages, child_independence_ages,
             )
             if purchase_age == INFEASIBLE:
                 results.append(None)
@@ -126,6 +132,7 @@ def run_scenarios(
                     wife_start_age=wife_start_age,
                     discipline_factor=factor,
                     child_birth_ages=child_birth_ages,
+                    child_independence_ages=child_independence_ages,
                     purchase_age=purchase_age,
                 )
             )

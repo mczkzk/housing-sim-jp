@@ -171,7 +171,7 @@ def print_discipline_analysis(base_results, discipline_results):
 
 
 def main():
-    r, child_birth_ages, pet_ages = parse_args("4シナリオ比較シミュレーション")
+    r, child_birth_ages, independence_ages, pet_ages = parse_args("4シナリオ比較シミュレーション")
     special_expenses = parse_special_expenses(r["special_expenses"])
 
     husband_age = r["husband_age"]
@@ -186,6 +186,7 @@ def main():
         husband_income=r["husband_income"],
         wife_income=r["wife_income"],
         child_birth_ages=child_birth_ages,
+        child_independence_ages=independence_ages or None,
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_cost_monthly=r["education"],

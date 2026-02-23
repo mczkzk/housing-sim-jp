@@ -15,6 +15,7 @@ from housing_sim_jp.simulation import (
     simulate_strategy,
     resolve_purchase_age,
     resolve_child_birth_ages,
+    resolve_independence_ages,
     INFEASIBLE,
 )
 from housing_sim_jp.strategies import (
@@ -122,6 +123,7 @@ def run_monte_carlo(
     wife_start_age: int,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
+    child_independence_ages: list[int] | None = None,
     purchase_age: int | None = None,
     quiet: bool = False,
     collect_yearly: bool = False,
@@ -201,7 +203,8 @@ def run_monte_carlo(
         run_purchase_age = purchase_age
         if run_purchase_age is None and strategy.property_price > 0:
             run_purchase_age = resolve_purchase_age(
-                strategy, params, husband_start_age, wife_start_age, child_birth_ages,
+                strategy, params, husband_start_age, wife_start_age,
+                child_birth_ages, child_independence_ages,
             )
             if run_purchase_age == INFEASIBLE:
                 results_list.append(0.0)
@@ -217,6 +220,7 @@ def run_monte_carlo(
                 wife_start_age=wife_start_age,
                 discipline_factor=discipline_factor,
                 child_birth_ages=child_birth_ages,
+                child_independence_ages=child_independence_ages,
                 purchase_age=run_purchase_age,
                 event_timeline=event_timeline,
             )
@@ -277,6 +281,7 @@ def run_monte_carlo_all_strategies(
     initial_savings: float,
     discipline_factor: float = 1.0,
     child_birth_ages: list[int] | None = None,
+    child_independence_ages: list[int] | None = None,
     quiet: bool = False,
     collect_yearly: bool = False,
 ) -> list[MonteCarloResult]:
@@ -284,6 +289,7 @@ def run_monte_carlo_all_strategies(
     start_age = max(husband_start_age, wife_start_age)
     # Resolve child_birth_ages once for consistency
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
+    child_independence_ages = resolve_independence_ages(child_independence_ages, child_birth_ages)
 
     num_children = len(child_birth_ages)
 
@@ -292,7 +298,8 @@ def run_monte_carlo_all_strategies(
         (lambda: UrawaHouse(initial_savings), 1.0),
         (
             lambda: StrategicRental(
-                initial_savings, child_birth_ages=child_birth_ages, start_age=start_age,
+                initial_savings, child_birth_ages=child_birth_ages,
+                child_independence_ages=child_independence_ages, start_age=start_age,
             ),
             1.0,
         ),
@@ -309,6 +316,7 @@ def run_monte_carlo_all_strategies(
             wife_start_age=wife_start_age,
             discipline_factor=discipline_factor if discipline_factor != 1.0 else disc,
             child_birth_ages=child_birth_ages,
+            child_independence_ages=child_independence_ages,
             quiet=quiet,
             collect_yearly=collect_yearly,
         )

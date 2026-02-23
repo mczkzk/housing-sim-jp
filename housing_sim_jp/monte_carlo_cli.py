@@ -2,7 +2,7 @@
 
 import sys
 
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_ages, parse_pet_ages, build_params
+from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_config, parse_pet_ages, build_params
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.simulation import to_sim_ages
 from housing_sim_jp.events import EventRiskConfig
@@ -130,6 +130,7 @@ def _run_stress_test(
     wife_start_age: int,
     initial_savings: float,
     child_birth_ages: list[int],
+    child_independence_ages: list[int] | None = None,
 ):
     """Run stress test scenarios isolating each event type."""
     print("\n【ストレステスト: イベントリスクの影響】")
@@ -149,6 +150,7 @@ def _run_stress_test(
         results = run_monte_carlo_all_strategies(
             base_params, cfg, husband_start_age, wife_start_age, initial_savings,
             child_birth_ages=child_birth_ages,
+            child_independence_ages=child_independence_ages,
             quiet=True,
         )
         all_scenario_results.append((label, results))
@@ -172,14 +174,13 @@ def main():
     config_file = load_config(args.config)
     r = resolve(args, config_file)
 
-    child_birth_ages = parse_children_ages(r["children"])
+    wife_birth_ages, independence_ages = parse_children_config(r["children"])
 
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
     start_age = max(husband_age, wife_age)
 
-    wife_birth_ages = child_birth_ages
-    child_birth_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
+    child_birth_ages = to_sim_ages(wife_birth_ages, wife_age, start_age)
 
     pet_ages = parse_pet_ages(r["pets"])
     husband_pet_ages = pet_ages
@@ -228,13 +229,15 @@ def main():
     results = run_monte_carlo_all_strategies(
         base_params, mc_config, husband_age, wife_age, initial_savings,
         child_birth_ages=child_birth_ages,
+        child_independence_ages=independence_ages or None,
     )
 
     _print_results(results, args.mc_runs, args.volatility, not args.no_events)
 
     if args.stress_test:
         _run_stress_test(
-            base_params, mc_config, husband_age, wife_age, initial_savings, child_birth_ages,
+            base_params, mc_config, husband_age, wife_age, initial_savings,
+            child_birth_ages, independence_ages or None,
         )
 
 
