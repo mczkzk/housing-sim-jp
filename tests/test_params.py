@@ -25,12 +25,12 @@ class TestGetLoanRate:
         assert self.params.get_loan_rate(10.0) == 0.0175 / 12
 
     def test_fourth_period(self):
-        assert self.params.get_loan_rate(15.0) == 0.0200 / 12
+        assert self.params.get_loan_rate(15.0) == 0.0225 / 12
 
     def test_beyond_schedule(self):
         """Years beyond schedule length should use last rate."""
-        assert self.params.get_loan_rate(25.0) == 0.0200 / 12
-        assert self.params.get_loan_rate(100.0) == 0.0200 / 12
+        assert self.params.get_loan_rate(25.0) == 0.0250 / 12
+        assert self.params.get_loan_rate(100.0) == 0.0250 / 12
 
 
 class TestCalcEqualPayment:

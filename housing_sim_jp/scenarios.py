@@ -18,25 +18,32 @@ from housing_sim_jp.simulation import (
 
 SCENARIOS = {
     "低成長": {
-        "inflation_rate": 0.005,
-        "wage_inflation": 0.005,  # = inflation（実質±0%）
-        "investment_return": 0.04,
+        "inflation_rate": 0.01,
+        "wage_inflation": 0.01,  # = inflation（実質±0%）
+        "investment_return": 0.05,
         "land_appreciation": 0.00,
-        "loan_rate_schedule": [0.0075, 0.0100, 0.0125, 0.0125, 0.0125],
+        "loan_rate_schedule": [0.0050, 0.0075, 0.0100, 0.0125, 0.0125],
     },
     "標準": {
-        "inflation_rate": 0.015,
-        "wage_inflation": 0.015,  # = inflation（実質±0%）
-        "investment_return": 0.055,
-        "land_appreciation": 0.005,
-        "loan_rate_schedule": [0.0075, 0.0125, 0.0175, 0.0200, 0.0200],
+        "inflation_rate": 0.02,
+        "wage_inflation": 0.02,  # = inflation（実質±0%）
+        "investment_return": 0.06,
+        "land_appreciation": 0.0075,
+        "loan_rate_schedule": [0.0075, 0.0125, 0.0175, 0.0225, 0.0250],
     },
     "高成長": {
+        "inflation_rate": 0.03,
+        "wage_inflation": 0.03,  # = inflation（実質±0%）
+        "investment_return": 0.075,
+        "land_appreciation": 0.015,
+        "loan_rate_schedule": [0.0125, 0.0200, 0.0275, 0.0325, 0.0350],
+    },
+    "スタグフレーション": {
         "inflation_rate": 0.025,
-        "wage_inflation": 0.025,  # = inflation（実質±0%）
-        "investment_return": 0.07,
-        "land_appreciation": 0.01,
-        "loan_rate_schedule": [0.0100, 0.0175, 0.0225, 0.0275, 0.0300],
+        "wage_inflation": 0.01,  # 実質賃金 -1.5%/年
+        "investment_return": 0.04,
+        "land_appreciation": 0.00,
+        "loan_rate_schedule": [0.0100, 0.0150, 0.0200, 0.0250, 0.0300],
     },
 }
 

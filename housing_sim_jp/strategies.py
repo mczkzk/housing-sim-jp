@@ -111,7 +111,7 @@ class UrawaMansion(Strategy):
 
     # 専有部のみ（共用部は管理修繕費でカバー）
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {
-        20: 40, 30: 100, 40: 80, 48: 370,
+        20: 40, 30: 100, 40: 80, 48: 370, 55: 100, 62: 150,
     }
     LIQUIDATION_COST: ClassVar[float] = 200
 
@@ -158,7 +158,7 @@ class UrawaHouse(Strategy):
     OTHER_MONTHLY = 0.7  # セキュリティ(SECOM等)0.5万 + 雑費0.2万 (全期間適用)
 
     ONE_TIME_EXPENSES_BY_BUILDING_AGE: ClassVar[dict[int, float]] = {
-        17: 180, 30: 500, 45: 300,
+        17: 180, 30: 500, 45: 300, 55: 400,
     }
     LIQUIDATION_COST: ClassVar[float] = 650
     HAS_OWN_PARKING: ClassVar[bool] = True

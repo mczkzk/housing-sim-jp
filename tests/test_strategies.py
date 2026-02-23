@@ -185,7 +185,7 @@ class TestStrategicRentalHousingCost:
         months = (46 - 37) * 12
         years = months / 12
         cost = s.housing_cost(46, months, self.params)
-        inflated = 23.0 * (1.015 ** years)
+        inflated = 23.0 * (1.02 ** years)
         expected = inflated + inflated / 24
         assert cost == pytest.approx(expected, rel=1e-4)
 
@@ -221,7 +221,7 @@ class TestStrategicRentalHousingCost:
         """子なし → 全期間Phase1（2LDK 18万ベース）"""
         s = StrategicRental(800, child_birth_ages=[], start_age=37)
         cost_50 = s.housing_cost(50, (50 - 37) * 12, self.params)
-        inflated = 18.0 * (1.015 ** 13)
+        inflated = 18.0 * (1.02 ** 13)
         expected = inflated + inflated / 24
         assert cost_50 == pytest.approx(expected, rel=1e-4)
 

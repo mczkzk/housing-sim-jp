@@ -10,13 +10,13 @@ STRATEGY_LABELS = [
     "戦略的賃貸",
     "通常賃貸(3LDK固定)",
 ]
-SCENARIO_ORDER = ["低成長", "標準", "高成長"]
+SCENARIO_ORDER = ["低成長", "標準", "高成長", "スタグフレーション"]
 
 
 def print_parameters():
     """Print scenario parameters"""
     print("=" * 120)
-    print("【マクロ整合型3シナリオ比較】")
+    print("【マクロ整合型4シナリオ比較】")
     print("=" * 120)
     print()
 
@@ -76,7 +76,7 @@ def print_results(all_results):
     """Print simulation results"""
     print()
     print("=" * 120)
-    print("【3シナリオ × 4戦略 比較結果】")
+    print("【4シナリオ × 4戦略 比較結果】")
     print("=" * 120)
     print()
 
@@ -171,7 +171,7 @@ def print_discipline_analysis(base_results, discipline_results):
 
 
 def main():
-    r, child_birth_ages, pet_ages = parse_args("3シナリオ比較シミュレーション")
+    r, child_birth_ages, pet_ages = parse_args("4シナリオ比較シミュレーション")
     special_expenses = parse_special_expenses(r["special_expenses"])
 
     husband_age = r["husband_age"]

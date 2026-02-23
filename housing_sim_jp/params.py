@@ -34,10 +34,10 @@ def base_living_cost(age: int) -> float:
 class SimulationParams:
 
     # Economic parameters
-    inflation_rate: float = 0.015
-    wage_inflation: float = 0.015  # 名目賃金上昇率（ベースアップ、≒インフレ率で実質横ばい）
-    investment_return: float = 0.055
-    land_appreciation: float = 0.005
+    inflation_rate: float = 0.02
+    wage_inflation: float = 0.02  # 名目賃金上昇率（ベースアップ、≒インフレ率で実質横ばい）
+    investment_return: float = 0.06
+    land_appreciation: float = 0.0075
 
     # Income parameters (per-person)
     husband_income: float = 40.0   # 夫の月額手取り（万円）
@@ -55,7 +55,7 @@ class SimulationParams:
     # Loan parameters
     loan_years: int = 35
     loan_rate_schedule: list[float] = field(
-        default_factory=lambda: [0.0075, 0.0125, 0.0175, 0.0200, 0.0200]
+        default_factory=lambda: [0.0075, 0.0125, 0.0175, 0.0225, 0.0250]
     )
     loan_tax_deduction_rate: float = 0.007
     loan_tax_deduction_years: int = 10

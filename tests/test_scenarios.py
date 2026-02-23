@@ -5,19 +5,19 @@ from housing_sim_jp.scenarios import run_scenarios, SCENARIOS, DISCIPLINE_FACTOR
 
 
 class TestRunScenarios:
-    def test_returns_3_scenarios(self):
+    def test_returns_4_scenarios(self):
         results = run_scenarios(husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375)
-        assert set(results.keys()) == {"低成長", "標準", "高成長"}
+        assert set(results.keys()) == {"低成長", "標準", "高成長", "スタグフレーション"}
 
     def test_each_scenario_has_4_strategies(self):
         results = run_scenarios(husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375)
         for name, strats in results.items():
             assert len(strats) == 4, f"{name} should have 4 strategies"
 
-    def test_total_12_results(self):
+    def test_total_16_results(self):
         results = run_scenarios(husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375)
         total = sum(len(v) for v in results.values())
-        assert total == 12
+        assert total == 16
 
 
 class TestScenarioOrdering:
@@ -47,11 +47,11 @@ class TestScenarioSnapshots:
 
     def test_low_growth_mansion(self):
         r = self.results["低成長"][0]
-        assert r["after_tax_net_assets"] == pytest.approx(17607.967214, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(27863.564782, abs=0.01)
 
     def test_high_growth_strategic_rental(self):
         r = self.results["高成長"][2]
-        assert r["after_tax_net_assets"] == pytest.approx(68090.661689, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(82471.425932, abs=0.01)
 
 
 class TestDisciplineFactors:
@@ -60,6 +60,6 @@ class TestDisciplineFactors:
             husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375,
             discipline_factors=DISCIPLINE_FACTORS,
         )
-        assert set(results.keys()) == {"低成長", "標準", "高成長"}
+        assert set(results.keys()) == {"低成長", "標準", "高成長", "スタグフレーション"}
         for name, strats in results.items():
             assert len(strats) == 4
