@@ -164,22 +164,22 @@ def run_monte_carlo(
 
         # Sample loan rate shift correlated with inflation
         if config.loan_rate_volatility > 0 and config.inflation_volatility > 0:
-            inflation_z = (sampled_inflation - base_params.inflation_rate) / config.inflation_volatility
+            inflation_zscore = (sampled_inflation - base_params.inflation_rate) / config.inflation_volatility
             z_loan = rng.gauss(0, 1)
-            loan_z = (config.loan_inflation_correlation * inflation_z
+            loan_z = (config.loan_inflation_correlation * inflation_zscore
                       + math.sqrt(1 - config.loan_inflation_correlation ** 2) * z_loan)
             loan_rate_shift = loan_z * config.loan_rate_volatility
             shifted_schedule = [max(0.001, r + loan_rate_shift) for r in base_params.loan_rate_schedule]
         else:
-            inflation_z = None
+            inflation_zscore = None
             shifted_schedule = base_params.loan_rate_schedule
 
         # Sample wage inflation shift correlated with inflation
         if config.wage_inflation_volatility > 0 and config.inflation_volatility > 0:
-            if inflation_z is None:
-                inflation_z = (sampled_inflation - base_params.inflation_rate) / config.inflation_volatility
+            if inflation_zscore is None:
+                inflation_zscore = (sampled_inflation - base_params.inflation_rate) / config.inflation_volatility
             z_wage = rng.gauss(0, 1)
-            wage_z = (config.wage_inflation_correlation * inflation_z
+            wage_z = (config.wage_inflation_correlation * inflation_zscore
                       + math.sqrt(1 - config.wage_inflation_correlation ** 2) * z_wage)
             sampled_wage_inflation = base_params.wage_inflation + wage_z * config.wage_inflation_volatility
         else:

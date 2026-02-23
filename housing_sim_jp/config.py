@@ -1,6 +1,7 @@
 """TOML config loader with CLI > config > default resolution."""
 
 import argparse
+import sys
 import tomllib
 from pathlib import Path
 
@@ -35,8 +36,12 @@ def load_config(path: Path | None = None) -> dict:
         path = DEFAULT_CONFIG_PATH
     if not path.exists():
         return {}
-    with open(path, "rb") as f:
-        raw = tomllib.load(f)
+    try:
+        with open(path, "rb") as f:
+            raw = tomllib.load(f)
+    except tomllib.TOMLDecodeError as e:
+        print(f"設定ファイルの読み込みに失敗: {path}: {e}", file=sys.stderr)
+        raise SystemExit(1)
     # Normalize children: TOML list/bool/string → CLI-compatible string
     # Supports: [30, 33], ["30:修士", "33:博士"], [[30, "修士"], [33]]
     if "children" in raw:

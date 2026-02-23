@@ -488,7 +488,7 @@ def _calc_expenses(
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
-    months_in_current_age = month % 12
+    month_in_year = month % 12
     ownership_month = month - purchase_month_offset
 
     housing_cost = strategy.housing_cost(age, ownership_month, params)
@@ -514,7 +514,7 @@ def _calc_expenses(
         loan_deduction = annual_deduction / 12
 
     one_time_expense = 0
-    if months_in_current_age == 0 and age in one_time_expenses:
+    if month_in_year == 0 and age in one_time_expenses:
         base_cost = one_time_expenses[age]
         years_to_inflate = age - start_age
         one_time_expense = base_cost * (
