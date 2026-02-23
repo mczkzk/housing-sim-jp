@@ -1077,6 +1077,8 @@ def simulate_strategy(
         start_age, 0, params, child_home_ranges,
     )
     emergency_fund = min(initial, initial_required_ef)
+    initial_principal = strategy.initial_savings  # 諸費用控除前の貯蓄額（チャート参照線用）
+    invested_principal = initial  # 実際に投資に回った額（元本割れ判定用）
     initial -= emergency_fund
 
     nisa_deposit = min(initial, NISA_LIMIT)
@@ -1115,6 +1117,8 @@ def simulate_strategy(
     w_peak = 0.0
     monthly_log = []
     bankrupt_age = None
+    principal_invaded_age = None
+    principal_if_untouched = invested_principal  # 投資元本の複利成長を追跡
     fixed_monthly_return = params.investment_return / 12
 
     for month in range(TOTAL_MONTHS):
@@ -1123,6 +1127,8 @@ def simulate_strategy(
             monthly_return_rate = params.annual_investment_returns[year_idx] / 12
         else:
             monthly_return_rate = fixed_monthly_return
+
+        principal_if_untouched *= (1 + monthly_return_rate)
 
         age = start_age + month // 12
         h_age = husband_start_age + month // 12
@@ -1320,6 +1326,8 @@ def simulate_strategy(
 
         if bankrupt and bankrupt_age is None:
             bankrupt_age = age
+            if principal_invaded_age is None:
+                principal_invaded_age = age
             monthly_log.append({
                 "age": age,
                 "income": monthly_income + child_allowance,
@@ -1334,6 +1342,9 @@ def simulate_strategy(
             break
 
         investment_balance = nisa_balance + taxable_balance
+
+        if principal_invaded_age is None and investment_balance + emergency_fund < principal_if_untouched:
+            principal_invaded_age = age
 
         if month % 12 == 0:
             monthly_log.append(
@@ -1367,6 +1378,8 @@ def simulate_strategy(
             "taxable_cost_basis": 0,
             "emergency_fund_final": 0,
             "bankrupt_age": bankrupt_age,
+            "principal_invaded_age": principal_invaded_age,
+            "initial_principal": initial_principal,
             "car_first_purchase_age": car_first_purchase_age,
             "pet_first_adoption_age": pet_first_adoption_age,
             "ideco_total_contribution": ideco_total_contribution,
@@ -1403,6 +1416,8 @@ def simulate_strategy(
         "taxable_cost_basis": taxable_cost_basis,
         "emergency_fund_final": emergency_fund,
         "bankrupt_age": bankrupt_age,
+        "principal_invaded_age": principal_invaded_age,
+        "initial_principal": initial_principal,
         "car_first_purchase_age": car_first_purchase_age,
         "pet_first_adoption_age": pet_first_adoption_age,
         "ideco_total_contribution": ideco_total_contribution,

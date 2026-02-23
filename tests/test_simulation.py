@@ -107,6 +107,12 @@ class TestSnapshotDetails:
     def test_no_bankruptcy(self):
         assert self.r["bankrupt_age"] is None
 
+    def test_no_principal_invasion(self):
+        assert self.r["principal_invaded_age"] is None
+
+    def test_initial_principal_exists(self):
+        assert self.r["initial_principal"] > 0
+
     def test_monthly_log_length(self):
         assert len(self.r["monthly_log"]) == 43  # 80 - 37 = 43 years
 
@@ -136,6 +142,28 @@ class TestBankruptcy:
         r = simulate_strategy(NormalRental(200), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert r["bankrupt_age"] is not None
         assert r["bankrupt_age"] == 37
+
+    def test_bankruptcy_implies_principal_invasion(self):
+        """Bankruptcy should always imply principal invasion (invaded_age <= bankrupt_age)."""
+        params = SimulationParams(husband_income=19.5, wife_income=10.5)
+        r = simulate_strategy(NormalRental(200), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r["principal_invaded_age"] is not None
+        assert r["principal_invaded_age"] <= r["bankrupt_age"]
+
+
+class TestPrincipalInvasion:
+    def test_high_income_no_invasion(self):
+        """High income should never trigger principal invasion."""
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r["principal_invaded_age"] is None
+
+    def test_initial_principal_present(self):
+        """All results should include initial_principal field."""
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        r = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert "initial_principal" in r
+        assert r["initial_principal"] > 0
 
 
 class TestDisciplineFactor:

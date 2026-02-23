@@ -55,8 +55,10 @@ class MonteCarloResult:
     n_simulations: int
     after_tax_net_assets: list[float] = field(default_factory=list)
     bankrupt_count: int = 0
+    principal_invaded_count: int = 0
     percentiles: dict[int, float] = field(default_factory=dict)
     bankruptcy_probability: float = 0.0
+    principal_invasion_probability: float = 0.0
     mean: float = 0.0
     std: float = 0.0
     skipped: bool = False
@@ -138,6 +140,7 @@ def run_monte_carlo(
     n_years = END_AGE - start_age
     results_list: list[float] = []
     bankrupt_count = 0
+    principal_invaded_count = 0
     strategy_name = strategy_factory().name
 
     yearly_balances: dict[int, list[float]] = defaultdict(list) if collect_yearly else {}
@@ -209,6 +212,7 @@ def run_monte_carlo(
             if run_purchase_age == INFEASIBLE:
                 results_list.append(0.0)
                 bankrupt_count += 1
+                principal_invaded_count += 1
                 if not quiet and (i + 1) % 100 == 0:
                     print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
                 continue
@@ -227,6 +231,7 @@ def run_monte_carlo(
         except ValueError:
             results_list.append(0.0)
             bankrupt_count += 1
+            principal_invaded_count += 1
             if not quiet and (i + 1) % 100 == 0:
                 print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
             continue
@@ -234,6 +239,8 @@ def run_monte_carlo(
         results_list.append(result["after_tax_net_assets"])
         if result["bankrupt_age"] is not None:
             bankrupt_count += 1
+        if result.get("principal_invaded_age") is not None:
+            principal_invaded_count += 1
 
         if collect_yearly:
             for entry in result["monthly_log"]:
@@ -265,8 +272,10 @@ def run_monte_carlo(
         n_simulations=config.n_simulations,
         after_tax_net_assets=results_list,
         bankrupt_count=bankrupt_count,
+        principal_invaded_count=principal_invaded_count,
         percentiles=percentiles,
         bankruptcy_probability=bankrupt_count / config.n_simulations,
+        principal_invasion_probability=principal_invaded_count / config.n_simulations,
         mean=mean,
         std=std,
         yearly_balance_percentiles=yearly_balance_percentiles,

@@ -133,7 +133,11 @@ def main():
                 break
         shared_markers.sort()
 
-        path = plot_trajectory(det_results, output_dir, name=chart_name, event_markers=shared_markers)
+        path = plot_trajectory(
+            det_results, output_dir, name=chart_name, event_markers=shared_markers,
+            initial_principal=savings,
+            investment_return=params.investment_return,
+        )
         print(f"  → {path}", file=sys.stderr)
 
         path = plot_cashflow_stack(det_results, output_dir, name=chart_name)

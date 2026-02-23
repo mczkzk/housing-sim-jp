@@ -140,6 +140,8 @@ def _print_summary(valid_results: list[dict], start_age: int):
             print(f"    車: {r['car_first_purchase_age']}歳で購入（{start_age}歳時点では資金不足）")
         if r.get("pet_first_adoption_age") is not None and r["pet_first_adoption_age"] > start_age:
             print(f"    ペット: {r['pet_first_adoption_age']}歳で迎え入れ（{start_age}歳時点では資金不足）")
+        if r.get("principal_invaded_age") is not None:
+            print(f"    📉 {r['principal_invaded_age']}歳で元本割れ（運用資産が初期貯蓄{r.get('initial_principal', 0):.0f}万の複利成長を下回る）")
         if r["bankrupt_age"] is not None:
             print(f"    ⚠ {r['bankrupt_age']}歳で資産破綻（生活費が資産を超過）")
 

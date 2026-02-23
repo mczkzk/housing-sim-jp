@@ -338,3 +338,19 @@ class TestRelocationRentalMinimalEffect:
         # Rental: only moving cost (40万), impact should be small
         diff = abs(r_none["after_tax_net_assets"] - r_reloc["after_tax_net_assets"])
         assert diff < 500  # Less than 500万 difference
+
+
+class TestPrincipalInvasionFields:
+    """MonteCarloResult should include principal invasion fields."""
+
+    def test_fields_present(self):
+        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        config = MonteCarloConfig(n_simulations=10, seed=42)
+        r = run_monte_carlo(
+            lambda: StrategicRental(800, child_birth_ages=[39], start_age=37),
+            params, config, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
+        )
+        assert hasattr(r, "principal_invaded_count")
+        assert hasattr(r, "principal_invasion_probability")
+        assert r.principal_invasion_probability >= 0.0
+        assert r.principal_invasion_probability <= 1.0

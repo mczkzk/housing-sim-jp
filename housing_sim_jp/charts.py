@@ -108,6 +108,8 @@ def _format_oku_axis(ax: plt.Axes):
 def plot_trajectory(
     results: list[dict], output_path: Path, name: str = "",
     event_markers: list[tuple[int, float, str]] | None = None,
+    initial_principal: float | None = None,
+    investment_return: float | None = None,
 ) -> Path:
     """Generate a line chart of asset trajectory for deterministic simulation.
 
@@ -116,6 +118,8 @@ def plot_trajectory(
         output_path: directory to save the PNG.
         name: optional prefix for the output filename (e.g. "30" → "trajectory-30.png").
         event_markers: shared life events [(age, signed_nominal_amount, label), ...].
+        initial_principal: initial investment amount (pre-EF) for reference curve.
+        investment_return: annual return rate for compounding the reference curve.
 
     Returns:
         Path to the generated PNG file.
@@ -135,6 +139,15 @@ def plot_trajectory(
     ax.set_xlabel("年齢")
     ax.set_ylabel("運用資産残高（万円）")
     ax.set_title("資産推移と一時イベント（確定論・標準シナリオ）")
+
+    if initial_principal is not None and initial_principal > 0 and investment_return is not None:
+        ref_ages = ages  # reuse ages from last plotted strategy
+        monthly_r = investment_return / 12
+        ref_values = [initial_principal * (1 + monthly_r) ** ((a - ref_ages[0]) * 12) for a in ref_ages]
+        ax.plot(ref_ages, ref_values, color="#888888", linewidth=1.5,
+                linestyle="--", alpha=0.6, zorder=2,
+                label=f"初期貯蓄の複利成長（{investment_return:.1%}/年）")
+
     ax.legend(loc="upper left")
     ax.grid(True, alpha=0.3)
     _format_oku_axis(ax)

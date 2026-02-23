@@ -62,9 +62,10 @@ def _print_results(results: list[MonteCarloResult], n: int, vol: float, has_even
         f"{'P50(中央値)':>12}"
         f"{'P75':>10}"
         f"{'P95(楽観)':>12}"
+        f"{'元本割れ':>10}"
         f"{'破綻確率':>10}"
     )
-    print("─" * 80)
+    print("─" * 90)
     for r in results:
         print(
             f"{r.strategy_name:<16}"
@@ -73,9 +74,10 @@ def _print_results(results: list[MonteCarloResult], n: int, vol: float, has_even
             f"{_fmt_oku(r.percentiles[50]):>12}"
             f"{_fmt_oku(r.percentiles[75]):>10}"
             f"{_fmt_oku(r.percentiles[95]):>12}"
+            f"{r.principal_invasion_probability:>9.1%}"
             f"{r.bankruptcy_probability:>9.1%}"
         )
-    print("─" * 80)
+    print("─" * 90)
 
     print(f"\n{'戦略':<16} {'平均':>10} {'標準偏差':>10}")
     print("─" * 40)
