@@ -70,7 +70,7 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 | `--husband-ideco` | 夫のiDeCo拠出額（万円/月、0で無効） | 2.0 |
 | `--wife-ideco` | 妻のiDeCo拠出額（万円/月、0で無効） | 2.0 |
 | `--emergency-fund` | 生活防衛資金（生活費の何ヶ月分、0で無効） | 6.0 |
-| `--special-expenses` | 特別支出（年齢:金額のカンマ区切り、例: `55:500,65:300`） | なし |
+| `--special-expenses` | 特別支出（`年齢:金額[:ラベル]`のカンマ区切り、例: `55:500:リフォーム,65:300`） | なし |
 
 ### Monte Carlo 固有オプション
 

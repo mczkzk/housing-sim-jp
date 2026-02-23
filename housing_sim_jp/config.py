@@ -99,7 +99,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--husband-ideco", type=float, default=None, help=f"夫のiDeCo拠出額（万円/月）(default: {d['husband_ideco']})")
     parser.add_argument("--wife-ideco", type=float, default=None, help=f"妻のiDeCo拠出額（万円/月）(default: {d['wife_ideco']})")
     parser.add_argument("--emergency-fund", type=float, default=None, help=f"生活防衛資金（生活費の何ヶ月分）(default: {d['emergency_fund']})")
-    parser.add_argument("--special-expenses", type=str, default=None, help="特別支出（年齢:金額のカンマ区切り、例: 55:500,65:300）")
+    parser.add_argument("--special-expenses", type=str, default=None, help="特別支出（年齢:金額[:ラベル]のカンマ区切り、例: 55:500:リフォーム,65:300）")
     return parser
 
 
