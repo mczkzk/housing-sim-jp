@@ -40,9 +40,9 @@ python -m pytest tests/ -v
 `config.example-*.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
 
 ```bash
-cp config.example-25.toml config.toml   # 25歳プリセット（250万/手取り57万/子2人）
-cp config.example-30.toml config.toml   # 30歳プリセット（600万/手取り67万/子2人/生活費P5万/ペット1匹）
-cp config.example-35.toml config.toml   # 35歳プリセット（1200万/手取り74万/子1人/生活費P5万/教育費P20万/車/ペット2匹）
+cp config.example-25.toml config.toml   # 25歳プリセット（250万/手取り57万/子2人/生活費P3万）
+cp config.example-30.toml config.toml   # 30歳プリセット（600万/手取り67万/子2人/生活費P3万/ペット1匹）
+cp config.example-35.toml config.toml   # 35歳プリセット（1200万/手取り74万/子1人/生活費P3万/教育費P20万/車/ペット2匹）
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
 python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラグで個別に上書き
@@ -166,7 +166,7 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 
 離婚と配偶者死亡は排他的（先に発生した方のみ有効）。転勤は独立して発生。
 
-**出力:** P5/P25/P50/P75/P95のパーセンタイル分布、一時的資産枯渇経験率、ストレステスト結果
+**出力:** P5/P25/P50/P75/P95のパーセンタイル分布、元本割れ確率（運用資産が初期貯蓄の複利成長を下回る確率）、破綻確率、ストレステスト結果
 
 ## チャート生成
 
@@ -186,6 +186,6 @@ python -m housing_sim_jp.chart_cli --mc-runs 500 --output reports/charts/
 
 | レポート | 条件 |
 |---------|------|
-| [reports/report-25.md](reports/report-25.md) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産） |
-| [reports/report-30.md](reports/report-30.md) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・生活費P5万・ペット1匹 |
-| [reports/report-35.md](reports/report-35.md) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・生活費P5万・教育費P20万・車・ペット2匹 |
+| [reports/report-25.md](reports/report-25.md) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・生活費P3万 |
+| [reports/report-30.md](reports/report-30.md) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・生活費P3万・ペット1匹 |
+| [reports/report-35.md](reports/report-35.md) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・生活費P3万・教育費P20万・車・ペット2匹 |
