@@ -141,7 +141,8 @@ def plot_trajectory(
     ax.set_title("資産推移と一時イベント（確定論・標準シナリオ）")
 
     if initial_principal is not None and initial_principal > 0 and investment_return is not None:
-        ref_ages = ages  # reuse ages from last plotted strategy
+        longest_log = max((r["monthly_log"] for r in results), key=len)
+        ref_ages = [entry["age"] for entry in longest_log]
         monthly_r = investment_return / 12
         ref_values = [initial_principal * (1 + monthly_r) ** ((a - ref_ages[0]) * 12) for a in ref_ages]
         ax.plot(ref_ages, ref_values, color="#888888", linewidth=1.5,
