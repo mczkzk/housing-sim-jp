@@ -47,7 +47,9 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
         print(f"  iDeCo: 夫{h_ideco:.1f}万 + 妻{w_ideco:.1f}万 = {h_ideco + w_ideco:.1f}万円/月（60歳まで拠出）")
     if child_birth_ages:
         parts = [f"妻{a}歳出産" for a in child_birth_ages]
-        print(f"  教育費: 子{len(child_birth_ages)}人（{', '.join(parts)}）")
+        pf = params.education_private_from or "全公立"
+        grad_label = params.education_grad
+        print(f"  教育費: 子{len(child_birth_ages)}人（{', '.join(parts)}）/ {pf}→{params.education_field} / {grad_label}")
     else:
         print("  教育費: なし")
     if params.special_expenses:

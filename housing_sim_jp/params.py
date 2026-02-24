@@ -64,7 +64,10 @@ class SimulationParams:
     # Living cost parameters
     living_premium: float = 0.0  # ベースラインへの上乗せ（贅沢度、万円/月）
     child_living_cost_monthly: float = 5.0     # 子1人あたりの追加生活費（食費・衣類・日用品等）
-    education_cost_monthly: float = 15.0
+    education_private_from: str = ""      # 私立切替ステージ: "", "中学", "高校", "大学"
+    education_field: str = "理系"          # 進路: "理系", "文系"
+    education_boost: float = 1.0           # 受験年費用倍率
+    education_grad: str = "学部"           # 最終学歴: "学部"(22), "修士"(24), "博士"(27)
     # Car parameters
     has_car: bool = False
     car_purchase_price: float = 300  # 車両購入費（万円）

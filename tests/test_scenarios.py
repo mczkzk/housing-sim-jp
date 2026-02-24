@@ -42,16 +42,16 @@ class TestScenarioSnapshots:
     def setup_method(self):
         self.results = run_scenarios(
             husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375,
-            child_birth_ages=[39], education_cost_monthly=15.0,
+            child_birth_ages=[39], education_private_from="高校", education_field="理系",
         )
 
     def test_low_growth_mansion(self):
         r = self.results["低成長"][0]
-        assert r["after_tax_net_assets"] == pytest.approx(29788.529473, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(29968.726337, abs=0.01)
 
     def test_high_growth_strategic_rental(self):
         r = self.results["高成長"][2]
-        assert r["after_tax_net_assets"] == pytest.approx(86855.272408, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(87379.614036, abs=0.01)
 
 
 class TestDisciplineFactors:

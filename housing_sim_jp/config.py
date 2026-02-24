@@ -19,7 +19,10 @@ DEFAULTS = {
     "children": "30,33",
     "living_premium": 0.0,
     "child_living": 5.0,
-    "education": 10.0,
+    "education_private_from": "",
+    "education_field": "理系",
+    "education_boost": 1.0,
+    "education_grad": "学部",
     "car": False,
     "pets": "",
     "relocation": False,
@@ -66,6 +69,20 @@ def load_config(path: Path | None = None) -> dict:
         elif isinstance(v, int):
             # Backward compat: bare integer → empty (0) or error guidance
             raw["pets"] = "" if v == 0 else str(v)
+    # Migrate legacy education key → new 4-parameter model
+    if "education" in raw and "education_private_from" not in raw:
+        edu = raw.pop("education")
+        if isinstance(edu, (int, float)):
+            if edu <= 12:
+                raw["education_private_from"] = ""
+            elif edu <= 17:
+                raw["education_private_from"] = "高校"
+            else:
+                raw["education_private_from"] = "中学"
+            raw.setdefault("education_field", "理系")
+            raw.setdefault("education_boost", 1.0)
+    elif "education" in raw and "education_private_from" in raw:
+        raw.pop("education")  # new params take precedence
     # Normalize special_expenses: TOML [[age, amount, label?], ...] → "age:amount:label,..." string
     if "special_expenses" in raw:
         v = raw["special_expenses"]
@@ -89,10 +106,13 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--savings", type=float, default=None, help=f"初期金融資産・万円 (default: {d['savings']:.0f})")
     parser.add_argument("--husband-income", type=float, default=None, help=f"夫の月額手取り・万円 (default: {d['husband_income']})")
     parser.add_argument("--wife-income", type=float, default=None, help=f"妻の月額手取り・万円 (default: {d['wife_income']})")
-    parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、:修士/:博士で大学院進学、例: 30,33:博士 / noneで子なし）(default: {d['children']})")
+    parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、例: 30,33 / noneで子なし）(default: {d['children']})")
     parser.add_argument("--living-premium", type=float, default=None, help=f"生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月）(default: {d['living_premium']})")
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
-    parser.add_argument("--education", type=float, default=None, help=f"教育費ピーク/高校（万円/月/人）10=公立+予備校, 15=私立+予備校, 20=私立一貫+エリート塾 (default: {d['education']})")
+    parser.add_argument("--education-private-from", type=str, default=None, help="私立切替ステージ: \"\"=全公立, 中学, 高校, 大学 (default: 全公立)")
+    parser.add_argument("--education-field", type=str, default=None, help="進路: 理系, 文系 (default: 理系)")
+    parser.add_argument("--education-boost", type=float, default=None, help="受験年費用倍率 0.8=節約, 1.0=標準, 1.2=積極 (default: 1.0)")
+    parser.add_argument("--education-grad", type=str, default=None, help="最終学歴: 学部(22歳独立), 修士(24歳), 博士(27歳) (default: 学部)")
     parser.add_argument("--car", action="store_true", default=None, help="車所有（購入300万/7年買替+維持費5万/月を計上）")
     parser.add_argument("--pets", type=str, default=None, help="ペット迎え入れ時の夫の年齢（カンマ区切り、例: 38,40 / noneでペットなし）")
     parser.add_argument("--relocation", action="store_true", default=None, help="転勤族モード（転勤確率が年3%%→10%%に上昇）")
@@ -182,7 +202,10 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
         wife_income=r["wife_income"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
-        education_cost_monthly=r["education"],
+        education_private_from=r["education_private_from"],
+        education_field=r["education_field"],
+        education_boost=r["education_boost"],
+        education_grad=r["education_grad"],
         has_car=r["car"],
         pet_adoption_ages=pet_sim_ages,
         husband_ideco=r["husband_ideco"],
@@ -204,7 +227,14 @@ def parse_args(description: str) -> tuple[dict, list[int], list[int], list[int]]
     args = parser.parse_args()
     config = load_config(args.config)
     r = resolve(args, config)
-    child_birth_ages, independence_ages = parse_children_config(r["children"])
+    child_birth_ages, legacy_indep = parse_children_config(r["children"])
+    # education_grad takes precedence; fall back to per-child legacy spec
+    grad = r["education_grad"]
+    grad_age = GRAD_SCHOOL_MAP.get(grad, DEFAULT_INDEPENDENCE_AGE)
+    if grad != DEFAULTS["education_grad"] or all(a == DEFAULT_INDEPENDENCE_AGE for a in legacy_indep):
+        independence_ages = [grad_age] * len(child_birth_ages)
+    else:
+        independence_ages = legacy_indep
     pet_ages = parse_pet_ages(r["pets"])
     return r, child_birth_ages, independence_ages, pet_ages
 

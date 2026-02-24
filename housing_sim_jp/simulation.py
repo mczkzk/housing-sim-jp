@@ -449,13 +449,58 @@ def _calc_monthly_income(
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
 EDUCATION_CHILD_AGE_END = 22    # 大学卒業（デフォルト）
 
-# ステージ別教育費割合（education_cost_monthly = ピーク（高校）金額に対する比率）
-EDUCATION_COST_RATIOS: tuple[tuple[int, int, float], ...] = (
-    (7, 12, 0.4),   # 小学校（習い事・学童）
-    (13, 15, 0.7),  # 中学校（塾開始・部活）
-    (16, 18, 1.0),  # 高校（塾・予備校・受験）← ピーク
-    (19, 27, 0.5),  # 大学・大学院（10=国立60万/年, 15=私立文系90万/年, 20=私立理系120万/年）
-)
+# 4トラック年次教育費データ (child_age → (国立文系, 国立理系, 私立文系, 私立理系), 万円/年)
+_EDUCATION_COSTS: dict[int, tuple[float, float, float, float]] = {
+    7:  (35, 35, 35, 35),      # 小1: 全トラック公立共通
+    8:  (35, 35, 35, 35),
+    9:  (40, 40, 40, 40),
+    10: (70, 70, 70, 70),      # 小4: 中受塾スタート
+    11: (90, 90, 90, 90),
+    12: (130, 130, 130, 130),  # 小6: 中受本番 ← boost対象
+    13: (55, 55, 150, 160),    # 中1: 公立/私立で分岐
+    14: (75, 75, 100, 110),
+    15: (110, 110, 110, 120),  # 中3: 高校受験 ← boost対象
+    16: (50, 50, 110, 120),    # 高1
+    17: (80, 90, 110, 130),    # 高2: 理系で予備校代加算
+    18: (140, 150, 170, 180),  # 高3: 大学受験 ← boost対象
+    19: (110, 110, 150, 220),  # 大1: ピーク（入学金+併願バッファ）
+    20: (60, 60, 110, 150),
+    21: (60, 60, 110, 150),
+    22: (60, 70, 110, 160),    # 大4: 理系は卒研加算
+    23: (60, 60, 90, 110),     # 修士1
+    24: (60, 60, 80, 100),
+    25: (60, 60, 70, 90),      # 博士1
+    26: (60, 60, 60, 80),
+    27: (60, 60, 60, 80),
+}
+_EXAM_YEARS = {12, 15, 18}  # boost対象の受験年
+
+
+def _education_track_index(child_age: int, private_from: str, field: str) -> int:
+    """0=国立文系, 1=国立理系, 2=私立文系, 3=私立理系."""
+    is_private = (
+        (private_from == "中学" and child_age >= 13)
+        or (private_from == "高校" and child_age >= 16)
+        or (private_from == "大学" and child_age >= 19)
+    )
+    is_science = (field == "理系")
+    if is_private:
+        return 3 if is_science else 2
+    return 1 if is_science else 0
+
+
+def _get_education_annual_cost(
+    child_age: int, private_from: str, field: str, boost: float,
+) -> float:
+    """Return annual education cost (万円/年) for a child at given age."""
+    costs = _EDUCATION_COSTS.get(child_age)
+    if costs is None:
+        return 0.0
+    idx = _education_track_index(child_age, private_from, field)
+    cost = costs[idx]
+    if boost != 1.0 and child_age in _EXAM_YEARS:
+        cost *= boost
+    return cost
 
 # 子供が同居する期間（生活費計算用）
 CHILD_HOME_AGE_END = 22  # 大学卒業で独立（デフォルト）
@@ -482,11 +527,11 @@ def _calc_education_and_living(
     for ed_start, ed_end in education_ranges:
         if ed_start <= age <= ed_end:
             child_age = age - ed_start + EDUCATION_CHILD_AGE_START
-            ratio = next(
-                (r for lo, hi, r in EDUCATION_COST_RATIOS if lo <= child_age <= hi),
-                0.0,
+            annual = _get_education_annual_cost(
+                child_age, params.education_private_from,
+                params.education_field, params.education_boost,
             )
-            education_cost += params.education_cost_monthly * ratio * inflation
+            education_cost += annual / 12 * inflation
     num_children = sum(
         1 for start, end in child_home_ranges
         if start <= age <= end

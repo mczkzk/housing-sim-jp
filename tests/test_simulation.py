@@ -73,19 +73,19 @@ class TestSnapshotAge37:
 
     def test_mansion(self):
         r = simulate_strategy(UrawaMansion(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(43387.448210, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(46065.007126, abs=0.01)
 
     def test_house(self):
         r = simulate_strategy(UrawaHouse(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(50384.390994, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(53039.812717, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(49043.730528, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(51692.082683, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(38459.588921, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(41179.222965, abs=0.01)
 
 
 class TestSnapshotDetails:
@@ -96,7 +96,7 @@ class TestSnapshotDetails:
         self.r = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
 
     def test_nisa_balance(self):
-        assert self.r["nisa_balance"] == pytest.approx(31418.841373, abs=0.01)
+        assert self.r["nisa_balance"] == pytest.approx(31569.281563, abs=0.01)
 
     def test_land_value(self):
         assert self.r["land_value_80"] == pytest.approx(2613.043089, abs=0.01)
@@ -123,7 +123,7 @@ class TestEdgeAges:
     def test_age_25(self):
         params = SimulationParams(husband_income=47.125, wife_income=25.375)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, husband_start_age=25, wife_start_age=25, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(244831.565034, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(248161.353920, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
@@ -133,7 +133,7 @@ class TestEdgeAges:
         params = SimulationParams(husband_income=47.125, wife_income=25.375)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, husband_start_age=45, wife_start_age=45, child_birth_ages=[39])
         assert r["bankrupt_age"] is None
-        assert r["after_tax_net_assets"] == pytest.approx(7824.205060, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(10496.531001, abs=0.01)
 
 
 class TestBankruptcy:
@@ -172,7 +172,7 @@ class TestDisciplineFactor:
         r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, discipline_factor=1.0, child_birth_ages=[39])
         r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(39865.698292, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(42067.172583, abs=0.01)
 
 
 class TestChildBirthAges:
@@ -180,7 +180,7 @@ class TestChildBirthAges:
         """child_birth_ages=[38] should produce known snapshot."""
         params = SimulationParams(husband_income=47.125, wife_income=25.375)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[38])
-        assert r["after_tax_net_assets"] == pytest.approx(48287.537793, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(51056.142031, abs=0.01)
 
     def test_no_child_increases_assets(self):
         """No education costs → more investable → higher assets."""
@@ -628,3 +628,67 @@ class TestDivorceDeathMutualExclusion:
                 assert timeline.spouse_death_month is None
             if timeline.spouse_death_month is not None:
                 assert timeline.divorce_month is None
+
+
+class TestEducationSchedule:
+    """Tests for 4-track education cost schedule."""
+
+    def test_track_totals_undergrad(self):
+        """Verify total costs match plan table (学部 = ages 7-22)."""
+        from housing_sim_jp.simulation import _get_education_annual_cost
+        for pf, f, expected in [
+            ("", "文系", 1200), ("", "理系", 1230),
+            ("中学", "文系", 1630), ("中学", "理系", 1900),
+        ]:
+            total = sum(_get_education_annual_cost(a, pf, f, 1.0) for a in range(7, 23))
+            assert total == expected, f"{pf or '国立'}/{f}: got {total}, expected {expected}"
+
+    def test_all_public_elementary(self):
+        """Elementary school (7-12) costs are identical across all tracks."""
+        from housing_sim_jp.simulation import _get_education_annual_cost
+        for age in range(7, 13):
+            costs = [
+                _get_education_annual_cost(age, pf, f, 1.0)
+                for pf in ["", "中学", "高校", "大学"]
+                for f in ["文系", "理系"]
+            ]
+            assert len(set(costs)) == 1, f"age {age}: expected uniform, got {costs}"
+
+    def test_boost_applies_to_exam_years(self):
+        """boost should only affect ages 12, 15, 18."""
+        from housing_sim_jp.simulation import _get_education_annual_cost
+        for age in [12, 15, 18]:
+            normal = _get_education_annual_cost(age, "", "理系", 1.0)
+            boosted = _get_education_annual_cost(age, "", "理系", 1.2)
+            assert boosted == pytest.approx(normal * 1.2)
+        for age in [11, 13, 17]:
+            normal = _get_education_annual_cost(age, "", "理系", 1.0)
+            boosted = _get_education_annual_cost(age, "", "理系", 1.2)
+            assert boosted == normal
+
+    def test_private_from_university(self):
+        """private_from='大学' should only affect ages >= 19."""
+        from housing_sim_jp.simulation import _get_education_annual_cost
+        for age in range(7, 19):
+            pub = _get_education_annual_cost(age, "", "理系", 1.0)
+            priv = _get_education_annual_cost(age, "大学", "理系", 1.0)
+            assert pub == priv, f"age {age}: should be same"
+        pub19 = _get_education_annual_cost(19, "", "理系", 1.0)
+        priv19 = _get_education_annual_cost(19, "大学", "理系", 1.0)
+        assert priv19 > pub19
+
+    def test_private_from_higher_cost(self):
+        """Earlier private switch → higher total cost."""
+        from housing_sim_jp.simulation import _get_education_annual_cost
+        totals = {}
+        for pf in ["", "大学", "高校", "中学"]:
+            totals[pf] = sum(_get_education_annual_cost(a, pf, "理系", 1.0) for a in range(7, 23))
+        assert totals["中学"] > totals["高校"] > totals["大学"] > totals[""]
+
+    def test_new_model_in_simulation(self):
+        """Simulation should use new education params (not old education_cost_monthly)."""
+        params_pub = SimulationParams(husband_income=47.125, wife_income=25.375, education_private_from="")
+        params_priv = SimulationParams(husband_income=47.125, wife_income=25.375, education_private_from="中学")
+        r_pub = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params_pub, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        r_priv = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params_priv, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r_pub["after_tax_net_assets"] > r_priv["after_tax_net_assets"]
