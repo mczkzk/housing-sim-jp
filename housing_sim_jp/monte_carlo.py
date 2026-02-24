@@ -188,8 +188,11 @@ def run_monte_carlo(
         params = dataclasses.replace(
             base_params,
             inflation_rate=sampled_inflation,
+            annual_inflation_rates=None,
             wage_inflation=sampled_wage_inflation,
+            annual_wage_inflations=None,
             land_appreciation=sampled_land,
+            annual_land_appreciations=None,
             annual_investment_returns=annual_returns,
             loan_rate_schedule=shifted_schedule,
         )

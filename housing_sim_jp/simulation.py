@@ -134,11 +134,22 @@ MOVING_TIMES = 3
 
 def _inflate_property_price(
     strategy: Strategy, params: SimulationParams, years: float,
+    base_year_offset: float = 0,
 ) -> float:
-    """Inflate property price by land appreciation + building inflation."""
+    """Inflate property price by land appreciation + building inflation.
+
+    base_year_offset: year offset for relative inflation (e.g. purchase year).
+    When >0, factor = cum[base+years] / cum[base] for correct cyclical indexing.
+    """
     original = type(strategy).PROPERTY_PRICE
-    land = original * strategy.land_value_ratio * (1 + params.land_appreciation) ** years
-    building = original * (1 - strategy.land_value_ratio) * (1 + params.inflation_rate) ** years
+    if base_year_offset > 0:
+        land_f = params.land_factor(base_year_offset + years) / params.land_factor(base_year_offset)
+        build_f = params.inflation_factor(base_year_offset + years) / params.inflation_factor(base_year_offset)
+    else:
+        land_f = params.land_factor(years)
+        build_f = params.inflation_factor(years)
+    land = original * strategy.land_value_ratio * land_f
+    building = original * (1 - strategy.land_value_ratio) * build_f
     return land + building
 
 
@@ -164,7 +175,7 @@ def find_earliest_purchase_age(
     if not validate_strategy(strategy, params):
         return None  # Already feasible at start_age
 
-    monthly_return_rate = params.investment_return / 12
+    fixed_monthly_return = params.investment_return / 12
 
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
     indep_ages = resolve_independence_ages(child_independence_ages, child_birth_ages)
@@ -204,7 +215,7 @@ def find_earliest_purchase_age(
             )
 
         # Monthly expenses during rental phase
-        inflation = (1 + params.inflation_rate) ** years_from_start
+        inflation = params.inflation_factor(years_from_start)
         rent = PRE_PURCHASE_RENT * inflation
         renewal = rent / PRE_PURCHASE_RENEWAL_DIVISOR
         housing = rent + renewal
@@ -229,6 +240,11 @@ def find_earliest_purchase_age(
                     tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_rate)
                     monthly_surplus -= contribution - tax_benefit
         # Accumulate 12 months of surplus with investment returns
+        year_idx = target_age - start_age - 1
+        if params.annual_investment_returns is not None:
+            monthly_return_rate = params.annual_investment_returns[year_idx] / 12
+        else:
+            monthly_return_rate = fixed_monthly_return
         for _ in range(12):
             savings *= (1 + monthly_return_rate)
             savings += monthly_surplus
@@ -269,7 +285,7 @@ def find_earliest_purchase_age(
         num_children_at_target = sum(
             1 for start, end in child_home_ranges if start <= target_age <= end
         )
-        inflation_at_target = (1 + params.inflation_rate) ** years_to_target
+        inflation_at_target = params.inflation_factor(years_to_target)
         required_ef = (
             base_living_cost(target_age) + params.living_premium
             + num_children_at_target * params.child_living_cost_monthly
@@ -349,17 +365,18 @@ def _project_working_income(
     current_age = person_start_age + years_elapsed
     income = base_income
     prev_age = person_start_age
+    wage_factor = params.wage_inflation_factor(years_elapsed)
     for threshold, rate in params.income_growth_schedule:
         if current_age <= threshold:
             income *= (1 + rate) ** (current_age - prev_age)
-            income *= (1 + params.wage_inflation) ** years_elapsed
+            income *= wage_factor
             return income
         if prev_age < threshold:
             income *= (1 + rate) ** (threshold - prev_age)
             prev_age = threshold
     last_rate = params.income_growth_schedule[-1][1]
     income *= (1 + last_rate) ** (current_age - prev_age)
-    income *= (1 + params.wage_inflation) ** years_elapsed
+    income *= wage_factor
     return income
 
 
@@ -377,18 +394,30 @@ def _calc_individual_income(
         )
         peak = monthly_income
     elif person_age < PENSION_AGE:
-        years_since_reemploy = (month - (REEMPLOYMENT_AGE - person_start_age) * 12) / 12
-        monthly_income = peak * params.retirement_reduction * (
-            (1 + params.inflation_rate * 0.5) ** years_since_reemploy
-        )
+        reemploy_start_year = REEMPLOYMENT_AGE - person_start_age
+        years_since_reemploy = (month - reemploy_start_year * 12) / 12
+        # On-the-fly loop for year-varying inflation
+        reemploy_factor = 1.0
+        full_years = int(years_since_reemploy)
+        for y in range(full_years):
+            rate = params.get_inflation_rate(reemploy_start_year + y) * 0.5
+            reemploy_factor *= (1 + rate)
+        frac = years_since_reemploy - full_years
+        if frac > 0:
+            rate = params.get_inflation_rate(reemploy_start_year + full_years) * 0.5
+            reemploy_factor *= (1 + rate) ** frac
+        monthly_income = peak * params.retirement_reduction * reemploy_factor
     else:
         years_since_pension = person_age - PENSION_AGE
         public_pension = _estimate_individual_pension(peak)
         annual_pension = public_pension + corp_pension_share
-        annual_pension *= (
-            (1 + params.inflation_rate - params.pension_real_reduction)
-            ** years_since_pension
-        )
+        # On-the-fly loop for year-varying inflation
+        pension_start_year = PENSION_AGE - person_start_age
+        pension_factor = 1.0
+        for y in range(years_since_pension):
+            rate = params.get_inflation_rate(pension_start_year + y) - params.pension_real_reduction
+            pension_factor *= (1 + rate)
+        annual_pension *= pension_factor
         monthly_income = annual_pension / 12
 
     return monthly_income, peak
@@ -448,7 +477,7 @@ def _calc_education_and_living(
 
     extra_monthly_cost: additional per-month cost (e.g. car running) added to base living.
     """
-    inflation = (1 + params.inflation_rate) ** years_elapsed
+    inflation = params.inflation_factor(years_elapsed)
     education_cost = 0.0
     for ed_start, ed_end in education_ranges:
         if ed_start <= age <= ed_end:
@@ -493,7 +522,7 @@ def _calc_expenses(
 
     housing_cost = strategy.housing_cost(age, ownership_month, params)
     if pet_active_count > 0 and strategy.property_price == 0:
-        housing_cost += params.pet_rental_premium * (1 + params.inflation_rate) ** years_elapsed
+        housing_cost += params.pet_rental_premium * params.inflation_factor(years_elapsed)
 
     extra_monthly_cost = 0
     if params.has_car and car_owned:
@@ -517,13 +546,9 @@ def _calc_expenses(
     if month_in_year == 0 and age in one_time_expenses:
         base_cost = one_time_expenses[age]
         years_to_inflate = age - start_age
-        one_time_expense = base_cost * (
-            (1 + params.inflation_rate) ** years_to_inflate
-        )
+        one_time_expense = base_cost * params.inflation_factor(years_to_inflate)
 
-    utility_cost = strategy.utility_premium * (
-        (1 + params.inflation_rate) ** years_elapsed
-    )
+    utility_cost = strategy.utility_premium * params.inflation_factor(years_elapsed)
 
     return housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense
 
@@ -613,7 +638,10 @@ def _apply_divorce(
     if strategy.property_price > 0:
         years_owned = (month - purchase_month_offset) / 12
         if years_owned > 0:
-            land_value = _inflate_property_price(strategy, params, years_owned)
+            land_value = _inflate_property_price(
+                strategy, params, years_owned,
+                base_year_offset=purchase_month_offset / 12,
+            )
         else:
             land_value = strategy.property_price * strategy.land_value_ratio
         sale_proceeds = land_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
@@ -623,9 +651,7 @@ def _apply_divorce(
         strategy.property_price = 0
 
     years_elapsed = month / 12
-    divorce_rental_cost = PRE_PURCHASE_RENT * (
-        (1 + params.inflation_rate) ** years_elapsed
-    )
+    divorce_rental_cost = PRE_PURCHASE_RENT * params.inflation_factor(years_elapsed)
 
     return (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
             ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost)
@@ -662,7 +688,10 @@ def _apply_relocation(
         # Sell current property
         years_owned = (month - purchase_month_offset) / 12
         if years_owned > 0:
-            market_value = _inflate_property_price(strategy, params, years_owned)
+            market_value = _inflate_property_price(
+                strategy, params, years_owned,
+                base_year_offset=purchase_month_offset / 12,
+            )
         else:
             market_value = strategy.property_price
         sale_proceeds = market_value - strategy.remaining_balance - strategy.LIQUIDATION_COST
@@ -715,11 +744,11 @@ def _try_car_purchase(
         return 0.0, car_owned, car_first_purchase_age, next_car_due_age
 
     years_from_start = age - start_age
-    inflation_factor = (1 + params.inflation_rate) ** years_from_start
+    infl = params.inflation_factor(years_from_start)
     if not car_owned:
-        cost = params.car_purchase_price * inflation_factor
+        cost = params.car_purchase_price * infl
     else:
-        cost = params.car_purchase_price * (1 - params.car_residual_rate) * inflation_factor
+        cost = params.car_purchase_price * (1 - params.car_residual_rate) * infl
 
     required_ef = _calc_required_emergency_fund(age, month, params, child_home_ranges)
     if investment_balance >= cost + required_ef:
@@ -758,8 +787,8 @@ def _try_pet_adoption(
         return 0.0, pet_active_ends, next_pet_idx, pet_first_adoption_age
 
     years_from_start = age - start_age
-    inflation_factor = (1 + params.inflation_rate) ** years_from_start
-    cost = params.pet_adoption_cost * inflation_factor
+    infl = params.inflation_factor(years_from_start)
+    cost = params.pet_adoption_cost * infl
 
     required_ef = _calc_required_emergency_fund(age, month, params, child_home_ranges)
     if investment_balance >= cost + required_ef:
@@ -852,7 +881,7 @@ def _calc_required_emergency_fund(
     if params.emergency_fund_months <= 0:
         return 0.0
     num_children = sum(1 for start, end in child_home_ranges if start <= age <= end)
-    inflation = (1 + params.inflation_rate) ** (month / 12)
+    inflation = params.inflation_factor(month / 12)
     base_living = (
         base_living_cost(age) + params.living_premium
         + num_children * params.child_living_cost_monthly
@@ -873,15 +902,24 @@ def _calc_final_assets(
     taxable_cost_basis: float,
     purchase_closing_cost: float,
     emergency_fund: float = 0.0,
+    purchase_year_offset: int = 0,
 ) -> dict:
-    """Calculate final asset values at simulation end (age 80)."""
+    """Calculate final asset values at simulation end (age 80).
+
+    purchase_year_offset: years from sim start to purchase (for cyclical land factor indexing).
+    """
     investment_balance = nisa_balance + taxable_balance + emergency_fund
 
     if strategy.property_price > 0:
         land_value_initial = strategy.property_price * strategy.land_value_ratio
-        land_value_final = land_value_initial * (
-            (1 + params.land_appreciation) ** ownership_years
-        )
+        if purchase_year_offset > 0:
+            land_f = (
+                params.land_factor(purchase_year_offset + ownership_years)
+                / params.land_factor(purchase_year_offset)
+            )
+        else:
+            land_f = params.land_factor(ownership_years)
+        land_value_final = land_value_initial * land_f
         liquidation_cost = strategy.LIQUIDATION_COST
     else:
         land_value_final = 0
@@ -1158,7 +1196,7 @@ def simulate_strategy(
         if has_pre_purchase_rental and month < purchase_month_offset:
             # Pre-purchase rental phase: 2LDK rental costs
             years_elapsed = month / 12
-            inflation = (1 + params.inflation_rate) ** years_elapsed
+            inflation = params.inflation_factor(years_elapsed)
             rent = PRE_PURCHASE_RENT * inflation
             housing_cost = rent + rent / PRE_PURCHASE_RENEWAL_DIVISOR
 
@@ -1405,6 +1443,7 @@ def simulate_strategy(
         strategy, params, ownership_years,
         nisa_balance, taxable_balance, taxable_cost_basis,
         purchase_closing_cost, emergency_fund,
+        purchase_year_offset=effective_purchase_age - start_age,
     )
 
     return {

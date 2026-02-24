@@ -7,7 +7,7 @@ from housing_sim_jp.scenarios import run_scenarios, SCENARIOS, DISCIPLINE_FACTOR
 class TestRunScenarios:
     def test_returns_4_scenarios(self):
         results = run_scenarios(husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375)
-        assert set(results.keys()) == {"低成長", "標準", "高成長", "スタグフレーション"}
+        assert set(results.keys()) == {"低成長", "標準", "高成長", "慢性スタグフレーション", "サイクル型"}
 
     def test_each_scenario_has_4_strategies(self):
         results = run_scenarios(husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375)
@@ -17,7 +17,7 @@ class TestRunScenarios:
     def test_total_16_results(self):
         results = run_scenarios(husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375)
         total = sum(len(v) for v in results.values())
-        assert total == 16
+        assert total == 20
 
 
 class TestScenarioOrdering:
@@ -60,6 +60,6 @@ class TestDisciplineFactors:
             husband_start_age=37, wife_start_age=37, initial_savings=800, husband_income=47.125, wife_income=25.375,
             discipline_factors=DISCIPLINE_FACTORS,
         )
-        assert set(results.keys()) == {"低成長", "標準", "高成長", "スタグフレーション"}
+        assert set(results.keys()) == {"低成長", "標準", "高成長", "慢性スタグフレーション", "サイクル型"}
         for name, strats in results.items():
             assert len(strats) == 4

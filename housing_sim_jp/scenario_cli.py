@@ -10,20 +10,20 @@ STRATEGY_LABELS = [
     "戦略的賃貸",
     "通常賃貸(3LDK固定)",
 ]
-SCENARIO_ORDER = ["低成長", "標準", "高成長", "スタグフレーション"]
+SCENARIO_ORDER = ["低成長", "標準", "高成長", "慢性スタグフレーション", "サイクル型"]
 
 
 def print_parameters():
     """Print scenario parameters"""
     print("=" * 120)
-    print("【マクロ整合型4シナリオ比較】")
+    print("【マクロ整合型5シナリオ比較】")
     print("=" * 120)
     print()
 
     print("【パラメータ設定】")
     print("-" * 120)
     print(
-        f"{'シナリオ':<12} {'インフレ率':>10} {'賃金上昇率':>10} {'運用利回り':>10} {'土地上昇率':>10} {'ローン金利':>16}"
+        f"{'シナリオ':<18} {'インフレ率':>10} {'賃金上昇率':>10} {'運用利回り':>10} {'土地上昇率':>10} {'ローン金利':>16}"
     )
     print("-" * 120)
 
@@ -35,10 +35,12 @@ def print_parameters():
         land = scenario["land_appreciation"] * 100
         rates = scenario["loan_rate_schedule"]
         loan = f"{rates[0]*100:.2f}→{rates[-1]*100:.2f}%"
+        suffix = " *" if "annual_investment_returns" in scenario else ""
         print(
-            f"{name:<12} {inflation:>9.1f}% {wage:>9.1f}% {investment:>9.1f}% {land:>9.1f}% {loan:>15}"
+            f"{name:<18} {inflation:>9.1f}% {wage:>9.1f}% {investment:>9.1f}% {land:>9.2f}% {loan:>15}{suffix}"
         )
     print("-" * 120)
+    print("  * サイクル型: 7年通常(6.0%/2.0%/2.0%) + 3年スタグフレーション(3.0%/3.0%/1.0%)の10年サイクル。表示値は加重平均。")
     print()
 
 
@@ -60,13 +62,13 @@ def _print_summary_table(title: str, all_results: dict, key: str):
     print("=" * 120)
     print()
     print(
-        f"{'シナリオ':<12} {'マンション':>15} {'一戸建て':>15} {'戦略的賃貸':>15} {'通常賃貸':>15}"
+        f"{'シナリオ':<18} {'マンション':>15} {'一戸建て':>15} {'戦略的賃貸':>15} {'通常賃貸':>15}"
     )
     print("-" * 120)
 
     for scenario_name in SCENARIO_ORDER:
         cells = [_format_cell(all_results[scenario_name][i], key) for i in range(4)]
-        print(f"{scenario_name:<12} " + " ".join(cells))
+        print(f"{scenario_name:<18} " + " ".join(cells))
 
     print("-" * 120)
     print()
@@ -76,7 +78,7 @@ def print_results(all_results):
     """Print simulation results"""
     print()
     print("=" * 120)
-    print("【4シナリオ × 4戦略 比較結果】")
+    print("【5シナリオ × 4戦略 比較結果】")
     print("=" * 120)
     print()
 
@@ -84,14 +86,14 @@ def print_results(all_results):
         print(f"■ {label}")
         print("-" * 120)
         print(
-            f"{'シナリオ':<12} {'運用資産':>12} {'土地価値':>12} {'換金コスト':>12} {'最終純資産':>12} {'金融所得税':>12} {'税引後手取':>12}"
+            f"{'シナリオ':<18} {'運用資産':>12} {'土地価値':>12} {'換金コスト':>12} {'最終純資産':>12} {'金融所得税':>12} {'税引後手取':>12}"
         )
         print("-" * 120)
 
         for scenario_name in SCENARIO_ORDER:
             result = all_results[scenario_name][i]
             if result is None:
-                print(f"{scenario_name:<12}  --- 購入不可 ---")
+                print(f"{scenario_name:<18}  --- 購入不可 ---")
                 continue
             bankrupt = result.get("bankrupt_age")
             suffix = f" ⚠{bankrupt}歳破綻" if bankrupt else ""
@@ -101,7 +103,7 @@ def print_results(all_results):
                 if pa and pa > result["monthly_log"][0]["age"]:
                     purchase_info = f" ({pa}歳購入)"
             print(
-                f"{scenario_name:<12} "
+                f"{scenario_name:<18} "
                 f"{result['investment_balance_80']:>11,.0f}万 "
                 f"{result['land_value_80']:>11,.0f}万 "
                 f"{-result['liquidation_cost']:>11,.0f}万 "
@@ -141,7 +143,7 @@ def print_discipline_analysis(base_results, discipline_results):
     print()
 
     print(
-        f"{'シナリオ':<12} {'マンション':>15} {'一戸建て':>15} {'戦略的賃貸':>15} {'通常賃貸':>15}"
+        f"{'シナリオ':<18} {'マンション':>15} {'一戸建て':>15} {'戦略的賃貸':>15} {'通常賃貸':>15}"
     )
     print("-" * 120)
 
@@ -163,8 +165,8 @@ def print_discipline_analysis(base_results, discipline_results):
             else:
                 cells.append(f"{v:>14.2f}億")
             diff_cells.append(f"{v - b:>+14.2f}億")
-        print(f"{scenario_name:<12} " + " ".join(cells))
-        print(f"{'  (差分)':<12} " + " ".join(diff_cells))
+        print(f"{scenario_name:<18} " + " ".join(cells))
+        print(f"{'  (差分)':<18} " + " ".join(diff_cells))
 
     print("-" * 120)
     print()

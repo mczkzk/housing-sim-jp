@@ -95,6 +95,68 @@ class SimulationParams:
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: list[float] | None = None
 
+    # Per-year rate arrays for cyclical scenarios (None=use scalar)
+    annual_inflation_rates: list[float] | None = None
+    annual_wage_inflations: list[float] | None = None
+    annual_land_appreciations: list[float] | None = None
+
+    def __post_init__(self):
+        self._cum_inflation = self._precompute_cumulative(self.annual_inflation_rates)
+        self._cum_wage = self._precompute_cumulative(self.annual_wage_inflations)
+        self._cum_land = self._precompute_cumulative(self.annual_land_appreciations)
+
+    @staticmethod
+    def _precompute_cumulative(rates: list[float] | None, max_years: int = 61) -> list[float] | None:
+        if rates is None:
+            return None
+        cum = [1.0]
+        for y in range(max_years):
+            cum.append(cum[-1] * (1 + rates[min(y, len(rates) - 1)]))
+        return cum
+
+    @staticmethod
+    def _factor_from_cumulative(
+        cum: list[float], rates: list[float], years: float,
+    ) -> float:
+        full = int(years)
+        frac = years - full
+        idx = min(full, len(cum) - 1)
+        factor = cum[idx]
+        if frac > 0:
+            rate_idx = min(full, len(rates) - 1)
+            factor *= (1 + rates[rate_idx]) ** frac
+        return factor
+
+    def inflation_factor(self, years: float) -> float:
+        """Cumulative inflation factor: replaces (1 + inflation_rate) ** years."""
+        if self._cum_inflation is not None:
+            return self._factor_from_cumulative(
+                self._cum_inflation, self.annual_inflation_rates, years,
+            )
+        return (1 + self.inflation_rate) ** years
+
+    def wage_inflation_factor(self, years: float) -> float:
+        """Cumulative wage inflation factor: replaces (1 + wage_inflation) ** years."""
+        if self._cum_wage is not None:
+            return self._factor_from_cumulative(
+                self._cum_wage, self.annual_wage_inflations, years,
+            )
+        return (1 + self.wage_inflation) ** years
+
+    def land_factor(self, years: float) -> float:
+        """Cumulative land appreciation factor: replaces (1 + land_appreciation) ** years."""
+        if self._cum_land is not None:
+            return self._factor_from_cumulative(
+                self._cum_land, self.annual_land_appreciations, years,
+            )
+        return (1 + self.land_appreciation) ** years
+
+    def get_inflation_rate(self, year_idx: int) -> float:
+        """Get inflation rate for a specific year (for on-the-fly calculations)."""
+        if self.annual_inflation_rates is not None:
+            return self.annual_inflation_rates[min(year_idx, len(self.annual_inflation_rates) - 1)]
+        return self.inflation_rate
+
     def get_loan_rate(self, years_elapsed: float) -> float:
         """Get monthly loan rate based on elapsed years (5-year step schedule)"""
         idx = min(int(years_elapsed // 5), len(self.loan_rate_schedule) - 1)

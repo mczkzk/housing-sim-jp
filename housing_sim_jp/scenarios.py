@@ -17,6 +17,18 @@ from housing_sim_jp.simulation import (
     INFEASIBLE,
 )
 
+def _generate_cyclical_rates(
+    normal_rate: float,
+    stress_rate: float,
+    normal_years: int = 7,
+    stress_years: int = 3,
+    total_years: int = 61,
+) -> list[float]:
+    """7年通常 + 3年スタグフレーションの10年サイクルでレートを生成。"""
+    cycle = [normal_rate] * normal_years + [stress_rate] * stress_years
+    return [cycle[y % len(cycle)] for y in range(total_years)]
+
+
 SCENARIOS = {
     "低成長": {
         "inflation_rate": 0.01,
@@ -39,12 +51,25 @@ SCENARIOS = {
         "land_appreciation": 0.015,
         "loan_rate_schedule": [0.0125, 0.0200, 0.0275, 0.0325, 0.0350],
     },
-    "スタグフレーション": {
-        "inflation_rate": 0.025,
-        "wage_inflation": 0.01,  # 実質賃金 -1.5%/年
-        "investment_return": 0.04,
+    "慢性スタグフレーション": {
+        "inflation_rate": 0.02,
+        "wage_inflation": 0.015,  # 実質賃金 -0.5%/年（50年で購買力78%に低下）
+        "investment_return": 0.045,
         "land_appreciation": 0.00,
-        "loan_rate_schedule": [0.0100, 0.0150, 0.0200, 0.0250, 0.0300],
+        "loan_rate_schedule": [0.0075, 0.0125, 0.0175, 0.0200, 0.0225],
+    },
+    "サイクル型": {
+        # 7年通常 + 3年スタグフレーションの10年サイクル
+        # スカラー値は加重平均（MC・チャート・購入年齢探索のフォールバック用）
+        "inflation_rate": 0.023,     # (7×2.0 + 3×3.0) / 10
+        "wage_inflation": 0.017,     # (7×2.0 + 3×1.0) / 10
+        "investment_return": 0.051,  # (7×6.0 + 3×3.0) / 10
+        "land_appreciation": 0.002,  # (7×0.75 + 3×(−1.0)) / 10
+        "loan_rate_schedule": [0.0090, 0.0150, 0.0200, 0.0250, 0.0275],
+        "annual_investment_returns": _generate_cyclical_rates(0.06, 0.03),
+        "annual_inflation_rates": _generate_cyclical_rates(0.02, 0.03),
+        "annual_wage_inflations": _generate_cyclical_rates(0.02, 0.01),
+        "annual_land_appreciations": _generate_cyclical_rates(0.0075, -0.01),
     },
 }
 
