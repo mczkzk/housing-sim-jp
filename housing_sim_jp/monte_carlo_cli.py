@@ -11,6 +11,7 @@ from housing_sim_jp.monte_carlo import (
     MonteCarloResult,
     run_monte_carlo_all_strategies,
 )
+from housing_sim_jp.facility import print_mc_facility_grades
 
 
 def _build_parser():
@@ -235,6 +236,7 @@ def main():
     )
 
     _print_results(results, args.mc_runs, args.volatility, not args.no_events)
+    print_mc_facility_grades(results, base_params.inflation_rate, start_age)
 
     if args.stress_test:
         _run_stress_test(

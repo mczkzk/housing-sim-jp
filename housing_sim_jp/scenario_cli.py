@@ -3,6 +3,7 @@
 from housing_sim_jp.config import parse_args, parse_special_expenses
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
 from housing_sim_jp.simulation import to_sim_ages
+from housing_sim_jp.facility import print_facility_grades
 
 STRATEGY_LABELS = [
     "マンション購入派",
@@ -206,6 +207,14 @@ def main():
     print_parameters()
     results = run_scenarios(**common_kwargs)
     print_results(results)
+
+    for scenario_name in SCENARIO_ORDER:
+        scenario_results = results[scenario_name]
+        valid = [r for r in scenario_results if r is not None]
+        if valid:
+            inflation = SCENARIOS[scenario_name]["inflation_rate"]
+            print(f"\n  ── {scenario_name}シナリオ ──")
+            print_facility_grades(valid, inflation, start_age)
 
     discipline_results = run_scenarios(
         **common_kwargs,

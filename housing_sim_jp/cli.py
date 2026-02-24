@@ -4,6 +4,7 @@ from housing_sim_jp.config import parse_args, build_params
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, to_sim_ages, INFEASIBLE
+from housing_sim_jp.facility import print_facility_grades
 
 
 def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth_ages: list[int], pet_ages: list[int] | None = None):
@@ -236,6 +237,7 @@ def main():
         return
 
     _print_asset_table(valid_results)
+    print_facility_grades(valid_results, params.inflation_rate, start_age)
     _print_summary(valid_results, start_age)
     _print_yearly_log(valid_results)
 
