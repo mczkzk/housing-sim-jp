@@ -2,9 +2,8 @@
 
 import sys
 
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_config, parse_pet_ages, build_params
+from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages
 from housing_sim_jp.params import SimulationParams
-from housing_sim_jp.simulation import to_sim_ages
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -14,8 +13,7 @@ from housing_sim_jp.monte_carlo import (
 from housing_sim_jp.facility import print_mc_facility_grades
 
 
-def _build_parser():
-    parser = create_parser("Monte Carlo 住宅資産形成シミュレーション")
+def _add_mc_args(parser):
     parser.add_argument(
         "--mc-runs", type=int, default=1000,
         help="シミュレーション回数 (default: 1000)",
@@ -40,7 +38,6 @@ def _build_parser():
         "--stress-test", action="store_true",
         help="ストレステスト表を追加出力",
     )
-    return parser
 
 
 def _fmt_oku(v: float) -> str:
@@ -172,24 +169,14 @@ def _run_stress_test(
 
 
 def main():
-    parser = _build_parser()
-    args = parser.parse_args()
-    config_file = load_config(args.config)
-    r = resolve(args, config_file)
+    r, wife_birth_ages, independence_ages, husband_pet_ages, args = parse_args(
+        "Monte Carlo 住宅資産形成シミュレーション", _add_mc_args,
+    )
 
-    wife_birth_ages, independence_ages = parse_children_config(r["children"])
-
+    start_age, child_birth_ages, pet_sim_ages = resolve_sim_ages(r, wife_birth_ages, husband_pet_ages)
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
-    start_age = max(husband_age, wife_age)
-
-    child_birth_ages = to_sim_ages(wife_birth_ages, wife_age, start_age)
-
-    pet_ages = parse_pet_ages(r["pets"])
-    husband_pet_ages = pet_ages
-    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
     initial_savings = r["savings"]
-
     base_params = build_params(r, pet_sim_ages)
 
     RELOCATION_TENSHOKUZOKU_PROB = 0.10

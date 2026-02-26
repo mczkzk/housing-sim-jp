@@ -215,15 +215,21 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
     )
 
 
-def parse_args(description: str) -> tuple[dict, list[int], list[int], list[int]]:
+def parse_args(
+    description: str,
+    add_args_fn: "Callable[[argparse.ArgumentParser], None] | None" = None,
+) -> tuple[dict, list[int], list[int], list[int], argparse.Namespace]:
     """Parse CLI args, load config, resolve values.
 
-    Returns (resolved_dict, child_birth_ages, independence_ages, pet_ages).
+    Returns (resolved_dict, child_birth_ages, independence_ages, pet_ages, namespace).
     child_birth_ages: list of wife's ages at birth.
     independence_ages: per-child independence age (22=学部, 24=修士, 27=博士).
     pet_ages: list of husband's ages at pet adoption.
+    namespace: raw argparse.Namespace (for extra CLI args added via add_args_fn).
     """
     parser = create_parser(description)
+    if add_args_fn:
+        add_args_fn(parser)
     args = parser.parse_args()
     config = load_config(args.config)
     r = resolve(args, config)
@@ -236,7 +242,24 @@ def parse_args(description: str) -> tuple[dict, list[int], list[int], list[int]]
     else:
         independence_ages = legacy_indep
     pet_ages = parse_pet_ages(r["pets"])
-    return r, child_birth_ages, independence_ages, pet_ages
+    return r, child_birth_ages, independence_ages, pet_ages, args
+
+
+def resolve_sim_ages(
+    r: dict, child_birth_ages: list[int], pet_ages: list[int],
+) -> tuple[int, list[int], tuple[int, ...]]:
+    """Derive start_age and convert child/pet ages to sim-age basis.
+
+    Returns (start_age, child_sim_ages, pet_sim_ages).
+    """
+    from housing_sim_jp.simulation import to_sim_ages
+
+    husband_age = r["husband_age"]
+    wife_age = r["wife_age"]
+    start_age = max(husband_age, wife_age)
+    child_sim_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
+    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
+    return start_age, child_sim_ages, pet_sim_ages
 
 
 def resolve(args: argparse.Namespace, config: dict) -> dict:

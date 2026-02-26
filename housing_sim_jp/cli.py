@@ -1,9 +1,9 @@
 """CLI entry point for single simulation (3 strategy comparison)."""
 
-from housing_sim_jp.config import parse_args, build_params
+from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
-from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, to_sim_ages, INFEASIBLE
+from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, INFEASIBLE
 from housing_sim_jp.facility import print_facility_grades
 
 
@@ -179,21 +179,12 @@ def _print_yearly_log(valid_results: list[dict]):
 
 def main():
     """Execute main simulation (3 strategy comparison)"""
-    r, child_birth_ages, independence_ages, pet_ages = parse_args("住宅資産形成シミュレーション")
+    r, wife_birth_ages, independence_ages, husband_pet_ages, _ = parse_args("住宅資産形成シミュレーション")
 
+    start_age, child_birth_ages, pet_sim_ages = resolve_sim_ages(r, wife_birth_ages, husband_pet_ages)
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
-    start_age = max(husband_age, wife_age)
     savings = r["savings"]
-
-    # child_birth_ages is wife-age based from config/CLI; convert to sim-age (start_age based)
-    wife_birth_ages = child_birth_ages
-    child_birth_ages = to_sim_ages(child_birth_ages, wife_age, start_age)
-
-    # pet_ages is husband-age based from config/CLI; convert to sim-age
-    husband_pet_ages = pet_ages  # keep original for display
-    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
-
     params = build_params(r, pet_sim_ages)
     strategies = [
         UrawaMansion(savings),

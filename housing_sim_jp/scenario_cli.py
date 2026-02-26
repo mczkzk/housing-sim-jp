@@ -1,8 +1,7 @@
 """CLI entry point for scenario comparison."""
 
-from housing_sim_jp.config import parse_args, parse_special_expenses
+from housing_sim_jp.config import parse_args, parse_special_expenses, resolve_sim_ages
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
-from housing_sim_jp.simulation import to_sim_ages
 from housing_sim_jp.facility import print_facility_grades
 
 STRATEGY_LABELS = [
@@ -174,16 +173,13 @@ def print_discipline_analysis(base_results, discipline_results):
 
 
 def main():
-    r, child_birth_ages, independence_ages, pet_ages = parse_args("4シナリオ比較シミュレーション")
+    r, child_birth_ages, independence_ages, pet_ages, _ = parse_args("4シナリオ比較シミュレーション")
     special_expenses = parse_special_expenses(r["special_expenses"])
 
-    husband_age = r["husband_age"]
-    start_age = max(husband_age, r["wife_age"])
-    child_birth_ages = to_sim_ages(child_birth_ages, r["wife_age"], start_age)
-    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
+    start_age, child_birth_ages, pet_sim_ages = resolve_sim_ages(r, child_birth_ages, pet_ages)
 
     common_kwargs = dict(
-        husband_start_age=husband_age,
+        husband_start_age=r["husband_age"],
         wife_start_age=r["wife_age"],
         initial_savings=r["savings"],
         husband_income=r["husband_income"],

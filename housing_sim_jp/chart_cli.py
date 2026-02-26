@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
-from housing_sim_jp.config import create_parser, load_config, resolve, parse_children_config, parse_special_expense_labels, parse_pet_ages, build_params
+from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages, parse_special_expense_labels
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
@@ -15,7 +15,6 @@ from housing_sim_jp.simulation import (
     resolve_child_birth_ages,
     resolve_purchase_age,
     simulate_strategy,
-    to_sim_ages,
 )
 from housing_sim_jp.strategies import (
     NormalRental,
@@ -25,8 +24,7 @@ from housing_sim_jp.strategies import (
 )
 
 
-def _build_parser():
-    parser = create_parser("住宅シミュレーション チャート生成")
+def _add_chart_args(parser):
     parser.add_argument(
         "--output", type=Path, default=Path("reports/charts"),
         help="出力ディレクトリ (default: reports/charts)",
@@ -47,29 +45,19 @@ def _build_parser():
         "--name", type=str, default="",
         help="出力ファイル名のサフィックス（例: 30 → trajectory-30.png）",
     )
-    return parser
 
 
 def main():
-    parser = _build_parser()
-    args = parser.parse_args()
-    config_file = load_config(args.config)
-    r = resolve(args, config_file)
+    r, wife_birth_ages, independence_ages, pet_ages, args = parse_args(
+        "住宅シミュレーション チャート生成", _add_chart_args,
+    )
 
-    wife_birth_ages, independence_ages = parse_children_config(r["children"])
-
+    start_age, child_birth_ages, pet_sim_ages = resolve_sim_ages(r, wife_birth_ages, pet_ages)
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
-    start_age = max(husband_age, wife_age)
-
-    child_birth_ages = to_sim_ages(wife_birth_ages, wife_age, start_age)
-
-    pet_ages = parse_pet_ages(r["pets"])
-    pet_sim_ages = tuple(sorted(to_sim_ages(pet_ages, husband_age, start_age)))
     savings = r["savings"]
     output_dir = args.output
     chart_name = args.name
-
     params = build_params(r, pet_sim_ages)
 
     resolved_children = resolve_child_birth_ages(child_birth_ages, start_age)
