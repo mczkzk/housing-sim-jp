@@ -9,6 +9,7 @@ housing-sim = "housing_sim_jp.cli:main"
 scenario-compare = "housing_sim_jp.scenario_cli:main"
 monte-carlo = "housing_sim_jp.monte_carlo_cli:main"
 chart = "housing_sim_jp.chart_cli:main"
+report = "housing_sim_jp.report_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
