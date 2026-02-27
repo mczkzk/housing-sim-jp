@@ -1,6 +1,6 @@
 """Housing Asset Formation Simulation Package."""
 
-from housing_sim_jp.params import SimulationParams
+from housing_sim_jp.params import END_AGE, SimulationParams
 from housing_sim_jp.strategies import (
     Strategy,
     UrawaMansion,
@@ -9,7 +9,6 @@ from housing_sim_jp.strategies import (
     NormalRental,
     CHILD_ROOM_AGE_START,
     CHILD_ROOM_AGE_END,
-    END_AGE,
 )
 from housing_sim_jp.simulation import (
     simulate_strategy,

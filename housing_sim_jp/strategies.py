@@ -3,12 +3,11 @@
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from housing_sim_jp.params import SimulationParams, _calc_equal_payment
+from housing_sim_jp.params import END_AGE, SimulationParams, _calc_equal_payment
 
 # 子供の個室が必要な年齢範囲（3LDKフェーズ判定用）
 CHILD_ROOM_AGE_START = 7   # 小学校入学
 CHILD_ROOM_AGE_END = 22    # 大学卒業
-END_AGE = 80
 
 
 def _stepped_multiplier(age: float, steps: list[tuple[float, float]], final: float) -> float:

@@ -9,9 +9,8 @@ from random import Random
 from typing import Callable
 
 from housing_sim_jp.events import EventRiskConfig, EventTimeline, sample_events
-from housing_sim_jp.params import SimulationParams
+from housing_sim_jp.params import END_AGE, SimulationParams
 from housing_sim_jp.simulation import (
-    END_AGE,
     simulate_strategy,
     resolve_purchase_age,
     resolve_child_birth_ages,

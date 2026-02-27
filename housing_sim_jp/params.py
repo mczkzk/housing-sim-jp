@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+END_AGE = 80
+
 # Age-based baseline living cost curve (万円/月, couple without children)
 # Piecewise linear interpolation; flat at 27.5 beyond age 50.
 _LIVING_COST_CURVE: list[tuple[int, float]] = [

@@ -2,7 +2,7 @@
 
 import dataclasses
 
-from housing_sim_jp.params import SimulationParams, _calc_equal_payment, base_living_cost
+from housing_sim_jp.params import END_AGE, SimulationParams, _calc_equal_payment, base_living_cost
 from housing_sim_jp.strategies import Strategy
 from housing_sim_jp.tax import (
     calc_marginal_income_tax_rate,
@@ -121,7 +121,6 @@ PRE_PURCHASE_RENEWAL_DIVISOR = 24  # Renewal fee amortized monthly
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
 # Simulation constants
-END_AGE = 80
 NISA_LIMIT = 3600  # 夫婦NISA上限（万円）
 CAPITAL_GAINS_TAX_RATE = 0.20315
 RESIDENCE_SPECIAL_DEDUCTION = 3000  # 居住用財産3,000万円特別控除
