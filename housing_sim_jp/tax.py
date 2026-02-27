@@ -13,6 +13,7 @@ _INCOME_TAX_BRACKETS: tuple[tuple[float, float, float], ...] = (
 )
 
 RESIDENT_TAX_RATE = 0.10  # 住民税率（一律10%）
+CAPITAL_GAINS_TAX_RATE = 0.20315  # 譲渡益課税（所得税15.315%+住民税5%）
 
 
 def calc_marginal_income_tax_rate(taxable_income: float) -> float:
