@@ -24,7 +24,7 @@ from housing_sim_jp.config import (
     resolve_sim_ages,
 )
 from housing_sim_jp.events import EventRiskConfig
-from housing_sim_jp.facility import FACILITY_TIERS, _deflator, grade_label
+from housing_sim_jp.facility import _deflator, grade_label
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
     MonteCarloResult,
@@ -40,7 +40,6 @@ from housing_sim_jp.simulation import (
     resolve_independence_ages,
     resolve_purchase_age,
     simulate_strategy,
-    to_sim_ages,
 )
 from housing_sim_jp.strategies import (
     NormalRental,
