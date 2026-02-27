@@ -16,12 +16,7 @@ from housing_sim_jp.simulation import (
     resolve_purchase_age,
     simulate_strategy,
 )
-from housing_sim_jp.strategies import (
-    NormalRental,
-    StrategicRental,
-    UrawaHouse,
-    UrawaMansion,
-)
+from housing_sim_jp.strategies import build_all_strategies
 
 
 def _add_chart_args(parser):
@@ -66,13 +61,9 @@ def main():
     # --- Deterministic trajectory ---
     print(f"確定論シミュレーション（{start_age}歳→80歳）...", file=sys.stderr)
     resolved_indep = independence_ages or None
-    strategies = [
-        UrawaMansion(savings),
-        UrawaHouse(savings),
-        StrategicRental(savings, child_birth_ages=resolved_children,
-                        child_independence_ages=resolved_indep, start_age=start_age),
-        NormalRental(savings, num_children=num_children),
-    ]
+    strategies = build_all_strategies(
+        savings, resolved_children, resolved_indep, start_age,
+    )
 
     det_results = []
     for strategy in strategies:

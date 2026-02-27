@@ -291,3 +291,23 @@ class NormalRental(Strategy):
         years_elapsed = months_elapsed / 12
         rent = self.base_rent * ((1 + params.inflation_rate) ** years_elapsed)
         return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
+
+
+def build_all_strategies(
+    savings: float,
+    child_birth_ages: list[int],
+    child_independence_ages: list[int] | None,
+    start_age: int,
+) -> list[Strategy]:
+    """Build the standard 4-strategy list for comparison."""
+    return [
+        UrawaMansion(savings),
+        UrawaHouse(savings),
+        StrategicRental(
+            savings,
+            child_birth_ages=child_birth_ages,
+            child_independence_ages=child_independence_ages,
+            start_age=start_age,
+        ),
+        NormalRental(savings, num_children=len(child_birth_ages)),
+    ]

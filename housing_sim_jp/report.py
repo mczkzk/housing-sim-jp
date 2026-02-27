@@ -47,6 +47,7 @@ from housing_sim_jp.strategies import (
     StrategicRental,
     UrawaHouse,
     UrawaMansion,
+    build_all_strategies,
 )
 
 # ---------------------------------------------------------------------------
@@ -184,13 +185,9 @@ def build_report_context(
 
     # ---- Deterministic (standard scenario) ----
     print(f"確定論シミュレーション（{start_age}歳→80歳）...", file=sys.stderr)
-    strategies = [
-        UrawaMansion(savings),
-        UrawaHouse(savings),
-        StrategicRental(savings, child_birth_ages=resolved_children,
-                        child_independence_ages=resolved_indep, start_age=start_age),
-        NormalRental(savings, num_children=num_children),
-    ]
+    strategies = build_all_strategies(
+        savings, resolved_children, resolved_indep, start_age,
+    )
 
     det_results: list[dict] = []
     purchase_ages: dict[str, int | None] = {}

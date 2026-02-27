@@ -4,10 +4,7 @@ import dataclasses
 
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import (
-    UrawaMansion,
-    UrawaHouse,
-    StrategicRental,
-    NormalRental,
+    build_all_strategies,
 )
 from housing_sim_jp.simulation import (
     simulate_strategy,
@@ -136,13 +133,9 @@ def run_scenarios(
         )
         params = dataclasses.replace(base_params, **scenario_params)
 
-        strategies = [
-            UrawaMansion(initial_savings),
-            UrawaHouse(initial_savings),
-            StrategicRental(initial_savings, child_birth_ages=child_birth_ages,
-                            child_independence_ages=child_independence_ages, start_age=start_age),
-            NormalRental(initial_savings, num_children=len(child_birth_ages)),
-        ]
+        strategies = build_all_strategies(
+            initial_savings, child_birth_ages, child_independence_ages, start_age,
+        )
         results = []
         for strategy in strategies:
             purchase_age = resolve_purchase_age(
