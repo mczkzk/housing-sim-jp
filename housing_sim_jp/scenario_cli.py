@@ -1,7 +1,9 @@
 """CLI entry point for scenario comparison."""
 
 from housing_sim_jp.config import parse_args, parse_special_expenses, resolve_sim_ages
+from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
+from housing_sim_jp.simulation import estimate_pension_monthly
 from housing_sim_jp.facility import print_facility_grades
 
 STRATEGY_LABELS = [
@@ -204,13 +206,17 @@ def main():
     results = run_scenarios(**common_kwargs)
     print_results(results)
 
+    pension_params = SimulationParams(
+        husband_income=r["husband_income"], wife_income=r["wife_income"],
+    )
+    pension = estimate_pension_monthly(pension_params, r["husband_age"], r["wife_age"])
     for scenario_name in SCENARIO_ORDER:
         scenario_results = results[scenario_name]
         valid = [r for r in scenario_results if r is not None]
         if valid:
             inflation = SCENARIOS[scenario_name]["inflation_rate"]
             print(f"\n  ── {scenario_name}シナリオ ──")
-            print_facility_grades(valid, inflation, start_age)
+            print_facility_grades(valid, inflation, start_age, pension)
 
     discipline_results = run_scenarios(
         **common_kwargs,

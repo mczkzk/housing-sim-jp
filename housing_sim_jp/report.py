@@ -24,7 +24,7 @@ from housing_sim_jp.config import (
     resolve_sim_ages,
 )
 from housing_sim_jp.events import EventRiskConfig
-from housing_sim_jp.facility import _deflator, grade_label
+from housing_sim_jp.facility import _deflator, grade_label, facility_thresholds
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
     MonteCarloResult,
@@ -36,6 +36,7 @@ from housing_sim_jp.simulation import (
     DEFAULT_INDEPENDENCE_AGE,
     GRAD_SCHOOL_MAP,
     INFEASIBLE,
+    estimate_pension_monthly,
     resolve_child_birth_ages,
     resolve_independence_ages,
     resolve_purchase_age,
@@ -121,6 +122,7 @@ class ReportContext:
 
     # Derived data (computed in build)
     deflator: float = 0.0
+    pension_monthly: float = 0.0
     income_table: list[dict] = field(default_factory=list)
     purchase_ages: dict[str, int | None] = field(default_factory=dict)
     child_sim_ages: list[int] = field(default_factory=list)
@@ -316,6 +318,7 @@ def build_report_context(
         print(file=sys.stderr)
 
     deflator = _deflator(params.inflation_rate, sim_years)
+    pension = estimate_pension_monthly(params, husband_age, wife_age)
 
     return ReportContext(
         r=r,
@@ -337,6 +340,7 @@ def build_report_context(
         chart_suffix=name,
         no_mc=no_mc,
         deflator=deflator,
+        pension_monthly=pension,
         income_table=income_table,
         purchase_ages=purchase_ages,
         child_sim_ages=child_sim_ages,
@@ -1375,22 +1379,34 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
     lines = [
         "### 6.4 入居可能な施設グレード\n",
         "80歳時点の税引後純資産から、夫婦で入居できる有料老人ホームの水準を試算する。\n",
-        """**前提条件：**
-- 80歳で夫婦2人入居（2LDK・約65〜75㎡）、110歳まで生存（30年間・長生きリスク対応）
+    ]
+    pension = ctx.pension_monthly
+    thresholds = facility_thresholds(pension)
+    from housing_sim_jp.facility import FACILITY_TIERS
+    th_base = {g: t for g, _, t in FACILITY_TIERS}
+    th = {g: t for g, _, t in thresholds}
+    lines.append(
+        f"""**前提条件：**
+- 80歳で夫婦2人入居（2LDK・約65〜75㎡）、110歳まで生存（20年本体＋10年長寿バッファ）
 - 入居審査ベース：運用利回り0%（施設側はキャッシュカバレッジで審査、暴落リスク考慮）
-- 基本月額（管理費・サービス費）は30年間定額、追加実費は年齢逓減（80代100%→90代60%→100代30%）
-- 施設費用・残存資産とも2026年価値ベース（インフレ相殺済み）
-""",
-        "| グレード | 入居一時金 | 基本月額 | 追加実費(80代) | 必要資産 | 実例施設 |",
-        "|---------|-----------|---------|--------------|---------|---------|",
-        "| S（超高級） | 2億円 | 50万円 | 40万円 | **4.71億円** | パークウェルステイト西麻布 |",
-        "| A（高級） | 1.5億円 | 30万円 | 30万円 | **3.26億円** | サクラビア成城、サンシティ銀座EAST |",
-        "| B（準高級） | 7,000万円 | 35万円 | 15万円 | **2.30億円** | グランクレール成城、トラストガーデン用賀の杜 |",
-        "| C（標準） | 1,000万円 | 20万円 | 10万円 | **1.05億円** | 介護付き有料老人ホーム |",
+- **年金収入{pension:.1f}万円/月**を月額費用から控除（実態の入居審査に準拠）
+- 追加実費は年齢逓減（80代100%→90代60%→100代30%）
+- 費用はすべて2026年価値ベース
+"""
+    )
+    lines += [
+        "| グレード | 入居一時金 | 月額合計(80代) | 30年総コスト | 必要資産（年金控除後） | 実例施設 |",
+        "|---------|-----------|-------------|------------|----------|---------|",
+        f"| S（超高級） | 2億円 | 80万円 | {th_base['S']/10000:.2f}億円 | **{th['S']/10000:.2f}億円** | パークウェルステイト西麻布、サクラビア成城最上位 |",
+        f"| A（高級） | 1億円 | 63万円 | {th_base['A']/10000:.2f}億円 | **{th['A']/10000:.2f}億円** | サクラビア成城標準、パークウェルステイト浜田山 |",
+        f"| B（準高級） | 5,000万円 | 50万円 | {th_base['B']/10000:.2f}億円 | **{th['B']/10000:.2f}億円** | アリア高輪、グランクレール成城 |",
+        f"| C（標準） | 2,000万円 | 32万円 | {th_base['C']/10000:.2f}億円 | **{th['C']/10000:.2f}億円** | LIFULL高級施設中央値帯 |",
+        f"| D（エコノミー） | 500万円 | 23万円 | {th_base['D']/10000:.2f}億円 | **{th['D']/10000:.2f}億円** | 首都圏一般介護付き有料老人ホーム |",
         "",
         f"シミュレーション出力は80歳時点の名目値。"
         f"{fmt_pct(ctx.params.inflation_rate)}インフレ×{ctx.sim_years}年で割り引き、"
-        f"2026年実質値に変換（係数{ctx.deflator:.2f}）。\n",
+        f"2026年実質値に変換（係数{ctx.deflator:.2f}）。"
+        f"「必要資産」は年金収入{ctx.pension_monthly:.1f}万円/月を控除した本世帯の実質必要額。\n",
     ]
 
     # Grade table
@@ -1415,7 +1431,7 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
             continue
         nominal = det_r["after_tax_net_assets"]
         real = nominal * ctx.deflator
-        g, l = grade_label(real)
+        g, l = grade_label(real, ctx.pension_monthly)
         row = f"| {name} | {real/10000:.2f}億 | **{g}** |"
 
         if has_mc:
@@ -1424,13 +1440,61 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
                 for pct in [50, 25]:
                     mc_nom = mc_r.percentiles[pct]
                     mc_real = mc_nom * ctx.deflator
-                    mg, ml = grade_label(mc_real)
+                    mg, ml = grade_label(mc_real, ctx.pension_monthly)
                     row += f" {mc_real/10000:.2f}億 | {mg} |"
             else:
                 row += " --- | --- | --- | --- |"
         lines.append(row)
 
+    # Early entry suggestion
+    early_note = _early_entry_suggestion(ctx, std)
+    if early_note:
+        lines.append("")
+        lines.append(early_note)
+
     return "\n".join(lines)
+
+
+def _early_entry_suggestion(ctx: ReportContext, std_results: list[dict | None]) -> str:
+    """Suggest early facility entry if assets are clearly sufficient before 80."""
+    inflation = ctx.params.inflation_rate
+    pension = ctx.pension_monthly
+    check_age = 70
+
+    best_name = None
+    best_real = 0
+    best_grade = "-"
+
+    for r in std_results:
+        if r is None or r.get("bankrupt_age"):
+            continue
+        log = r.get("monthly_log", [])
+        for entry in log:
+            if entry["age"] == check_age:
+                years_from_start = check_age - ctx.start_age
+                deflator_at_70 = 1 / (1 + inflation) ** years_from_start
+                real_balance = entry["balance"] * deflator_at_70
+                g, _ = grade_label(real_balance, pension)
+                if real_balance > best_real:
+                    best_real = real_balance
+                    best_name = r["strategy"]
+                    best_grade = g
+                break
+
+    if best_grade in ("S", "A"):
+        return (
+            f"**早期入居の選択肢：** {best_name}では{check_age}歳時点で"
+            f"金融資産が実質{best_real/10000:.2f}億円（{best_grade}グレード相当）に到達する。"
+            f"健康寿命（男性72歳・女性75歳）を考慮すると、80歳まで待たずに"
+            f"70代前半で施設入居し、自立度の高いうちに充実したサービスを享受する選択も合理的。"
+        )
+    if best_grade == "B" and best_real > 0:
+        return (
+            f"**早期入居の選択肢：** {best_name}では{check_age}歳時点で"
+            f"金融資産が実質{best_real/10000:.2f}億円（{best_grade}グレード相当）。"
+            f"80歳を待たず70代半ばでの入居も視野に入る。"
+        )
+    return ""
 
 
 def _render_ch7(ctx: ReportContext) -> str:

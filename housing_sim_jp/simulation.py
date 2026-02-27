@@ -353,6 +353,47 @@ def _estimate_individual_pension(peak_monthly: float) -> float:
     return kosei + KISO_PENSION_ANNUAL
 
 
+def estimate_pension_monthly(
+    params: SimulationParams,
+    husband_start_age: int,
+    wife_start_age: int,
+) -> float:
+    """Estimate combined household pension (万円/月) in real base-year terms.
+
+    Projects career curve (without wage inflation) to find real peak income,
+    then calculates public pension + corporate pension for each spouse.
+    Used by facility grade assessment where costs are in 2026 real terms.
+    """
+    def _real_peak(base_income: float, start_age: int) -> float:
+        income = base_income
+        prev_age = start_age
+        for threshold, rate in params.income_growth_schedule:
+            if prev_age >= REEMPLOYMENT_AGE:
+                break
+            if threshold <= prev_age:
+                continue
+            upper = min(threshold, REEMPLOYMENT_AGE)
+            income *= (1 + rate) ** (upper - prev_age)
+            prev_age = upper
+        return income
+
+    h_peak = _real_peak(params.husband_income, husband_start_age)
+    w_peak = _real_peak(params.wife_income, wife_start_age)
+
+    h_public = _estimate_individual_pension(h_peak)
+    w_public = _estimate_individual_pension(w_peak)
+
+    total_base = params.husband_income + params.wife_income
+    if total_base > 0:
+        h_ratio = params.husband_income / total_base
+    else:
+        h_ratio = 0.5
+    h_corp = params.corporate_pension_annual * h_ratio
+    w_corp = params.corporate_pension_annual * (1 - h_ratio)
+
+    return (h_public + h_corp + w_public + w_corp) / 12
+
+
 def _project_working_income(
     years_elapsed: float, person_start_age: int,
     base_income: float, params: SimulationParams,

@@ -3,7 +3,7 @@
 from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
-from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, INFEASIBLE
+from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, estimate_pension_monthly, INFEASIBLE
 from housing_sim_jp.facility import print_facility_grades
 
 
@@ -228,7 +228,8 @@ def main():
         return
 
     _print_asset_table(valid_results)
-    print_facility_grades(valid_results, params.inflation_rate, start_age)
+    pension = estimate_pension_monthly(params, husband_age, wife_age)
+    print_facility_grades(valid_results, params.inflation_rate, start_age, pension)
     _print_summary(valid_results, start_age)
     _print_yearly_log(valid_results)
 
