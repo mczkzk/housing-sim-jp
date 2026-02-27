@@ -1,5 +1,6 @@
 """Housing strategy classes."""
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import ClassVar
 
@@ -32,7 +33,7 @@ _HOUSE_MAINTENANCE_FINAL = 1.8
 
 
 @dataclass
-class Strategy:
+class Strategy(ABC):
 
     name: str
     initial_savings: float
@@ -56,10 +57,10 @@ class Strategy:
     ELDERLY_PREMIUM_AGE: ClassVar[int] = 75
     ELDERLY_PREMIUM_MONTHLY: ClassVar[float] = 3.0
 
+    @abstractmethod
     def housing_cost(
         self, age: int, months_elapsed: int, params: SimulationParams
-    ) -> float:
-        raise NotImplementedError
+    ) -> float: ...
 
     def _calc_rental_extras(self, rent: float, age: int, years_elapsed: float, params: SimulationParams) -> float:
         """Renewal fee (amortized) + elderly premium for rental strategies."""
