@@ -6,7 +6,7 @@ using Python f-strings (no Jinja2 dependency).
 
 from __future__ import annotations
 
-import dataclasses
+
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -360,12 +360,6 @@ STRATEGY_ORDER = ["浦和マンション", "浦和一戸建て", "戦略的賃�
 SCENARIO_ORDER = ["低成長", "標準", "高成長", "慢性スタグフレーション", "サイクル型"]
 
 
-def _det_by_name(results: list[dict], name: str) -> dict | None:
-    for r in results:
-        if r["strategy"] == name:
-            return r
-    return None
-
 
 def _mc_by_name(results: list[MonteCarloResult], name: str) -> MonteCarloResult | None:
     for r in results:
@@ -382,11 +376,6 @@ def _scenario_row(results: list[dict | None]) -> list[dict | None]:
             name_map[r["strategy"]] = r
     return [name_map.get(n) for n in STRATEGY_ORDER]
 
-
-def _best_strategy(det_results: list[dict]) -> str:
-    """Return the strategy name with highest after_tax_net_assets."""
-    best = max(det_results, key=lambda r: r["after_tax_net_assets"])
-    return best["strategy"]
 
 
 def _age_diff(ctx: ReportContext) -> int:
@@ -475,7 +464,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         )
 
     # --- Income checks (individual cap) ---
-    for label, age, inc in [("夫", h_age, h_inc), ("妻", w_age, w_inc)]:
+    for label, _, inc in [("夫", h_age, h_inc), ("妻", w_age, w_inc)]:
         if inc > _PERSON_INCOME_HARD_CAP:
             annual = inc * 12
             warnings.append(
@@ -993,11 +982,6 @@ def _render_ch2(ctx: ReportContext) -> str:
     h_payoff = h_pa + ctx.params.loan_years
 
     # Rental phases
-    sr = None
-    for r in ctx.det_results:
-        if r["strategy"] == "戦略的賃貸":
-            sr = r
-            break
     phase_desc = ""
     if ctx.child_birth_ages:
         # Approximate phases
@@ -1008,7 +992,6 @@ def _render_ch2(ctx: ReportContext) -> str:
             phase2_start = ctx.start_age
         indep_age = GRAD_SCHOOL_MAP.get(ctx.r["education_grad"], DEFAULT_INDEPENDENCE_AGE)
         phase2_end = youngest_birth + indep_age
-        phase3_start = phase2_end + 1
         # Sim-age mapping
         h_diff = ctx.start_age - ctx.wife_age
         phase2_start_sim = phase2_start + h_diff
@@ -1719,7 +1702,7 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
             continue
         nominal = det_r["after_tax_net_assets"]
         real = nominal * ctx.deflator
-        g, l = grade_label(real, ctx.pension_monthly)
+        g, _ = grade_label(real, ctx.pension_monthly)
         row = f"| {name} | {real/10000:.2f}億 | **{g}** |"
 
         if has_mc:
@@ -1728,7 +1711,7 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
                 for pct in [50, 25]:
                     mc_nom = mc_r.percentiles[pct]
                     mc_real = mc_nom * ctx.deflator
-                    mg, ml = grade_label(mc_real, ctx.pension_monthly)
+                    mg, _ = grade_label(mc_real, ctx.pension_monthly)
                     row += f" {mc_real/10000:.2f}億 | {mg} |"
             else:
                 row += " --- | --- | --- | --- |"
