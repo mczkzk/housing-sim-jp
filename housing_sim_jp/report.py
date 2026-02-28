@@ -1345,31 +1345,153 @@ def _render_ch5(ctx: ReportContext) -> str:
     lines = [
         "\n---\n",
         "## 第5章：数値に現れない各戦略の特性\n",
+        "シミュレーションは経済的な期待値を示すが、住宅選択の満足度を左右する要因の多くは数値化できない。"
+        "本章では購入と賃貸で**構造的に異なる**定性特性を3つの軸で整理する。\n",
     ]
 
-    # Purchase advantages
-    purchase_note = ""
-    if ctx.child_birth_ages:
-        pf = _EDUCATION_STAGE_MAP.get(ctx.r["education_private_from"], "")
-        purchase_note = f"子{len(ctx.child_birth_ages)}人の教育費期間中も住居費が固定されるため、見通しが立ちやすい。"
+    # --- 5.1 コストの予測可能性 vs 支出の柔軟性 ---
+    lines.append("### 5.1 コストの予測可能性 vs 支出の柔軟性\n")
     lines.append(
-        f"**購入派：** 居住安定性（更新拒否・値上げなし）、自由な改修、完済後の低コスト。{purchase_note}"
+        "購入と賃貸の最大の定性差は、住居費が**固定か可変か**にある。\n"
     )
 
-    # Rental advantages
-    rental_note = ""
+    purchase_cost = (
+        "**購入派**は住宅ローンの返済額が長期固定されるため、"
+        "将来の住居費を高い精度で見通せる。"
+        "借地借家法上の更新拒否や一方的値上げもなく、完済後は管理費等と固定資産税のみとなる。"
+    )
     if ctx.child_birth_ages:
-        rental_note = "ダウンサイズで再雇用開始後に支出を正常化可能。"
-    lines.append(
-        f"\n**賃貸派：** 環境変更の柔軟性（転居容易）、災害・地域衰退リスクからの移動性、住環境の更新。{rental_note}"
+        purchase_cost += (
+            f"子{len(ctx.child_birth_ages)}人の教育費が嵩む時期でも住居費が動かないため、"
+            "家計の山が重なりにくい。"
+        )
+    purchase_cost += (
+        "反面、病気・失業・親の介護で収入が急減しても返済額を下げる手段がなく、"
+        "住宅ローンの支払いが家計を圧迫し続けるリスクがある。"
+    )
+    lines.append(purchase_cost)
+
+    # Check if any purchase strategy has deferred purchase
+    purchase_names = ["浦和マンション", "浦和一戸建て"]
+    has_deferred = any(
+        isinstance(ctx.purchase_ages.get(n), int) and ctx.purchase_ages[n] > ctx.start_age
+        for n in purchase_names
     )
 
+    rental_cost = (
+        "\n**賃貸派**は収入や家族構成の変化に応じて住居費を調整できる。"
+        "昇給時にグレードアップ、失業・休職時にダウンサイズ、"
+        "子の独立後にコンパクト化と、ライフステージに沿った最適化が可能。"
+        "ただし家賃は市場連動で上昇し得るため、長期の住居費は不確実になる。"
+    )
+    if has_deferred:
+        rental_cost += (
+            "本シミュレーションでは購入戦略に待機期間があるため、"
+            "その間は賃貸の柔軟性を享受しつつ頭金を積み増すことになる。"
+        )
+    lines.append(rental_cost)
+
+    # --- 5.2 移動の自由度 ---
+    lines.append("\n### 5.2 移動の自由度\n")
     lines.append(
-        f"\n**共通：** 維持管理の時間コスト — "
-        f"一戸建て年32h（庭・外構・設備点検）、"
-        f"マンション年17h（管理組合・専有部）、"
-        f"賃貸年11h（退去時対応程度）"
-        f"（{ctx.sim_years}年間で{ctx.sim_years * 32}h / {ctx.sim_years * 17}h / {ctx.sim_years * 11}h）。"
+        "人生で「住む場所を変えたい／変えざるを得ない」局面は意外に多い。"
+        "購入派は不動産売却という高コスト・長期化しやすい手続きを経なければ動けないのに対し、"
+        "賃貸派は違約金（通常家賃1〜2ヶ月分）程度で転居できる。"
+        "この機動力の差が顕在化する代表的な局面を整理する。\n"
+    )
+
+    # Table of mobility scenarios
+    mobility_rows = [
+        ("近隣トラブル",
+         "売却が唯一の手段。告知義務で値下げリスク（一戸建て）／"
+         "管理組合の調停力次第（マンション）",
+         "引越しで即解決"),
+        ("病気・失業・収入減",
+         "ローン返済は止められず、売却には数ヶ月〜半年。"
+         "傷病手当金（最長18ヶ月）で凌ぐ間も返済額は固定",
+         "安い物件にダウンサイズして支出を即圧縮"),
+        ("親の介護",
+         "実家近くへの転居が必要な場合、売却を伴い時間とコストがかかる",
+         "介護先の近くに短期間で転居可能"),
+        ("転勤・キャリア変更",
+         "売却か賃貸に出す必要あり。二重負担期間が発生しうる",
+         "退去→新居で即対応"),
+        ("自然災害",
+         "二重ローン（既存＋再建）リスク。地震保険は火災保険の50%上限",
+         "退去→別物件。不動産の資産毀損なし"),
+    ]
+
+    if ctx.child_birth_ages:
+        n_children = len(ctx.child_birth_ages)
+        oldest_entry = min(ctx.child_birth_ages) + 7
+        youngest_grad = max(ctx.child_birth_ages) + 18
+        exposure_years = youngest_grad - oldest_entry
+        mobility_rows.insert(1, (
+            "いじめ・学区問題",
+            f"学区が住所に固定。転校には売却を伴う引越しが必要"
+            f"（子{n_children}人×小1〜高3で約{exposure_years}年間さらされる）",
+            "学区を変える引越しが現実的な選択肢",
+        ))
+
+    lines.append("| 局面 | 購入派 | 賃貸派 |")
+    lines.append("|------|--------|--------|")
+    for scenario, purchase, rental in mobility_rows:
+        lines.append(f"| {scenario} | {purchase} | {rental} |")
+
+    lines.append(
+        "\n有事・地政学リスクのような極端なテールリスクでも同じ構造が成り立つ。"
+        "不動産は持ち出せない資産であり、金融資産は国際分散していれば地理的に移転可能なため、"
+        "機動力の差は危機の深刻度に比例して拡大する。"
+    )
+
+    # Mansion-specific: management association burden
+    lines.append(
+        "\nなおマンション特有のリスクとして**管理組合の運営負担**がある。"
+        "理事の輪番制による年間数十時間の拘束、修繕積立金の値上げ決議、"
+        "築30年超の大規模修繕の合意形成（建替えは区分所有者4/5以上の賛成が必要）、"
+        "高齢化による役員の成り手不足など、居住者の時間と精神的コストは小さくない。"
+    )
+
+    # --- 5.3 資産構成と流動性 ---
+    lines.append("\n### 5.3 資産構成と流動性\n")
+
+    # Compute real estate ratio from det_results
+    re_ratios: list[tuple[str, float]] = []
+    for res in ctx.det_results:
+        name = res["strategy"]
+        final = res["final_net_assets"]
+        land = res["effective_land_value"]
+        if final > 0 and land > 0:
+            ratio = land / final * 100
+            re_ratios.append((name, ratio))
+
+    lines.append(
+        "**購入派**は総資産に占める不動産の割合が大きく、"
+        "80歳時点の売却という単一イベントに流動化が集中する。"
+        "築年数が深い物件ほど買い手が限定され、売却が長期化しやすい。"
+    )
+    if re_ratios:
+        ratio_strs = "、".join(f"{n} {r:.0f}%" for n, r in re_ratios)
+        lines.append(
+            f"本シミュレーションでの80歳時点の不動産比率（税引前）: {ratio_strs}。"
+        )
+
+    lines.append(
+        "\n**賃貸派**は全資産が金融商品で構成されるため、"
+        "必要額だけの部分売却・即時換金が可能。"
+        "相続時の分割もシンプルで、遺族の整理負担が軽い。"
+    )
+
+    # Maintenance time cost (concise, folded into ch5)
+    h_total = ctx.sim_years * 32
+    m_total = ctx.sim_years * 17
+    r_total = ctx.sim_years * 11
+    lines.append(
+        f"\n**維持管理の時間コスト：** "
+        f"一戸建て年約32h、マンション年約17h、賃貸年約11h"
+        f"（{ctx.sim_years}年累計で{h_total}h / {m_total}h / {r_total}h）。"
+        f"高齢期には自力作業が困難になり外注化でコスト増となるが、"
+        f"この隠れコストはシミュレーションに反映されていない。"
     )
 
     return "\n".join(lines)
