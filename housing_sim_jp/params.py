@@ -49,6 +49,10 @@ class SimulationParams:
     income_growth_schedule: list[tuple[int, float]] = field(
         default_factory=lambda: [(30, 0.030), (40, 0.020), (50, 0.010), (55, 0.000), (60, -0.030)]
     )
+    husband_work_end_age: int = 70      # 夫の再雇用終了年齢（60-75）
+    wife_work_end_age: int = 70          # 妻の再雇用終了年齢（60-75）
+    husband_pension_start_age: int = 60  # 夫の年金受給開始年齢（60-75）
+    wife_pension_start_age: int = 60     # 妻の年金受給開始年齢（60-75）
     retirement_reduction: float = 0.60
     # 企業年金（確定給付+確定拠出）: 大手正社員夫婦想定
     corporate_pension_annual: float = 130

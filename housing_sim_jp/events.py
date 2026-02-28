@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from random import Random
 
 from housing_sim_jp.params import SimulationParams
-from housing_sim_jp.simulation import REEMPLOYMENT_AGE, PENSION_AGE
+from housing_sim_jp.simulation import REEMPLOYMENT_AGE, MAX_EVENT_AGE
 
 
 @dataclass
@@ -127,7 +127,7 @@ def sample_events(
     if is_rental:
         timeline.rental_rejection_month = _sample_first_hit(
             rng, total_years, start_age, config.rental_rejection_prob_after_70,
-            min_age=PENSION_AGE,
+            min_age=MAX_EVENT_AGE,
         )
 
     # Divorce / spouse death (mutually exclusive, stop at PENSION_AGE)
@@ -135,7 +135,7 @@ def sample_events(
     timeline.survivor_pension_annual = config.survivor_pension_annual
     for year_idx in range(total_years):
         age = start_age + year_idx
-        if age >= PENSION_AGE:
+        if age >= MAX_EVENT_AGE:
             break
         if rng.random() < config.divorce_annual_prob:
             timeline.divorce_month = year_idx * 12

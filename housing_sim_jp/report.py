@@ -34,6 +34,7 @@ from housing_sim_jp.params import SimulationParams, base_living_cost
 from housing_sim_jp.scenarios import DISCIPLINE_FACTORS, SCENARIOS, run_scenarios
 from housing_sim_jp.simulation import (
     DEFAULT_INDEPENDENCE_AGE,
+    END_AGE,
     GRAD_SCHOOL_MAP,
     INFEASIBLE,
     estimate_pension_monthly,
@@ -727,6 +728,81 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
         parts = [f"夫{a}歳" for a in ctx.pet_ages]
         lines[-1] += f"ペット{len(ctx.pet_ages)}匹（{'、'.join(parts)}迎え入れ）。"
 
+    # Pension/work-end parameters
+    from housing_sim_jp.simulation import STANDARD_PENSION_AGE, _pension_adjustment_factor
+
+    def _pension_label(psa: int) -> str:
+        """繰上げ/標準/繰下げのラベルと解説を生成。"""
+        adj = _pension_adjustment_factor(psa)
+        diff_pct = (adj - 1) * 100
+        if psa < STANDARD_PENSION_AGE:
+            gap = STANDARD_PENSION_AGE - psa
+            return (
+                f"年金受給開始{psa}歳（{gap}年繰上げ、"
+                f"受給額{diff_pct:+.1f}%・月0.4%×{gap*12}ヶ月）"
+            )
+        elif psa > STANDARD_PENSION_AGE:
+            gap = psa - STANDARD_PENSION_AGE
+            return (
+                f"年金受給開始{psa}歳（{gap}年繰下げ、"
+                f"受給額{diff_pct:+.1f}%・月0.7%×{gap*12}ヶ月）"
+            )
+        return f"年金受給開始{psa}歳（標準）"
+
+    def _work_pension_desc(label: str, wea: int, psa: int) -> str:
+        prefix = f"{label}: " if label else ""
+        overlap = ""
+        if psa < wea:
+            overlap = f"。{psa}〜{wea}歳は就労と年金が併給（在職老齢年金の対象）"
+        return f"{prefix}再雇用終了{wea}歳・{_pension_label(psa)}{overlap}"
+
+    h_psa = ctx.params.husband_pension_start_age
+    w_psa = ctx.params.wife_pension_start_age
+    h_wea = ctx.params.husband_work_end_age
+    w_wea = ctx.params.wife_work_end_age
+    if h_psa == w_psa and h_wea == w_wea:
+        pension_desc = _work_pension_desc("", h_wea, h_psa)
+    else:
+        parts = [
+            _work_pension_desc("夫", h_wea, h_psa),
+            _work_pension_desc("妻", w_wea, w_psa),
+        ]
+        pension_desc = "／".join(parts)
+    lines.append(f"\n**就労・年金：** {pension_desc}。")
+
+    # Pension strategy rationale (early/standard/late)
+    representative_psa = h_psa  # use husband's as representative
+    ret_pct = ctx.params.investment_return * 100
+    if representative_psa < STANDARD_PENSION_AGE:
+        adj = _pension_adjustment_factor(representative_psa)
+        lines.append(
+            f"繰上げにより受給額は{(adj-1)*100:+.1f}%だが、"
+            f"早期に受け取った年金を年{ret_pct:.0f}%で運用することで"
+            f"繰下げの増額率（月+0.7%）を上回る複利効果が得られる。"
+            f"投資リターンが年2%を超える前提では、繰上げ受給+運用が"
+            f"繰下げ待機より有利になる"
+            f"（ただし投資しない場合は繰下げの方が得）。"
+        )
+        if representative_psa > 60:
+            gap_years = representative_psa - 60
+            lines.append(
+                f"なお、繰上げは早いほど複利運用期間が長くなり有利。"
+                f"60歳開始と比べて{gap_years}年分の運用機会を逃しており、"
+                f"60歳受給開始が最も資産最大化に寄与する。"
+            )
+    else:
+        if representative_psa > STANDARD_PENSION_AGE:
+            adj = _pension_adjustment_factor(representative_psa)
+            lines.append(
+                f"繰下げにより受給額が{(adj-1)*100:+.1f}%増加。"
+                f"年金を長寿リスクへの保険として重視する設計。"
+            )
+        lines.append(
+            f"ただし待機中の年金を運用に回せない機会コストがあり、"
+            f"投資リターン年{ret_pct:.0f}%の前提では繰上げ受給+運用の方が"
+            f"有利になる（損益分岐点は投資リターン年約2%）。"
+        )
+
     # Parameter plausibility warnings
     param_warnings = _check_parameter_plausibility(ctx)
     if param_warnings:
@@ -743,7 +819,8 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
         "5段階キャリアカーブ（賃金構造基本統計調査ベース）×名目賃金上昇率（年2.0%）。\n"
     )
     if ctx.income_table:
-        lines.append("| 年齢 | 夫(万/月) | 妻(万/月) | 世帯合計 | 備考 |")
+        elder = "夫" if ctx.husband_age >= ctx.wife_age else "妻"
+        lines.append(f"| 年齢({elder}) | 夫(万/月) | 妻(万/月) | 世帯合計 | 備考 |")
         lines.append("|------|----------|----------|---------|------|")
         for entry in ctx.income_table:
             age = entry["age"]
@@ -751,13 +828,19 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             w = entry.get("wife_income", 0)
             total = entry["income"]
             note = ""
+            h_offset = ctx.start_age - ctx.husband_age
+            pension_sim = ctx.params.husband_pension_start_age + h_offset
+            work_end_sim = ctx.params.husband_work_end_age + h_offset
+            reemploy_sim = 60 + h_offset
             if age == ctx.start_age:
                 note = "開始"
-            elif age == 55 + (ctx.start_age - ctx.husband_age):
+            elif age == 55 + h_offset:
                 note = "夫ピーク近辺"
-            elif age >= 70 + (ctx.start_age - ctx.husband_age):
+            elif age >= pension_sim and age < work_end_sim:
+                note = "年金+再雇用"
+            elif age >= work_end_sim:
                 note = "年金期"
-            elif age >= 60 + (ctx.start_age - ctx.husband_age):
+            elif age >= reemploy_sim:
                 note = "再雇用期"
             lines.append(f"| {age}歳 | {h:.1f} | {w:.1f} | {total:.1f} | {note} |")
 
@@ -903,8 +986,11 @@ def _render_ch1_5_strategies(ctx: ReportContext) -> str:
 def _render_ch2(ctx: ReportContext) -> str:
     m_age = UrawaMansion.PURCHASE_AGE_OF_BUILDING
     h_age = UrawaHouse.PURCHASE_AGE_OF_BUILDING
-    m_80 = m_age + ctx.sim_years
-    h_80 = h_age + ctx.sim_years
+    m_pa = ctx.purchase_ages.get("浦和マンション") or ctx.start_age
+    h_pa = ctx.purchase_ages.get("浦和一戸建て") or ctx.start_age
+    m_80 = m_age + (END_AGE - m_pa)
+    h_80 = h_age + (END_AGE - h_pa)
+    h_payoff = h_pa + ctx.params.loan_years
 
     # Rental phases
     sr = None
@@ -927,7 +1013,7 @@ def _render_ch2(ctx: ReportContext) -> str:
         h_diff = ctx.start_age - ctx.wife_age
         phase2_start_sim = phase2_start + h_diff
         phase2_end_sim = phase2_end + h_diff
-        phase2_years = phase2_end_sim - phase2_start_sim
+        phase2_years = phase2_end_sim - phase2_start_sim + 1
         rent_2ldk = StrategicRental.RENT_PHASE1
         rent_3ldk = StrategicRental.RENT_PHASE2_BASE
         if ctx.num_children > 1:
@@ -971,7 +1057,7 @@ def _render_ch2(ctx: ReportContext) -> str:
     lines.append(f"""
 ### 2.2 浦和一戸建て：支出固定化と実物資産の保持
 
-完済後（70歳）の月次コスト4.4万/月はマンションより低い。
+完済後（{h_payoff}歳）の月次コスト4.4万/月はマンションより低い。
 
 | 築年数 | 小修繕 | 固定資産税 | 保険 | その他(※) | **月額合計** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -1054,14 +1140,30 @@ def _render_ch3_1_scenarios(ctx: ReportContext) -> str:
     return "\n".join(lines)
 
 
+def _chart_guide(ctx: ReportContext) -> str:
+    """Build dynamic chart reading guide based on what markers actually exist."""
+    has_special = bool(ctx.special_labels)
+    has_ideco = (ctx.params.husband_ideco > 0 or ctx.params.wife_ideco > 0)
+    marker_parts = []
+    if has_special:
+        marker_parts.append("赤▲=一時支出")
+    if has_ideco:
+        marker_parts.append("緑+=iDeCo受取")
+    marker_desc = f"。{' / '.join(marker_parts)}" if marker_parts else ""
+    return (
+        f"**チャートの読み方：** 上段=4戦略の**金融資産**推移（不動産を含まない{marker_desc}）。"
+        "購入派は80歳時点で不動産売却益が加算されるため、最終順位はチャートと異なりうる（§7参照）。"
+        "下段=個別キャッシュフロー（積み上げ=支出内訳、青線=収入、赤破線=投資余力）。\n"
+    )
+
+
 def _render_ch3_2_transitions(ctx: ReportContext) -> str:
     suffix = f"-{ctx.chart_suffix}" if ctx.chart_suffix else ""
     lines = [
         "\n### 3.2 資産推移とキャッシュフロー構造\n",
         f"![資産推移と一時イベント（確定論・標準シナリオ）](charts/trajectory{suffix}.png)\n",
         f"![キャッシュフロー積み上げ（年次）](charts/cashflow{suffix}.png)\n",
-        "**チャートの読み方：** 上段=4戦略の資産推移（赤▲=一時支出、緑+=iDeCo受取）。"
-        "下段=個別キャッシュフロー（積み上げ=支出内訳、青線=収入、赤破線=投資余力）。\n",
+        _chart_guide(ctx),
         "**主要転換点：**\n",
     ]
 
@@ -1097,15 +1199,45 @@ def _render_ch3_2_transitions(ctx: ReportContext) -> str:
     # [4] Reemployment
     if age_diff > 0:
         lines.append(
-            f"- **段階的再雇用（夫{h_reemploy}歳・妻{w_reemploy}歳）：** "
-            f"{age_diff}歳差が収入急減を2段階に分散。"
+            f"- **段階的再雇用（{h_reemploy}歳・{w_reemploy}歳）：** "
+            f"夫婦とも各人60歳で再雇用に移行するが、{age_diff}歳差により"
+            f"妻の現役収入が夫再雇用後も{age_diff}年間残る。"
         )
 
     # [5] Loan payoff
-    lines.append("- **ローン完済（70歳）：** 住居費が激減。残り10年で序列確定。")
+    payoff_age = ctx.start_age + ctx.params.loan_years
+    lines.append(f"- **ローン完済（{payoff_age}歳）：** 住居費が激減。残り{80 - payoff_age}年で序列確定。")
 
     # [6] Pension
-    lines.append("- **年金期（70〜80歳）：** 75歳以降、賃貸に高齢者プレミアム月3万が加算。")
+    from housing_sim_jp.simulation import _pension_adjustment_factor as _paf
+    h_psa = ctx.params.husband_pension_start_age
+    w_psa = ctx.params.wife_pension_start_age
+    h_wea = ctx.params.husband_work_end_age
+    w_wea = ctx.params.wife_work_end_age
+
+    def _pension_type_note(psa):
+        if psa < 65:
+            adj = _paf(psa)
+            return f"{65-psa}年繰上げ・受給額{(adj-1)*100:+.0f}%"
+        elif psa > 65:
+            adj = _paf(psa)
+            return f"{psa-65}年繰下げ・受給額{(adj-1)*100:+.0f}%"
+        return "標準"
+
+    if h_psa == w_psa and h_wea == w_wea:
+        note = _pension_type_note(h_psa)
+        overlap = f"（{h_psa}〜{h_wea}歳は就労+年金併給）" if h_psa < h_wea else ""
+        lines.append(
+            f"- **年金期（{h_psa}歳〜80歳、{note}）：** "
+            f"{h_wea}歳で就労終了{overlap}。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
+        )
+    else:
+        h_note = _pension_type_note(h_psa)
+        w_note = _pension_type_note(w_psa)
+        lines.append(
+            f"- **年金期（夫{h_psa}歳[{h_note}]/妻{w_psa}歳[{w_note}]〜80歳）：** "
+            f"夫{h_wea}歳・妻{w_wea}歳で就労終了。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
+        )
 
     return "\n".join(lines)
 
@@ -1253,8 +1385,9 @@ def _render_ch4_1_conditions() -> str:
 | 災害 | 年0.5% | 物件価値30%毀損（保険50%カバー） | 購入派のみ |
 | 介護 | 75歳以降年5% | 月15万円追加 | 全戦略 |
 | 入居拒否 | 70歳以降年10% | 月5万円プレミアム | 賃貸のみ |
+| 転勤 | 年3%（最大1回） | 購入派：物件売却＋再購入（二重負担）、賃貸派：引越し費用のみ | 全戦略（60歳未満） |
 | 離婚 | 年1% | 資産50%分割＋物件売却＋2LDK賃貸化 | 全戦略 |
-| 配偶者死亡 | 年0.1% | 団信消滅＋保険金3,000万＋遺族年金 | 全戦略 |"""
+| 配偶者死亡 | 年0.1% | 団信ローン消滅＋保険金3,000万＋遺族年金 | 全戦略 |"""
 
 
 def _render_ch4_2_distribution(ctx: ReportContext) -> str:
@@ -1425,7 +1558,7 @@ def _render_ch5(ctx: ReportContext) -> str:
         n_children = len(ctx.child_birth_ages)
         oldest_entry = min(ctx.child_birth_ages) + 7
         youngest_grad = max(ctx.child_birth_ages) + 18
-        exposure_years = youngest_grad - oldest_entry
+        exposure_years = youngest_grad - oldest_entry + 1
         mobility_rows.insert(1, (
             "いじめ・学区問題",
             f"学区が住所に固定。転校には売却を伴う引越しが必要"
@@ -1465,15 +1598,26 @@ def _render_ch5(ctx: ReportContext) -> str:
             ratio = land / final * 100
             re_ratios.append((name, ratio))
 
-    lines.append(
-        "**購入派**は総資産に占める不動産の割合が大きく、"
-        "80歳時点の売却という単一イベントに流動化が集中する。"
-        "築年数が深い物件ほど買い手が限定され、売却が長期化しやすい。"
-    )
     if re_ratios:
+        max_ratio = max(r for _, r in re_ratios)
         ratio_strs = "、".join(f"{n} {r:.0f}%" for n, r in re_ratios)
+        if max_ratio >= 20:
+            lines.append(
+                "**購入派**は総資産に占める不動産の割合が大きく、"
+                "80歳時点の売却という単一イベントに流動化が集中する。"
+                "築年数が深い物件ほど買い手が限定され、売却が長期化しやすい。"
+            )
+        else:
+            lines.append(
+                "**購入派**は80歳時点で不動産売却という単一イベントに流動化が集中する。"
+                "築年数が深い物件ほど買い手が限定され、売却が長期化しやすい。"
+            )
         lines.append(
             f"本シミュレーションでの80歳時点の不動産比率（税引前）: {ratio_strs}。"
+        )
+    else:
+        lines.append(
+            "**購入派**は80歳時点で不動産売却という単一イベントに流動化が集中する。"
         )
 
     lines.append(
@@ -1498,8 +1642,10 @@ def _render_ch5(ctx: ReportContext) -> str:
 
 
 def _render_ch6(ctx: ReportContext) -> str:
-    m_80 = UrawaMansion.PURCHASE_AGE_OF_BUILDING + ctx.sim_years
-    h_80 = UrawaHouse.PURCHASE_AGE_OF_BUILDING + ctx.sim_years
+    m_pa = ctx.purchase_ages.get("浦和マンション") or ctx.start_age
+    h_pa = ctx.purchase_ages.get("浦和一戸建て") or ctx.start_age
+    m_80 = UrawaMansion.PURCHASE_AGE_OF_BUILDING + (END_AGE - m_pa)
+    h_80 = UrawaHouse.PURCHASE_AGE_OF_BUILDING + (END_AGE - h_pa)
 
     lines = [
         "\n---\n",
@@ -1751,6 +1897,22 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
             else:
                 vals.append("---")
         lines.append(f"| 確定論・{sname} | {' | '.join(vals)} |")
+
+    # Nominal vs real caveat (consolidated here; not repeated in §7.2)
+    std = ctx.scenario_results.get("標準", [])
+    valid_std = [r for r in std if r is not None]
+    if valid_std:
+        best = max(valid_std, key=lambda r: r["after_tax_net_assets"])
+        best_val = best["after_tax_net_assets"]
+        best_name = best["strategy"]
+        real_best = best_val * ctx.deflator
+        lines.append(
+            f"\n> **注：上記の金額はすべて{ctx.sim_years}年後の名目値。**"
+            f"インフレ年{ctx.params.inflation_rate*100:.0f}%が{ctx.sim_years}年続くと"
+            f"購買力は現在の{ctx.deflator*100:.0f}%に低下する。"
+            f"トップの{best_name} {best_val/10000:.2f}億円は"
+            f"**2026年の価値に換算すると約{real_best/10000:.2f}億円**。"
+        )
 
     return "\n".join(lines)
 

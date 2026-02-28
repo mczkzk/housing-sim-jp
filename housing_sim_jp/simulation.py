@@ -19,8 +19,12 @@ MAX_CHILDREN = 2    # 3LDKの部屋数制約（子供部屋最大2つ）
 
 # Life-stage age thresholds
 REEMPLOYMENT_AGE = 60  # 再雇用開始年齢
-PENSION_AGE = 70        # 年金生活開始年齢
+STANDARD_PENSION_AGE = 65  # 年金の基準受給開始年齢
+MAX_EVENT_AGE = 70  # 離婚・死亡イベントの発生上限年齢
 IDECO_WITHDRAWAL_AGE = 71  # iDeCo一時金受取年齢（退職金と1年以上ずらす）
+
+# 在職老齢年金（2026年度見込み）
+ZAISHOKU_THRESHOLD = 65.0  # 支給停止調整額（万円/月）
 
 # Loan screening constants (銀行審査基準)
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
@@ -344,13 +348,44 @@ CAREER_AVG_RATIO = 0.85        # ピーク月収→生涯平均 推定比率
 STANDARD_MONTHLY_CAP = 65.0    # 標準報酬月額上限 万円
 
 
-def _estimate_individual_pension(peak_monthly: float) -> float:
-    """Estimate annual public pension for one person (基礎年金+厚生年金, 企業年金含まず)."""
+def _pension_adjustment_factor(pension_start_age: int) -> float:
+    """繰上げ/繰下げによる年金調整係数。65歳基準。"""
+    months_diff = (pension_start_age - STANDARD_PENSION_AGE) * 12
+    if months_diff < 0:
+        return 1 + months_diff * 0.004   # 繰上げ: -0.4%/月
+    elif months_diff > 0:
+        return 1 + months_diff * 0.007   # 繰下げ: +0.7%/月
+    return 1.0
+
+
+def _apply_zaishoku_reduction(
+    kosei_monthly: float, work_monthly_net: float, month: int,
+    params: SimulationParams,
+) -> float:
+    """在職老齢年金: 厚生年金部分のみ減額。基礎年金・企業年金は対象外。"""
+    work_gross = work_monthly_net / TAKEHOME_TO_GROSS
+    threshold = ZAISHOKU_THRESHOLD * params.wage_inflation_factor(month / 12)
+    combined = kosei_monthly + work_gross
+    if combined <= threshold:
+        return kosei_monthly
+    reduction = (combined - threshold) / 2
+    return max(0.0, kosei_monthly - reduction)
+
+
+def _estimate_individual_pension(
+    peak_monthly: float, cap_adjustment: float = 1.0,
+) -> tuple[float, float]:
+    """Estimate annual public pension for one person.
+
+    Returns (kosei_annual, kiso_annual) — 厚生年金(報酬比例)と基礎年金を分離。
+    cap_adjustment: 標準報酬月額上限のインフレ調整係数。
+    """
     gross_peak = peak_monthly / TAKEHOME_TO_GROSS
     avg_gross = gross_peak * CAREER_AVG_RATIO
-    avg_standard = min(avg_gross, STANDARD_MONTHLY_CAP)
+    adjusted_cap = STANDARD_MONTHLY_CAP * cap_adjustment
+    avg_standard = min(avg_gross, adjusted_cap)
     kosei = avg_standard * KOSEI_RATE * CAREER_MONTHS
-    return kosei + KISO_PENSION_ANNUAL
+    return kosei, KISO_PENSION_ANNUAL
 
 
 def estimate_pension_monthly(
@@ -380,8 +415,14 @@ def estimate_pension_monthly(
     h_peak = _real_peak(params.husband_income, husband_start_age)
     w_peak = _real_peak(params.wife_income, wife_start_age)
 
-    h_public = _estimate_individual_pension(h_peak)
-    w_public = _estimate_individual_pension(w_peak)
+    # 実質ベースなので cap_adjustment=1.0（デフォルト）
+    h_kosei, h_kiso = _estimate_individual_pension(h_peak)
+    w_kosei, w_kiso = _estimate_individual_pension(w_peak)
+
+    h_adj = _pension_adjustment_factor(params.husband_pension_start_age)
+    w_adj = _pension_adjustment_factor(params.wife_pension_start_age)
+    h_public = (h_kosei + h_kiso) * h_adj
+    w_public = (w_kosei + w_kiso) * w_adj
 
     total_base = params.husband_income + params.wife_income
     if total_base > 0:
@@ -423,20 +464,28 @@ def _project_working_income(
 def _calc_individual_income(
     month: int, person_start_age: int, base_income: float,
     peak: float, corp_pension_share: float, params: SimulationParams,
+    person_work_end_age: int, person_pension_start_age: int,
 ) -> tuple[float, float]:
-    """Calculate one person's monthly income. Returns (income, updated_peak)."""
+    """Calculate one person's monthly income (2-stream model).
+
+    work_income: 現役(< 60) or 再雇用(60 ≤ age < person_work_end_age)
+    pension_income: age ≥ person_pension_start_age → 年金 × 調整係数
+    在職老齢年金: 就労中かつ年金受給中の場合、厚生年金部分を減額
+    Returns (income, updated_peak).
+    """
     years_elapsed = month / 12
     person_age = person_start_age + month // 12
 
+    # --- Stream 1: Work income ---
+    work_income = 0.0
     if person_age < REEMPLOYMENT_AGE:
-        monthly_income = _project_working_income(
+        work_income = _project_working_income(
             years_elapsed, person_start_age, base_income, params,
         )
-        peak = monthly_income
-    elif person_age < PENSION_AGE:
+        peak = work_income
+    elif person_age < person_work_end_age:
         reemploy_start_year = REEMPLOYMENT_AGE - person_start_age
         years_since_reemploy = (month - reemploy_start_year * 12) / 12
-        # On-the-fly loop for year-varying inflation
         reemploy_factor = 1.0
         full_years = int(years_since_reemploy)
         for y in range(full_years):
@@ -446,21 +495,37 @@ def _calc_individual_income(
         if frac > 0:
             rate = params.get_inflation_rate(reemploy_start_year + full_years) * 0.5
             reemploy_factor *= (1 + rate) ** frac
-        monthly_income = peak * params.retirement_reduction * reemploy_factor
-    else:
-        years_since_pension = person_age - PENSION_AGE
-        public_pension = _estimate_individual_pension(peak)
-        annual_pension = public_pension + corp_pension_share
-        # On-the-fly loop for year-varying inflation
-        pension_start_year = PENSION_AGE - person_start_age
+        work_income = peak * params.retirement_reduction * reemploy_factor
+
+    # --- Stream 2: Pension income ---
+    pension_income = 0.0
+    if person_age >= person_pension_start_age:
+        cap_adj = params.wage_inflation_factor(REEMPLOYMENT_AGE - person_start_age)
+        kosei_annual, kiso_annual = _estimate_individual_pension(peak, cap_adj)
+        adj = _pension_adjustment_factor(person_pension_start_age)
+        kosei_annual *= adj
+        kiso_annual *= adj
+
+        years_since_pension = person_age - person_pension_start_age
+        pension_start_year = person_pension_start_age - person_start_age
         pension_factor = 1.0
         for y in range(years_since_pension):
             rate = params.get_inflation_rate(pension_start_year + y) - params.pension_real_reduction
             pension_factor *= (1 + rate)
-        annual_pension *= pension_factor
-        monthly_income = annual_pension / 12
 
-    return monthly_income, peak
+        kosei_monthly = kosei_annual * pension_factor / 12
+        kiso_monthly = kiso_annual * pension_factor / 12
+        corp_monthly = corp_pension_share * pension_factor / 12
+
+        # 在職老齢年金: 就労中の場合、厚生年金(報酬比例)のみ減額
+        if work_income > 0:
+            kosei_monthly = _apply_zaishoku_reduction(
+                kosei_monthly, work_income, month, params,
+            )
+
+        pension_income = kosei_monthly + kiso_monthly + corp_monthly
+
+    return work_income + pension_income, peak
 
 
 def _calc_monthly_income(
@@ -478,9 +543,11 @@ def _calc_monthly_income(
 
     h_income, h_peak = _calc_individual_income(
         month, husband_start_age, params.husband_income, h_peak, h_corp_share, params,
+        params.husband_work_end_age, params.husband_pension_start_age,
     )
     w_income, w_peak = _calc_individual_income(
         month, wife_start_age, params.wife_income, w_peak, w_corp_share, params,
+        params.wife_work_end_age, params.wife_pension_start_age,
     )
     return h_income + w_income, h_income, w_income, h_peak, w_peak
 
@@ -557,10 +624,13 @@ def _calc_education_and_living(
     education_ranges: list[tuple[int, int]],
     child_home_ranges: list[tuple[int, int]],
     extra_monthly_cost: float = 0,
+    retire_sim_age: int | None = None,
 ) -> tuple[float, float]:
     """Calculate education and living costs. Returns (education_cost, living_cost).
 
     extra_monthly_cost: additional per-month cost (e.g. car running) added to base living.
+    retire_sim_age: sim-age at which household retires (last worker ends).
+        When None, retirement_living_cost_ratio is never applied.
     """
     inflation = params.inflation_factor(years_elapsed)
     education_cost = 0.0
@@ -581,8 +651,9 @@ def _calc_education_and_living(
         + num_children * params.child_living_cost_monthly
         + extra_monthly_cost
     ) * inflation
+    is_retired = retire_sim_age is not None and age >= retire_sim_age
     living_cost = base_living * (
-        params.retirement_living_cost_ratio if age >= PENSION_AGE else 1.0
+        params.retirement_living_cost_ratio if is_retired else 1.0
     )
     return education_cost, living_cost
 
@@ -599,6 +670,7 @@ def _calc_expenses(
     purchase_month_offset: int = 0,
     car_owned: bool = False,
     pet_active_count: int = 0,
+    retire_sim_age: int | None = None,
 ) -> tuple[float, float, float, float, float, float]:
     """Calculate all expenses. Returns (housing, education, living, utility, loan_deduction, one_time)."""
     years_elapsed = month / 12
@@ -617,7 +689,8 @@ def _calc_expenses(
     if pet_active_count > 0:
         extra_monthly_cost += params.pet_monthly_cost * pet_active_count
     education_cost, living_cost = _calc_education_and_living(
-        age, years_elapsed, params, education_ranges, child_home_ranges, extra_monthly_cost,
+        age, years_elapsed, params, education_ranges, child_home_ranges,
+        extra_monthly_cost, retire_sim_age,
     )
 
     loan_deduction = 0
@@ -820,6 +893,7 @@ def _try_car_purchase(
     car_first_purchase_age: int | None,
     next_car_due_age: int,
     child_home_ranges: list[tuple[int, int]],
+    retire_sim_age: int | None = None,
 ) -> tuple[float, bool, int | None, int]:
     """Try car purchase/replacement at year boundary.
 
@@ -835,7 +909,9 @@ def _try_car_purchase(
     else:
         cost = params.car_purchase_price * (1 - params.car_residual_rate) * infl
 
-    required_ef = _calc_required_emergency_fund(age, month, params, child_home_ranges)
+    required_ef = _calc_required_emergency_fund(
+        age, month, params, child_home_ranges, retire_sim_age=retire_sim_age,
+    )
     if investment_balance >= cost + required_ef:
         if car_first_purchase_age is None:
             car_first_purchase_age = age
@@ -854,6 +930,7 @@ def _try_pet_adoption(
     next_pet_idx: int,
     pet_first_adoption_age: int | None,
     child_home_ranges: list[tuple[int, int]],
+    retire_sim_age: int | None = None,
 ) -> tuple[float, list[int], int, int | None]:
     """Try pet adoption at year boundary. Supports concurrent pets.
 
@@ -875,7 +952,9 @@ def _try_pet_adoption(
     infl = params.inflation_factor(years_from_start)
     cost = params.pet_adoption_cost * infl
 
-    required_ef = _calc_required_emergency_fund(age, month, params, child_home_ranges)
+    required_ef = _calc_required_emergency_fund(
+        age, month, params, child_home_ranges, retire_sim_age=retire_sim_age,
+    )
     if investment_balance >= cost + required_ef:
         if pet_first_adoption_age is None:
             pet_first_adoption_age = age
@@ -961,6 +1040,7 @@ def _calc_required_emergency_fund(
     child_home_ranges: list[tuple[int, int]],
     is_divorced: bool = False,
     is_spouse_dead: bool = False,
+    retire_sim_age: int | None = None,
 ) -> float:
     """Calculate required emergency fund (生活防衛資金) for a given month."""
     if params.emergency_fund_months <= 0:
@@ -971,7 +1051,8 @@ def _calc_required_emergency_fund(
         base_living_cost(age) + params.living_premium
         + num_children * params.child_living_cost_monthly
     )
-    if age >= PENSION_AGE:
+    is_retired = retire_sim_age is not None and age >= retire_sim_age
+    if is_retired:
         base_living *= params.retirement_living_cost_ratio
     if is_divorced or is_spouse_dead:
         base_living *= SINGLE_LIVING_COST_RATIO
@@ -1112,6 +1193,11 @@ def simulate_strategy(
 
     validate_age(start_age)
 
+    # Household retirement sim-age: when the last worker retires
+    h_retire_sim = params.husband_work_end_age + (start_age - husband_start_age)
+    w_retire_sim = params.wife_work_end_age + (start_age - wife_start_age)
+    household_retire_sim_age = max(h_retire_sim, w_retire_sim)
+
     # Reset mutable loan state in case the Strategy instance is reused.
     strategy.remaining_balance = 0.0
     strategy.monthly_payment = 0.0
@@ -1198,6 +1284,7 @@ def simulate_strategy(
     # Allocate emergency fund from initial savings
     initial_required_ef = _calc_required_emergency_fund(
         start_age, 0, params, child_home_ranges,
+        retire_sim_age=household_retire_sim_age,
     )
     emergency_fund = min(initial, initial_required_ef)
     initial_principal = strategy.initial_savings  # 諸費用控除前の貯蓄額（チャート参照線用）
@@ -1262,7 +1349,7 @@ def simulate_strategy(
             age, month, start_age, params,
             nisa_balance + taxable_balance,
             car_owned, car_first_purchase_age, next_car_due_age,
-            child_home_ranges,
+            child_home_ranges, household_retire_sim_age,
         )
 
         # Pet adoption at year boundaries (after car, lower priority)
@@ -1270,7 +1357,7 @@ def simulate_strategy(
             age, month, start_age, params,
             nisa_balance + taxable_balance - car_one_time,
             pet_active_ends, next_pet_idx, pet_first_adoption_age,
-            child_home_ranges,
+            child_home_ranges, household_retire_sim_age,
         )
         pet_active_count = len(pet_active_ends)
 
@@ -1293,7 +1380,8 @@ def simulate_strategy(
                 housing_cost += params.pet_rental_premium * inflation
                 extra_monthly += params.pet_monthly_cost * pet_active_count
             education_cost, living_cost = _calc_education_and_living(
-                age, years_elapsed, params, education_ranges, child_home_ranges, extra_monthly,
+                age, years_elapsed, params, education_ranges, child_home_ranges,
+                extra_monthly, household_retire_sim_age,
             )
             utility_cost = 0
             loan_deduction = 0
@@ -1309,6 +1397,7 @@ def simulate_strategy(
                 purchase_month_offset=purchase_month_offset,
                 car_owned=car_owned,
                 pet_active_count=pet_active_count,
+                retire_sim_age=household_retire_sim_age,
             )
             one_time_expense += car_one_time + pet_one_time
 
@@ -1359,7 +1448,7 @@ def simulate_strategy(
                     housing_cost = forced_rental_cost + forced_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
                     loan_deduction = 0
 
-            if is_spouse_dead and age >= PENSION_AGE:
+            if is_spouse_dead and h_age >= params.husband_pension_start_age:
                 monthly_income += event_timeline.survivor_pension_annual / 12
         else:
             event_extra_cost = 0
@@ -1431,6 +1520,7 @@ def simulate_strategy(
         # Emergency fund management: release excess / top up shortfall
         required_ef = _calc_required_emergency_fund(
             age, month, params, child_home_ranges, is_divorced, is_spouse_dead,
+            household_retire_sim_age,
         )
         emergency_fund, investable = _manage_emergency_fund(
             emergency_fund, required_ef, investable,

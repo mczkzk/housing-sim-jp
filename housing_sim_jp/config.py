@@ -29,6 +29,10 @@ DEFAULTS = {
     "husband_ideco": 2.0,
     "wife_ideco": 2.0,
     "emergency_fund": 6.0,
+    "husband_pension_start_age": 60,
+    "wife_pension_start_age": 60,
+    "husband_work_end_age": 70,
+    "wife_work_end_age": 70,
     "special_expenses": "",
 }
 
@@ -83,6 +87,19 @@ def load_config(path: Path | None = None) -> dict:
             raw.setdefault("education_boost", 1.0)
     elif "education" in raw and "education_private_from" in raw:
         raw.pop("education")  # new params take precedence
+    # Migrate legacy pension_start_age / work_end_age → husband_*/wife_*
+    if "pension_start_age" in raw and "husband_pension_start_age" not in raw:
+        v = raw.pop("pension_start_age")
+        raw.setdefault("husband_pension_start_age", v)
+        raw.setdefault("wife_pension_start_age", v)
+    elif "pension_start_age" in raw:
+        raw.pop("pension_start_age")
+    if "work_end_age" in raw and "husband_work_end_age" not in raw:
+        v = raw.pop("work_end_age")
+        raw.setdefault("husband_work_end_age", v)
+        raw.setdefault("wife_work_end_age", v)
+    elif "work_end_age" in raw:
+        raw.pop("work_end_age")
     # Normalize special_expenses: TOML [[age, amount, label?], ...] → "age:amount:label,..." string
     if "special_expenses" in raw:
         v = raw["special_expenses"]
@@ -119,6 +136,10 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--husband-ideco", type=float, default=None, help=f"夫のiDeCo拠出額（万円/月）(default: {d['husband_ideco']})")
     parser.add_argument("--wife-ideco", type=float, default=None, help=f"妻のiDeCo拠出額（万円/月）(default: {d['wife_ideco']})")
     parser.add_argument("--emergency-fund", type=float, default=None, help=f"生活防衛資金（生活費の何ヶ月分）(default: {d['emergency_fund']})")
+    parser.add_argument("--husband-pension-start-age", type=int, default=None, help=f"夫の年金受給開始年齢（60-75, default: {d['husband_pension_start_age']}）")
+    parser.add_argument("--wife-pension-start-age", type=int, default=None, help=f"妻の年金受給開始年齢（60-75, default: {d['wife_pension_start_age']}）")
+    parser.add_argument("--husband-work-end-age", type=int, default=None, help=f"夫の再雇用終了年齢（60-75, default: {d['husband_work_end_age']}）")
+    parser.add_argument("--wife-work-end-age", type=int, default=None, help=f"妻の再雇用終了年齢（60-75, default: {d['wife_work_end_age']}）")
     parser.add_argument("--special-expenses", type=str, default=None, help="特別支出（年齢:金額[:ラベル]のカンマ区切り、例: 55:500:リフォーム,65:300）")
     return parser
 
@@ -200,6 +221,10 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
     return SimulationParams(
         husband_income=r["husband_income"],
         wife_income=r["wife_income"],
+        husband_pension_start_age=r["husband_pension_start_age"],
+        wife_pension_start_age=r["wife_pension_start_age"],
+        husband_work_end_age=r["husband_work_end_age"],
+        wife_work_end_age=r["wife_work_end_age"],
         living_premium=r["living_premium"],
         child_living_cost_monthly=r["child_living"],
         education_private_from=r["education_private_from"],
