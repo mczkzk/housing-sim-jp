@@ -93,6 +93,48 @@ def _assign_marker_levels(
     return assignments
 
 
+_COLOR_EXPENSE = "#c0392b"
+_COLOR_INCOME = "#27ae60"
+
+
+def _draw_event_markers(
+    ax: plt.Axes,
+    markers: list[tuple[int | float, float, str]],
+    y_base_ratio: float = 0.05,
+) -> None:
+    """Draw merged event markers with smart vertical layout.
+
+    Args:
+        ax: matplotlib Axes to draw on.
+        markers: raw event markers [(age, signed_amount, label), ...].
+        y_base_ratio: vertical base offset ratio from bottom (0.05 for trajectory, 0.04 for cashflow).
+    """
+    merged = _merge_consecutive_markers(markers)
+    if not merged:
+        return
+    levels = _assign_marker_levels(merged)
+    y_lo, y_hi = ax.get_ylim()
+    drawn_ages: set[float] = set()
+    for (evt_age, evt_amount, evt_label), level in zip(merged, levels):
+        color = _COLOR_INCOME if evt_amount > 0 else _COLOR_EXPENSE
+        if evt_age not in drawn_ages:
+            ax.axvline(evt_age, color="#888888", linewidth=0.7, linestyle=":", alpha=0.4, zorder=3)
+            drawn_ages.add(evt_age)
+        if evt_amount > 0:
+            label = f"+{evt_label} {evt_amount:,.0f}万"
+        else:
+            label = f"▲{evt_label} {abs(evt_amount):,.0f}万"
+        y_pos = y_lo + (y_hi - y_lo) * (y_base_ratio + 0.06 * level)
+        ax.annotate(
+            label,
+            xy=(evt_age, y_pos),
+            fontsize=11, color=color,
+            ha="center", va="bottom",
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.9, linewidth=0.8),
+            zorder=10,
+        )
+
+
 def _format_oku_axis(ax: plt.Axes):
     """Add 億円 labels on Y axis (secondary tick labels)."""
     ax.yaxis.set_major_formatter(
@@ -153,32 +195,8 @@ def plot_trajectory(
     ax.grid(True, alpha=0.3)
     _format_oku_axis(ax)
 
-    # Shared life event markers (merge consecutive same-label events)
     if event_markers:
-        COLOR_EXPENSE = "#c0392b"
-        COLOR_INCOME = "#27ae60"
-        merged = _merge_consecutive_markers(event_markers)
-        levels = _assign_marker_levels(merged)
-        y_lo, y_hi = ax.get_ylim()
-        drawn_vlines: set[float] = set()
-        for (evt_age, evt_amount, evt_label), level in zip(merged, levels):
-            color = COLOR_INCOME if evt_amount > 0 else COLOR_EXPENSE
-            if evt_age not in drawn_vlines:
-                ax.axvline(evt_age, color="#888888", linewidth=0.7, linestyle=":", alpha=0.4, zorder=3)
-                drawn_vlines.add(evt_age)
-            if evt_amount > 0:
-                label = f"+{evt_label} {evt_amount:,.0f}万"
-            else:
-                label = f"▲{evt_label} {abs(evt_amount):,.0f}万"
-            y_pos = y_lo + (y_hi - y_lo) * (0.05 + 0.06 * level)
-            ax.annotate(
-                label,
-                xy=(evt_age, y_pos),
-                fontsize=11, color=color,
-                ha="center", va="bottom",
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.9, linewidth=0.8),
-                zorder=10,
-            )
+        _draw_event_markers(ax, event_markers, y_base_ratio=0.05)
 
     output_path.mkdir(parents=True, exist_ok=True)
     suffix = f"-{name}" if name else ""
@@ -341,34 +359,10 @@ def plot_cashflow_stack(
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#d62728", alpha=0.9),
             )
 
-        # One-time event markers (merge consecutive same-label, then smart layout)
         raw_markers = per_result_markers[idx] if per_result_markers and idx < len(per_result_markers) else []
         visible = [(a, v, l) for a, v, l in raw_markers if x_min <= a <= x_max]
         if visible:
-            COLOR_EXPENSE = "#c0392b"
-            COLOR_INCOME = "#27ae60"
-            merged_m = _merge_consecutive_markers(visible)
-            levels_m = _assign_marker_levels(merged_m)
-            y_lo, y_hi = ax.get_ylim()
-            drawn_ages: set[float] = set()
-            for (evt_age, evt_amount, evt_label), level in zip(merged_m, levels_m):
-                color = COLOR_INCOME if evt_amount > 0 else COLOR_EXPENSE
-                if evt_age not in drawn_ages:
-                    ax.axvline(evt_age, color="#888888", linewidth=0.7, linestyle=":", alpha=0.4, zorder=3)
-                    drawn_ages.add(evt_age)
-                if evt_amount > 0:
-                    label = f"+{evt_label} {evt_amount:,.0f}万"
-                else:
-                    label = f"▲{evt_label} {abs(evt_amount):,.0f}万"
-                y_pos = y_lo + (y_hi - y_lo) * (0.04 + 0.06 * level)
-                ax.annotate(
-                    label,
-                    xy=(evt_age, y_pos),
-                    fontsize=11, color=color,
-                    ha="center", va="bottom",
-                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.9, linewidth=0.8),
-                    zorder=10,
-                )
+            _draw_event_markers(ax, visible, y_base_ratio=0.04)
 
         ax.set_xlim(x_min, x_max)
         ax.set_title(r["strategy"])
