@@ -663,7 +663,7 @@ def _render_ch1_1_macro(ctx: ReportContext) -> str:
     lines.append(
         "**標準シナリオの根拠：** インフレ2.0%（日銀目標、CPI定着）、"
         "賃金2.0%（**実質横ばい**、キャリアカーブとは別の底上げ）、"
-        "ローン0.75%→2.50%（5年ステップ）、"
+        "ローン0.75%→2.50%（5年ごとに段階引き上げ、5段階）、"
         "運用6.0%（全世界株式の長期名目期待リターン上位、実質4.0%）、"
         "土地0.75%（実需エリアの緩やかな上昇）。"
     )
@@ -698,7 +698,7 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     else:
         child_desc = "子なし"
 
-    living_desc = f"生活費上乗せ月{r['living_premium']:.0f}万円" if r["living_premium"] > 0 else ""
+    living_desc = f"年齢別ベースライン生活費に上乗せ月{r['living_premium']:.0f}万円" if r["living_premium"] > 0 else ""
 
     # Special expenses summary
     se_parts = []
@@ -892,6 +892,11 @@ def _render_ch1_5_strategies(ctx: ReportContext) -> str:
     lines.append(f"| 生活防衛資金 | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** |")
     lines.append(f"| **{ctx.start_age}歳時の運用開始元本** | **{max(0, m_init):.0f}万円** | **{max(0, h_init):.0f}万円** | **{max(0, r_init):.0f}万円** | **{max(0, r_init):.0f}万円** |")
 
+    lines.append(
+        "\n**投資口座：** NISA（夫婦合計上限3,600万円、非課税）→ 特定口座（課税20.315%）の順で運用。"
+        "取り崩しは特定口座 → NISA → 生活防衛資金の逆順。"
+    )
+
     return "\n".join(lines)
 
 
@@ -985,7 +990,7 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 {phase_desc}
 
-**75歳以降の入居審査リスク：** 確率加重プレミアム月3万円（インフレ連動）。
+**75歳以降の入居審査リスク：** 高齢者の入居拒否率（約30%）×追加家賃を期待値換算し、月3万円の確率加重プレミアムとして加算（インフレ連動）。
 
 **通常賃貸（3LDK固定）：** 全期間3LDK（月{normal_rent:.0f}万）。家賃はインフレ上昇し続ける。""")
 
@@ -1155,6 +1160,18 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
             f"\n**通常賃貸：** 運用資産{fmt_man(normal['investment_balance_80'])}、"
             f"金融所得税▲{fmt_man(normal['securities_tax'])}、"
             f"税引後{fmt_man(normal['after_tax_net_assets'])}（{fmt_oku(normal['after_tax_net_assets'])}）。"
+        )
+
+    # Footnotes for the detail table
+    has_realestate = any(
+        r.get("liquidation_cost", 0) != 0 or r.get("liquidity_haircut", 0) != 0
+        for r in top3
+    )
+    if has_realestate:
+        lines.append(
+            "\n※不動産換金コスト＝仲介手数料・登記費用・引越し費用。"
+            "流動性ディスカウント＝一戸建ては個別性が高く売却に時間を要するため"
+            "土地評価額の15%を控除（マンションは流通市場が成熟しており適用なし）。"
         )
 
     # NISA breakdown
@@ -1348,8 +1365,11 @@ def _render_ch5(ctx: ReportContext) -> str:
     )
 
     lines.append(
-        f"\n**共通：** 維持管理の時間コスト（{ctx.sim_years}年間で一戸建て約{ctx.sim_years * 32}h、"
-        f"マンション約{ctx.sim_years * 17}h、賃貸約{ctx.sim_years * 11}h）。"
+        f"\n**共通：** 維持管理の時間コスト — "
+        f"一戸建て年32h（庭・外構・設備点検）、"
+        f"マンション年17h（管理組合・専有部）、"
+        f"賃貸年11h（退去時対応程度）"
+        f"（{ctx.sim_years}年間で{ctx.sim_years * 32}h / {ctx.sim_years * 17}h / {ctx.sim_years * 11}h）。"
     )
 
     return "\n".join(lines)
@@ -1395,13 +1415,13 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
 """
     )
     lines += [
-        "| グレード | 入居一時金 | 月額合計(80代) | 30年総コスト | 必要資産（年金控除後） | 実例施設 |",
-        "|---------|-----------|-------------|------------|----------|---------|",
-        f"| S（超高級） | 2億円 | 80万円 | {th_base['S']/10000:.2f}億円 | **{th['S']/10000:.2f}億円** | パークウェルステイト西麻布、サクラビア成城最上位 |",
-        f"| A（高級） | 1億円 | 63万円 | {th_base['A']/10000:.2f}億円 | **{th['A']/10000:.2f}億円** | サクラビア成城標準、パークウェルステイト浜田山 |",
-        f"| B（準高級） | 5,000万円 | 50万円 | {th_base['B']/10000:.2f}億円 | **{th['B']/10000:.2f}億円** | アリア高輪、グランクレール成城 |",
-        f"| C（標準） | 2,000万円 | 32万円 | {th_base['C']/10000:.2f}億円 | **{th['C']/10000:.2f}億円** | LIFULL高級施設中央値帯 |",
-        f"| D（エコノミー） | 500万円 | 23万円 | {th_base['D']/10000:.2f}億円 | **{th['D']/10000:.2f}億円** | 首都圏一般介護付き有料老人ホーム |",
+        "| グレード | 入居一時金 | 管理費等 | 食事・実費等 | 月額合計(80代) | 30年総コスト | 必要資産（年金控除後） | 実例施設 |",
+        "|---------|-----------|--------|-----------|-------------|------------|----------|---------|",
+        f"| S（超高級） | 2億円 | 45万円 | 35万円 | 80万円 | {th_base['S']/10000:.2f}億円 | **{th['S']/10000:.2f}億円** | パークウェルステイト西麻布、サクラビア成城最上位 |",
+        f"| A（高級） | 1億円 | 38万円 | 25万円 | 63万円 | {th_base['A']/10000:.2f}億円 | **{th['A']/10000:.2f}億円** | サクラビア成城標準、パークウェルステイト浜田山 |",
+        f"| B（準高級） | 5,000万円 | 30万円 | 20万円 | 50万円 | {th_base['B']/10000:.2f}億円 | **{th['B']/10000:.2f}億円** | アリア高輪、グランクレール成城 |",
+        f"| C（標準） | 2,000万円 | 20万円 | 12万円 | 32万円 | {th_base['C']/10000:.2f}億円 | **{th['C']/10000:.2f}億円** | LIFULL高級施設中央値帯 |",
+        f"| D（エコノミー） | 500万円 | 15万円 | 8万円 | 23万円 | {th_base['D']/10000:.2f}億円 | **{th['D']/10000:.2f}億円** | 首都圏一般介護付き有料老人ホーム |",
         "",
         f"シミュレーション出力は80歳時点の名目値。"
         f"{fmt_pct(ctx.params.inflation_rate)}インフレ×{ctx.sim_years}年で割り引き、"
@@ -1723,10 +1743,19 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
                     f"ただし{avoid}は30%超のため回避推奨。"
                 )
             else:
-                lines.append(
-                    f"**{best_bp_name}は破綻確率{best_bp:.1%}で概ね安定。**"
-                    f"ただし10%超の戦略は不況シナリオで脆弱。"
-                )
+                over10 = [r for r in mc if r.bankruptcy_probability > 0.10]
+                if over10:
+                    avoid = "・".join(r.strategy_name for r in over10)
+                    lines.append(
+                        f"**{best_bp_name}は破綻確率{best_bp:.1%}で概ね安定。**"
+                        f"ただし{avoid}は10%超で不況シナリオに脆弱。"
+                    )
+                else:
+                    worst_bp = max(all_bp)
+                    lines.append(
+                        f"**{best_bp_name}は破綻確率{best_bp:.1%}で概ね安定。**"
+                        f"最も高い戦略でも{worst_bp:.1%}に収まり、全体的にリスクは抑制されている。"
+                    )
         elif best_bp < 0.20:
             lines.append(
                 f"\n**⚠ 最善の{best_bp_name}でも破綻確率{best_bp:.1%}。**"
@@ -1826,6 +1855,12 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
             "NISA3,600万の充填が早期に完了し複利効果が最大化。"
             "全戦略でリスク耐性が高く、戦略選択より運用継続が鍵。"
         )
+    elif savings_level == "中程度":
+        lines.append(
+            f"\n**初期資産{fmt_man(ctx.savings)}：** "
+            "頭金なしのフルローンで運用元本を確保する設計。"
+            "月次の投資余力とキャリアカーブの伸びが鍵。"
+        )
     elif savings_level == "限定的":
         lines.append(
             f"\n**初期資産{fmt_man(ctx.savings)}：** "
@@ -1892,10 +1927,38 @@ def _render_ch7_3_risks(ctx: ReportContext) -> str:
         )
 
     if ctx.special_labels:
-        total_se = sum(a for _, a, _ in ctx.special_labels)
-        lines.append(
-            f"\n**特別支出：** 合計{fmt_man(total_se)}（2026年価値）が全戦略の資産を押し下げている。"
+        inflation = ctx.params.inflation_rate
+        total_se_nominal = sum(
+            amount * (1 + inflation) ** (age - ctx.start_age)
+            for age, amount, _ in ctx.special_labels
         )
+        seen: set[str] = set()
+        unique_names: list[str] = []
+        for _, _, label in ctx.special_labels:
+            if label not in seen:
+                seen.add(label)
+                unique_names.append(label)
+        se_names = "・".join(unique_names)
+        best_net = max(
+            r["after_tax_net_assets"] for r in ctx.det_results
+        )
+        ratio = total_se_nominal / best_net * 100 if best_net > 0 else 0
+        if ratio <= 10:
+            judgement = "最終資産に対して十分許容範囲"
+        elif ratio <= 25:
+            judgement = "相応の支出だが実現可能な水準"
+        else:
+            judgement = "最終資産に対して大きく、戦略選択への影響が大きい"
+        msg = (
+            f"\n**特別支出：** {se_names}（名目計{fmt_man(total_se_nominal)}）を織り込み済み。"
+            f"最良戦略の最終資産の約{ratio:.0f}%に相当し、{judgement}。"
+        )
+        # If MC bankruptcy is high, the deterministic ratio is misleadingly low
+        if ctx.mc_results:
+            worst_bp = max(r.bankruptcy_probability for r in ctx.mc_results)
+            if worst_bp >= 0.30:
+                msg += "ただし破綻確率が高い状況では、特別支出の優先度を再検討する余地がある。"
+        lines.append(msg)
 
     lines.append(
         "\n**ペアローン：** 夫婦共働き継続が前提。離婚リスクはストレステスト定量化済み。"
