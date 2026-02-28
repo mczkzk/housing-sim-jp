@@ -206,31 +206,31 @@ def run_monte_carlo(
 
         # Resolve purchase age for this run's params
         run_purchase_age = purchase_age
+        infeasible = False
         if run_purchase_age is None and strategy.property_price > 0:
             run_purchase_age = resolve_purchase_age(
                 strategy, params, husband_start_age, wife_start_age,
                 child_birth_ages, child_independence_ages,
             )
             if run_purchase_age == INFEASIBLE:
-                results_list.append(0.0)
-                bankrupt_count += 1
-                principal_invaded_count += 1
-                if not quiet and (i + 1) % 100 == 0:
-                    print(f"\r  {strategy_name}: {i + 1}/{config.n_simulations}", end="", file=sys.stderr)
-                continue
+                infeasible = True
 
-        try:
-            result = simulate_strategy(
-                strategy, params,
-                husband_start_age=husband_start_age,
-                wife_start_age=wife_start_age,
-                discipline_factor=discipline_factor,
-                child_birth_ages=child_birth_ages,
-                child_independence_ages=child_independence_ages,
-                purchase_age=run_purchase_age,
-                event_timeline=event_timeline,
-            )
-        except ValueError:
+        if not infeasible:
+            try:
+                result = simulate_strategy(
+                    strategy, params,
+                    husband_start_age=husband_start_age,
+                    wife_start_age=wife_start_age,
+                    discipline_factor=discipline_factor,
+                    child_birth_ages=child_birth_ages,
+                    child_independence_ages=child_independence_ages,
+                    purchase_age=run_purchase_age,
+                    event_timeline=event_timeline,
+                )
+            except ValueError:
+                infeasible = True
+
+        if infeasible:
             results_list.append(0.0)
             bankrupt_count += 1
             principal_invaded_count += 1
@@ -304,28 +304,25 @@ def run_monte_carlo_all_strategies(
 
     num_children = len(child_birth_ages)
 
-    factories: list[tuple[Callable[[], Strategy], float]] = [
-        (lambda: UrawaMansion(initial_savings), 1.0),
-        (lambda: UrawaHouse(initial_savings), 1.0),
-        (
-            lambda: StrategicRental(
-                initial_savings, child_birth_ages=child_birth_ages,
-                child_independence_ages=child_independence_ages, start_age=start_age,
-            ),
-            1.0,
+    factories: list[Callable[[], Strategy]] = [
+        lambda: UrawaMansion(initial_savings),
+        lambda: UrawaHouse(initial_savings),
+        lambda: StrategicRental(
+            initial_savings, child_birth_ages=child_birth_ages,
+            child_independence_ages=child_independence_ages, start_age=start_age,
         ),
-        (lambda: NormalRental(initial_savings, num_children=num_children), 1.0),
+        lambda: NormalRental(initial_savings, num_children=num_children),
     ]
 
     results = []
-    for factory, disc in factories:
+    for factory in factories:
         mc_result = run_monte_carlo(
             strategy_factory=factory,
             base_params=base_params,
             config=config,
             husband_start_age=husband_start_age,
             wife_start_age=wife_start_age,
-            discipline_factor=discipline_factor if discipline_factor != 1.0 else disc,
+            discipline_factor=discipline_factor,
             child_birth_ages=child_birth_ages,
             child_independence_ages=child_independence_ages,
             quiet=quiet,
