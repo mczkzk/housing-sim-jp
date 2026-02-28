@@ -66,9 +66,7 @@ class Strategy(ABC):
         """Renewal fee (amortized) + elderly premium for rental strategies."""
         extra = rent / self.RENEWAL_FEE_DIVISOR
         if age >= self.ELDERLY_PREMIUM_AGE:
-            extra += self.ELDERLY_PREMIUM_MONTHLY * (
-                (1 + params.inflation_rate) ** years_elapsed
-            )
+            extra += self.ELDERLY_PREMIUM_MONTHLY * params.inflation_factor(years_elapsed)
         return extra
 
     def _calc_loan_cost(self, months_elapsed: int, params: SimulationParams) -> float:
@@ -131,7 +129,7 @@ class UrawaMansion(Strategy):
     ) -> float:
         years_elapsed = months_elapsed / 12
         building_age = self.PURCHASE_AGE_OF_BUILDING + years_elapsed
-        inflation = (1 + params.inflation_rate) ** years_elapsed
+        inflation = params.inflation_factor(years_elapsed)
 
         cost = self._calc_loan_cost(months_elapsed, params)
 
@@ -181,7 +179,7 @@ class UrawaHouse(Strategy):
     ) -> float:
         years_elapsed = months_elapsed / 12
         house_age = self.PURCHASE_AGE_OF_BUILDING + years_elapsed
-        inflation = (1 + params.inflation_rate) ** years_elapsed
+        inflation = params.inflation_factor(years_elapsed)
 
         cost = self._calc_loan_cost(months_elapsed, params)
 
@@ -255,13 +253,11 @@ class StrategicRental(Strategy):
             # Phase III: downsize to 2LDK, nominal rent fixed at phase2_end level
             if self.senior_rent_inflated is None:
                 phase3_start_years = self.age_phase2_end - (age - years_elapsed)
-                self.senior_rent_inflated = self.RENT_PHASE3_BASE * (
-                    (1 + params.inflation_rate) ** phase3_start_years
-                )
+                self.senior_rent_inflated = self.RENT_PHASE3_BASE * params.inflation_factor(phase3_start_years)
             rent = self.senior_rent_inflated
             return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
 
-        rent = base_rent * ((1 + params.inflation_rate) ** years_elapsed)
+        rent = base_rent * params.inflation_factor(years_elapsed)
         return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
 
 
@@ -289,7 +285,7 @@ class NormalRental(Strategy):
     ) -> float:
         """Monthly rent for 3LDK with inflation and renewal fee"""
         years_elapsed = months_elapsed / 12
-        rent = self.base_rent * ((1 + params.inflation_rate) ** years_elapsed)
+        rent = self.base_rent * params.inflation_factor(years_elapsed)
         return rent + self._calc_rental_extras(rent, age, years_elapsed, params)
 
 

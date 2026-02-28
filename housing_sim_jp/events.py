@@ -54,12 +54,10 @@ class EventTimeline:
         """Calculate extra monthly cost from care and rental rejection events."""
         cost = 0.0
         if self.care_start_month is not None and month >= self.care_start_month:
-            years_from_start = month / 12
-            inflation = (1 + params.inflation_rate) ** years_from_start
+            inflation = params.inflation_factor(month / 12)
             cost += self.care_cost_monthly * inflation
         if self.rental_rejection_month is not None and month >= self.rental_rejection_month:
-            years_from_start = month / 12
-            inflation = (1 + params.inflation_rate) ** years_from_start
+            inflation = params.inflation_factor(month / 12)
             cost += self.rental_rejection_premium * inflation
         return cost
 
