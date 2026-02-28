@@ -609,8 +609,6 @@ def _get_education_annual_cost(
         cost *= boost
     return cost
 
-# 子供が同居する期間（生活費計算用）
-CHILD_HOME_AGE_END = 22  # 大学卒業で独立（デフォルト）
 
 # 大学院進学マッピング（進路 → 独立年齢）
 GRAD_SCHOOL_MAP = {"修士": 24, "博士": 27}

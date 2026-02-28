@@ -1,7 +1,7 @@
 """Tests for scenario_comparison.py."""
 
 import pytest
-from housing_sim_jp.scenarios import run_scenarios, SCENARIOS, DISCIPLINE_FACTORS
+from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS
 
 
 class TestRunScenarios:

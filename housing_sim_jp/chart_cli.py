@@ -56,7 +56,6 @@ def main():
     params = build_params(r, pet_sim_ages)
 
     resolved_children = resolve_child_birth_ages(child_birth_ages, start_age)
-    num_children = len(resolved_children)
 
     # --- Deterministic trajectory ---
     print(f"確定論シミュレーション（{start_age}歳→80歳）...", file=sys.stderr)

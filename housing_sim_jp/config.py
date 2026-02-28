@@ -185,13 +185,6 @@ def parse_pet_ages(s: str) -> list[int]:
     return sorted(int(x) for x in s.split(","))
 
 
-def parse_children_ages(s: str) -> list[int]:
-    """Parse children string → list of wife's ages at birth. "none"/empty → []."""
-    s = str(s).strip().lower()
-    if not s or s == "none":
-        return []
-    return [int(x.split(":")[0]) for x in s.split(",")]
-
 
 def parse_children_config(s: str) -> tuple[list[int], list[int]]:
     """Parse children string → (birth_ages, independence_ages).

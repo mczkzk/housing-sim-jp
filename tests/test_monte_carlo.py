@@ -6,12 +6,11 @@ import statistics
 import pytest
 
 from housing_sim_jp.params import SimulationParams
-from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental, NormalRental
+from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy
 from housing_sim_jp.events import EventRiskConfig, EventTimeline, sample_events
 from housing_sim_jp.monte_carlo import (
     MonteCarloConfig,
-    MonteCarloResult,
     run_monte_carlo,
     run_monte_carlo_all_strategies,
     _sample_log_normal_returns,

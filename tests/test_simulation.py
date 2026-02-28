@@ -11,10 +11,8 @@ from housing_sim_jp import (
     validate_strategy,
     simulate_strategy,
     find_earliest_purchase_age,
-    MAX_CHILDREN,
 )
 from housing_sim_jp.events import EventRiskConfig, EventTimeline, sample_events
-from housing_sim_jp.simulation import REEMPLOYMENT_AGE
 
 
 class TestValidateAge:
