@@ -13,6 +13,7 @@ _INCOME_TAX_BRACKETS: tuple[tuple[float, float, float], ...] = (
 )
 
 RESIDENT_TAX_RATE = 0.10  # 住民税率（一律10%）
+TAXABLE_INCOME_RATIO = 0.60  # 課税所得 ≈ 額面年収 × 60%（給与所得控除+基礎控除+社保控除）
 CAPITAL_GAINS_TAX_RATE = 0.20315  # 譲渡益課税（所得税15.315%+住民税5%）
 
 
@@ -35,7 +36,7 @@ def estimate_taxable_income(gross_annual: float) -> float:
     Rough approximation: taxable ≈ gross × 0.60
     (給与所得控除 + 基礎控除 + 社会保険料控除で約40%控除)
     """
-    return gross_annual * 0.60
+    return gross_annual * TAXABLE_INCOME_RATIO
 
 
 def calc_ideco_tax_benefit_monthly(contribution: float, marginal_rate: float) -> float:

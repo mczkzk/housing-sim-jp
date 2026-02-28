@@ -32,6 +32,13 @@ MAX_REPAYMENT_RATIO = 0.35  # 返済比率上限（年収400万以上）
 MAX_INCOME_MULTIPLIER = 7  # 年収倍率上限
 TAKEHOME_TO_GROSS = 0.75  # 手取り→額面 概算変換率
 
+# Pension adjustment rates (法定)
+PENSION_EARLY_REDUCTION_PER_MONTH = 0.004   # 繰上げ: -0.4%/月
+PENSION_DEFERRAL_INCREASE_PER_MONTH = 0.007  # 繰下げ: +0.7%/月
+
+# Reemployment wage model
+REEMPLOYMENT_WAGE_INFLATION_RATIO = 0.5  # 再雇用期: インフレ追従率
+
 # Divorce / death event constants
 DIVORCE_ASSET_SPLIT_RATIO = 0.5   # 離婚時の財産分与比率
 SINGLE_LIVING_COST_RATIO = 0.7    # 離婚/死別後の生活費比率（1人世帯化）
@@ -352,9 +359,9 @@ def _pension_adjustment_factor(pension_start_age: int) -> float:
     """繰上げ/繰下げによる年金調整係数。65歳基準。"""
     months_diff = (pension_start_age - STANDARD_PENSION_AGE) * 12
     if months_diff < 0:
-        return 1 + months_diff * 0.004   # 繰上げ: -0.4%/月
+        return 1 + months_diff * PENSION_EARLY_REDUCTION_PER_MONTH
     elif months_diff > 0:
-        return 1 + months_diff * 0.007   # 繰下げ: +0.7%/月
+        return 1 + months_diff * PENSION_DEFERRAL_INCREASE_PER_MONTH
     return 1.0
 
 
@@ -489,11 +496,11 @@ def _calc_individual_income(
         reemploy_factor = 1.0
         full_years = int(years_since_reemploy)
         for y in range(full_years):
-            rate = params.get_inflation_rate(reemploy_start_year + y) * 0.5
+            rate = params.get_inflation_rate(reemploy_start_year + y) * REEMPLOYMENT_WAGE_INFLATION_RATIO
             reemploy_factor *= (1 + rate)
         frac = years_since_reemploy - full_years
         if frac > 0:
-            rate = params.get_inflation_rate(reemploy_start_year + full_years) * 0.5
+            rate = params.get_inflation_rate(reemploy_start_year + full_years) * REEMPLOYMENT_WAGE_INFLATION_RATIO
             reemploy_factor *= (1 + rate) ** frac
         work_income = peak * params.retirement_reduction * reemploy_factor
 
