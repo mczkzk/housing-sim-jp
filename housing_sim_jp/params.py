@@ -110,6 +110,10 @@ class SimulationParams:
     bucket_bond_return: float = 0.005  # 個人向け国債変動10年
     bucket_gold_return: float = 0.04   # ゴールド期待リターン
 
+    # Parental leave (産休・育休: 出産月からの月数、0=無効)
+    wife_parental_leave_months: int = 12    # 妻: 産前産後+育休
+    husband_parental_leave_months: int = 1  # 夫: パパ育休
+
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: list[float] | None = None
 

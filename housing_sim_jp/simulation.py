@@ -43,6 +43,10 @@ REEMPLOYMENT_WAGE_INFLATION_RATIO = 0.5  # 再雇用期: インフレ追従率
 DIVORCE_ASSET_SPLIT_RATIO = 0.5   # 離婚時の財産分与比率
 SINGLE_LIVING_COST_RATIO = 0.7    # 離婚/死別後の生活費比率（1人世帯化）
 
+# 育児休業給付率（法定、2025年改正後）
+PARENTAL_LEAVE_BENEFIT_RATE_FIRST = 0.67   # 最初の180日（6ヶ月）
+PARENTAL_LEAVE_BENEFIT_RATE_LATER = 0.50   # 181日目以降
+
 # 児童手当（2024年改正: 所得制限撤廃・18歳まで延長）
 CHILD_ALLOWANCE_SCHEDULE: tuple[tuple[int, int, float], ...] = (
     (0, 2, 1.5),   # 0〜2歳: 月1.5万円/人
@@ -63,6 +67,29 @@ def _calc_child_allowance(age: int, child_birth_ages: list[int]) -> float:
                 total += amount
                 break
     return total
+
+
+def _parental_leave_rate(
+    month: int, child_birth_ages: list[int], start_age: int,
+    leave_months: int,
+) -> float:
+    """Return net income replacement rate during parental leave.
+
+    1.0 = not on leave. < 1.0 = on leave.
+    Converts statutory gross benefit rates to net income basis
+    (社会保険料免除を加味した手取り換算).
+    """
+    if leave_months <= 0:
+        return 1.0
+    for ba in child_birth_ages:
+        birth_month = (ba - start_age) * 12
+        months_since = month - birth_month
+        if 0 <= months_since < leave_months:
+            gross_rate = (PARENTAL_LEAVE_BENEFIT_RATE_FIRST
+                          if months_since < 6
+                          else PARENTAL_LEAVE_BENEFIT_RATE_LATER)
+            return gross_rate / TAKEHOME_TO_GROSS
+    return 1.0
 
 
 def validate_age(start_age: int) -> None:
@@ -1668,6 +1695,21 @@ def simulate_strategy(
         monthly_income, h_income, w_income, h_peak, w_peak = _calc_monthly_income(
             month, husband_start_age, wife_start_age, params, h_peak, w_peak,
         )
+
+        # Parental leave income reduction (peak追跡には影響しない)
+        h_leave_rate = _parental_leave_rate(
+            month, child_birth_ages, start_age,
+            params.husband_parental_leave_months,
+        )
+        w_leave_rate = _parental_leave_rate(
+            month, child_birth_ages, start_age,
+            params.wife_parental_leave_months,
+        )
+        if h_leave_rate < 1.0:
+            h_income *= h_leave_rate
+        if w_leave_rate < 1.0:
+            w_income *= w_leave_rate
+        monthly_income = h_income + w_income
 
         if has_pre_purchase_rental and month < purchase_month_offset:
             # Pre-purchase rental phase: 2LDK rental costs

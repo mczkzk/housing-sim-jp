@@ -810,6 +810,21 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             f"有利になる（損益分岐点は投資リターン年約2%）。"
         )
 
+    # Parental leave
+    w_leave = ctx.params.wife_parental_leave_months
+    h_leave = ctx.params.husband_parental_leave_months
+    if ctx.child_birth_ages and (w_leave > 0 or h_leave > 0):
+        parts = []
+        if w_leave > 0:
+            parts.append(f"妻{w_leave}ヶ月")
+        if h_leave > 0:
+            parts.append(f"夫{h_leave}ヶ月")
+        lines.append(
+            f"\n**産休・育休：** 出産ごとに{'・'.join(parts)}の休業を想定。"
+            "休業中の収入は育児休業給付金（最初の180日: 額面の67%、以降50%）で補填。"
+            "社会保険料免除を加味し、手取りベースで最初の6ヶ月約89%、以降約67%で計算。"
+        )
+
     # Parameter plausibility warnings
     param_warnings = _check_parameter_plausibility(ctx)
     if param_warnings:

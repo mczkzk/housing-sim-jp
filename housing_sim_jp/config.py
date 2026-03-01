@@ -40,6 +40,8 @@ DEFAULTS = {
     "bucket_ramp_years": 5,
     "bucket_bond_return": 0.005,
     "bucket_gold_return": 0.04,
+    "wife_parental_leave_months": 12,
+    "husband_parental_leave_months": 1,
 }
 
 
@@ -153,6 +155,8 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--bucket-ramp-years", type=int, default=None, help="バケット戦略: 退職何年前から移行（default: 5）")
     parser.add_argument("--bucket-bond-return", type=float, default=None, help="バケット戦略: 債券リターン（default: 0.005）")
     parser.add_argument("--bucket-gold-return", type=float, default=None, help="バケット戦略: ゴールドリターン（default: 0.04）")
+    parser.add_argument("--wife-parental-leave-months", type=int, default=None, help="妻の産休・育休月数（default: 12）")
+    parser.add_argument("--husband-parental-leave-months", type=int, default=None, help="夫の育休月数（default: 1）")
     return parser
 
 
@@ -248,6 +252,8 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
         bucket_ramp_years=r["bucket_ramp_years"],
         bucket_bond_return=r["bucket_bond_return"],
         bucket_gold_return=r["bucket_gold_return"],
+        wife_parental_leave_months=r["wife_parental_leave_months"],
+        husband_parental_leave_months=r["husband_parental_leave_months"],
     )
 
 
