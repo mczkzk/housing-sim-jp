@@ -200,6 +200,16 @@ def main():
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=special_expenses,
+        husband_pension_start_age=r["husband_pension_start_age"],
+        wife_pension_start_age=r["wife_pension_start_age"],
+        husband_work_end_age=r["husband_work_end_age"],
+        wife_work_end_age=r["wife_work_end_age"],
+        bucket_safe_years=r["bucket_safe_years"],
+        bucket_cash_years=r["bucket_cash_years"],
+        bucket_gold_pct=r["bucket_gold_pct"],
+        bucket_ramp_years=r["bucket_ramp_years"],
+        bucket_bond_return=r["bucket_bond_return"],
+        bucket_gold_return=r["bucket_gold_return"],
     )
 
     print_parameters()

@@ -276,6 +276,16 @@ def build_report_context(
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=parse_special_expenses(r["special_expenses"]),
+        husband_pension_start_age=r["husband_pension_start_age"],
+        wife_pension_start_age=r["wife_pension_start_age"],
+        husband_work_end_age=r["husband_work_end_age"],
+        wife_work_end_age=r["wife_work_end_age"],
+        bucket_safe_years=r["bucket_safe_years"],
+        bucket_cash_years=r["bucket_cash_years"],
+        bucket_gold_pct=r["bucket_gold_pct"],
+        bucket_ramp_years=r["bucket_ramp_years"],
+        bucket_bond_return=r["bucket_bond_return"],
+        bucket_gold_return=r["bucket_gold_return"],
     )
     scenario_results = run_scenarios(**scenario_kwargs)
     print("  投資規律感度分析...", file=sys.stderr)
@@ -840,6 +850,8 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             elif age >= reemploy_sim:
                 note = "再雇用期"
             lines.append(f"| {age}歳 | {h:.1f} | {w:.1f} | {total:.1f} | {note} |")
+        if ctx.child_birth_ages:
+            lines.append("\n※世帯合計には児童手当（0-2歳:月1.5万/人、3-18歳:月1.0万/人）を含む")
 
     age_diff = _age_diff(ctx)
     if age_diff > 0:
@@ -1082,8 +1094,10 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 | 築年数 | 管理費 | 修繕積立金 | 固定資産税 | 保険 | **月額合計** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 築10年（購入時） | 1.55万 | 1.1万（×1.0） | 1.8万 | 0.15万 | **4.6万** |
-| 築30年 | 1.55万 | 2.2万（×2.0） | 1.8万 | 0.15万 | **5.7万** |
+| 築10-19年（購入時） | 1.55万 | 1.1万（×1.0） | 1.8万 | 0.15万 | **4.6万** |
+| 築20-29年 | 1.55万 | 2.2万（×2.0） | 1.8万 | 0.15万 | **5.7万** |
+| 築30-39年 | 1.55万 | 3.3万（×3.0） | 1.8万 | 0.15万 | **6.8万** |
+| 築40-49年 | 1.55万 | 3.9万（×3.5） | 1.8万 | 0.15万 | **7.4万** |
 | 築50年超 | 1.55万 | 4.0万（×3.6） | 1.8万 | 0.15万 | **7.5万** |
 
 ※管理費等にインフレ2.0%累積。修繕積立金は長期修繕計画の名目値（追加調整なし）。""")
@@ -1097,10 +1111,10 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 | 築年数 | 小修繕 | 固定資産税 | 保険 | その他(※) | **月額合計** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 築7-10年（購入時） | 1.0万 | 1.8万 | 0.4万 | 0.7万 | **3.9万** |
-| 築20年 | 1.3万 | 1.8万 | 0.4万 | 0.7万 | **4.2万** |
-| 築30年 | 1.6万 | 1.8万 | 0.4万 | 0.7万 | **4.5万** |
-| 築40年超 | 1.8万 | 1.8万 | 0.4万 | 0.7万 | **4.7万** |
+| 築7-9年（購入時） | 1.0万 | 1.8万 | 0.4万 | 0.7万 | **3.9万** |
+| 築10-19年 | 1.3万 | 1.8万 | 0.4万 | 0.7万 | **4.2万** |
+| 築20-29年 | 1.6万 | 1.8万 | 0.4万 | 0.7万 | **4.5万** |
+| 築30年超 | 1.8万 | 1.8万 | 0.4万 | 0.7万 | **4.7万** |
 | 完済後 | 1.5万 | 1.8万 | 0.4万 | 0.7万 | **4.4万** |
 
 ※その他：セキュリティ0.5万＋雑費0.2万。全額インフレ2.0%累積。
@@ -1241,8 +1255,23 @@ def _render_ch3_2_transitions(ctx: ReportContext) -> str:
         )
 
     # [5] Loan payoff
-    payoff_age = ctx.start_age + ctx.params.loan_years
-    lines.append(f"- **ローン完済（{payoff_age}歳）：** 住居費が激減。残り{80 - payoff_age}年で序列確定。")
+    m_pa = ctx.purchase_ages.get("浦和マンション")
+    h_pa = ctx.purchase_ages.get("浦和一戸建て")
+    payoff_ages = {}
+    for name, pa in [("マンション", m_pa), ("一戸建て", h_pa)]:
+        if pa == INFEASIBLE:
+            continue
+        effective_pa = pa if isinstance(pa, int) else ctx.start_age
+        payoff_ages[name] = effective_pa + ctx.params.loan_years
+    if payoff_ages:
+        unique = set(payoff_ages.values())
+        if len(unique) == 1:
+            payoff_age = unique.pop()
+            lines.append(f"- **ローン完済（{payoff_age}歳）：** 住居費が激減。残り{80 - payoff_age}年で序列確定。")
+        else:
+            parts = [f"{n}{a}歳" for n, a in payoff_ages.items()]
+            min_payoff = min(payoff_ages.values())
+            lines.append(f"- **ローン完済（{'・'.join(parts)}）：** 住居費が激減。残り{80 - min_payoff}〜{80 - max(payoff_ages.values())}年で序列確定。")
 
     # [6] Pension
     from housing_sim_jp.simulation import _pension_adjustment_factor as _paf
@@ -1344,6 +1373,7 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
 
     # NISA breakdown
     lines.append("\n**NISA・特定口座の内訳：**\n")
+    lines.append("※運用資産残高はNISA＋特定口座＋債券＋ゴールド＋生活防衛資金の合計\n")
     all4 = [r for r in ordered if r is not None]
     lines.append("| 戦略 | NISA残高（元本） | 特定口座残高（元本） | 金融所得税 |")
     lines.append("|------|-----------------|------------------|----------|")
@@ -1380,6 +1410,10 @@ def _render_ch3_4_discipline(ctx: ReportContext) -> str:
                 ds += f"(▲{abs(diff)/10000:.2f})"
             elif d and f and d.get("bankrupt_age") is not None and f.get("bankrupt_age") is not None:
                 ds += "(+0.00)"
+            elif d and f and d.get("bankrupt_age") is not None and f.get("bankrupt_age") is None:
+                ds += "(→破綻)"
+            elif d and f and d.get("bankrupt_age") is None and f.get("bankrupt_age") is not None:
+                ds += "(→回復)"
             vals.append(ds)
         lines.append(f"| **{sname}** | {' | '.join(vals)} |")
 
@@ -1515,7 +1549,7 @@ def _render_ch5(ctx: ReportContext) -> str:
         "\n---\n",
         "## 第5章：数値に現れない各戦略の特性\n",
         "シミュレーションは経済的な期待値を示すが、住宅選択の満足度を左右する要因の多くは数値化できない。"
-        "本章では購入と賃貸で**構造的に異なる**定性特性を3つの軸で整理する。\n",
+        "本章では購入と賃貸で**構造的に異なる**定性特性を以下の観点で整理する。\n",
     ]
 
     # --- 5.1 コストの予測可能性 vs 支出の柔軟性 ---
@@ -1683,7 +1717,7 @@ def _render_ch5(ctx: ReportContext) -> str:
         "逆に退職直後に好調なら、取り崩し後も十分な元本が残り複利効果が働く。"
         "つまり**リターンの順序**が総資産に大きな影響を与える。"
     )
-    has_bucket = ctx.params.bucket_safe_years > 0 or ctx.params.bucket_gold_pct > 0
+    has_bucket = ctx.params.bucket_enabled
     if has_bucket:
         lines.append(
             "\n本シミュレーションではバケット戦略（§1.5）により、"
@@ -2072,7 +2106,8 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
         # Bankruptcy probability assessment (graduated)
         all_bp = [r.bankruptcy_probability for r in mc]
         best_bp = min(all_bp)
-        best_bp_name = min(mc, key=lambda r: r.bankruptcy_probability).strategy_name
+        best_bp_names = [r.strategy_name for r in mc if r.bankruptcy_probability == best_bp]
+        best_bp_name = "と".join(best_bp_names)
         if all(bp < 0.05 for bp in all_bp):
             lines.append(
                 "全戦略でMC破綻確率5%未満。**どの戦略でも破綻リスクは十分に低い。**"

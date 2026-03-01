@@ -100,6 +100,16 @@ def run_scenarios(
     wife_ideco: float = 2.0,
     emergency_fund_months: float = 6.0,
     special_expenses: dict[int, float] | None = None,
+    husband_pension_start_age: int = 60,
+    wife_pension_start_age: int = 60,
+    husband_work_end_age: int = 70,
+    wife_work_end_age: int = 70,
+    bucket_safe_years: float = 5.0,
+    bucket_cash_years: float = 2.0,
+    bucket_gold_pct: float = 0.10,
+    bucket_ramp_years: int = 5,
+    bucket_bond_return: float = 0.005,
+    bucket_gold_return: float = 0.04,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
@@ -130,6 +140,16 @@ def run_scenarios(
             wife_ideco=wife_ideco,
             emergency_fund_months=emergency_fund_months,
             special_expenses=special_expenses or {},
+            husband_pension_start_age=husband_pension_start_age,
+            wife_pension_start_age=wife_pension_start_age,
+            husband_work_end_age=husband_work_end_age,
+            wife_work_end_age=wife_work_end_age,
+            bucket_safe_years=bucket_safe_years,
+            bucket_cash_years=bucket_cash_years,
+            bucket_gold_pct=bucket_gold_pct,
+            bucket_ramp_years=bucket_ramp_years,
+            bucket_bond_return=bucket_bond_return,
+            bucket_gold_return=bucket_gold_return,
         )
         params = dataclasses.replace(base_params, **scenario_params)
 

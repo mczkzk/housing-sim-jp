@@ -749,6 +749,51 @@ def _swap_taxable_to_nisa(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, net_to_nisa
 
 
+def _transfer_between_assets(
+    amount: float,
+    src_balance: float, src_cost_basis: float,
+    dst_balance: float, dst_cost_basis: float,
+) -> tuple[float, float, float, float]:
+    """Transfer *amount* from src to dst, adjusting cost basis proportionally.
+
+    Returns (src_balance, src_cost_basis, dst_balance, dst_cost_basis).
+    """
+    transfer = min(amount, src_balance)
+    if transfer <= 0:
+        return src_balance, src_cost_basis, dst_balance, dst_cost_basis
+    ratio = transfer / src_balance if src_balance > 0 else 0
+    cb_portion = src_cost_basis * ratio
+    return (
+        src_balance - transfer, src_cost_basis - cb_portion,
+        dst_balance + transfer, dst_cost_basis + cb_portion,
+    )
+
+
+def _rebalance_toward_target(
+    target: float,
+    asset_balance: float, asset_cost_basis: float,
+    taxable_balance: float, taxable_cost_basis: float,
+) -> tuple[float, float, float, float]:
+    """Move asset balance toward target, exchanging with taxable equity.
+
+    Returns (asset_balance, asset_cost_basis, taxable_balance, taxable_cost_basis).
+    """
+    diff = asset_balance - target
+    if diff > 0:
+        # Sell excess asset → taxable equity
+        asset_balance, asset_cost_basis, taxable_balance, taxable_cost_basis = (
+            _transfer_between_assets(diff, asset_balance, asset_cost_basis,
+                                     taxable_balance, taxable_cost_basis)
+        )
+    elif diff < 0:
+        # Buy asset from taxable equity
+        taxable_balance, taxable_cost_basis, asset_balance, asset_cost_basis = (
+            _transfer_between_assets(-diff, taxable_balance, taxable_cost_basis,
+                                     asset_balance, asset_cost_basis)
+        )
+    return asset_balance, asset_cost_basis, taxable_balance, taxable_cost_basis
+
+
 def _rebalance_portfolio(
     params: SimulationParams, age: int, annual_expenses: float,
     nisa_balance: float,
@@ -767,46 +812,14 @@ def _rebalance_portfolio(
     total = nisa_balance + taxable_balance + bond_balance + gold_balance + emergency_fund
     _, bond_t, gold_t, _ = params.bucket_targets(age, annual_expenses, total)
 
-    # Adjust gold toward gold_t
-    diff = gold_balance - gold_t
-    if diff > 0:
-        # Sell excess gold → taxable equity
-        ratio = diff / gold_balance if gold_balance > 0 else 0
-        cb_portion = gold_cost_basis * ratio
-        gold_balance -= diff
-        gold_cost_basis -= cb_portion
-        taxable_balance += diff
-        taxable_cost_basis += cb_portion
-    elif diff < 0:
-        needed = -diff
-        buy = min(needed, taxable_balance)
-        if buy > 0:
-            ratio = buy / taxable_balance if taxable_balance > 0 else 0
-            cb_portion = taxable_cost_basis * ratio
-            taxable_balance -= buy
-            taxable_cost_basis -= cb_portion
-            gold_balance += buy
-            gold_cost_basis += cb_portion
-
-    # Adjust bond toward bond_t
-    diff = bond_balance - bond_t
-    if diff > 0:
-        ratio = diff / bond_balance if bond_balance > 0 else 0
-        cb_portion = bond_cost_basis * ratio
-        bond_balance -= diff
-        bond_cost_basis -= cb_portion
-        taxable_balance += diff
-        taxable_cost_basis += cb_portion
-    elif diff < 0:
-        needed = -diff
-        buy = min(needed, taxable_balance)
-        if buy > 0:
-            ratio = buy / taxable_balance if taxable_balance > 0 else 0
-            cb_portion = taxable_cost_basis * ratio
-            taxable_balance -= buy
-            taxable_cost_basis -= cb_portion
-            bond_balance += buy
-            bond_cost_basis += cb_portion
+    gold_balance, gold_cost_basis, taxable_balance, taxable_cost_basis = (
+        _rebalance_toward_target(gold_t, gold_balance, gold_cost_basis,
+                                 taxable_balance, taxable_cost_basis)
+    )
+    bond_balance, bond_cost_basis, taxable_balance, taxable_cost_basis = (
+        _rebalance_toward_target(bond_t, bond_balance, bond_cost_basis,
+                                 taxable_balance, taxable_cost_basis)
+    )
 
     return (taxable_balance, taxable_cost_basis,
             bond_balance, bond_cost_basis,
@@ -1175,10 +1188,8 @@ def _calc_required_emergency_fund(
     # Bucket strategy: ramp EF months up to bucket_cash_years during transition
     ef_months = params.emergency_fund_months
     if params.bucket_safe_years > 0:
-        retirement_age = max(params.husband_work_end_age, params.wife_work_end_age)
-        bucket_start = retirement_age - params.bucket_ramp_years
-        if age >= bucket_start:
-            ramp = min(1.0, (age - bucket_start) / max(1, params.bucket_ramp_years))
+        ramp = params.bucket_ramp_factor(age)
+        if ramp > 0:
             target_months = params.bucket_cash_years * 12
             ef_months = params.emergency_fund_months + (target_months - params.emergency_fund_months) * ramp
 
@@ -1483,7 +1494,7 @@ def simulate_strategy(
             nisa_annual_invested += swapped
 
             # Annual rebalance for bucket strategy
-            if params.bucket_safe_years > 0 or params.bucket_gold_pct > 0:
+            if params.bucket_enabled:
                 age_for_rebalance = start_age + month // 12
                 # Annual expenses estimate for bucket target calculation
                 num_kids = sum(1 for s, e in child_home_ranges if s <= age_for_rebalance <= e)

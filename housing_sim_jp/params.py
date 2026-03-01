@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 END_AGE = 80
+BUCKET_MAX_SAFE_RATIO = 0.70
 
 # Age-based baseline living cost curve (万円/月, couple without children)
 # Piecewise linear interpolation; flat at 27.5 beyond age 50.
@@ -179,6 +180,18 @@ class SimulationParams:
         idx = min(int(years_elapsed // 5), len(self.loan_rate_schedule) - 1)
         return self.loan_rate_schedule[idx] / 12
 
+    @property
+    def bucket_enabled(self) -> bool:
+        return self.bucket_safe_years > 0 or self.bucket_gold_pct > 0
+
+    def bucket_ramp_factor(self, age: int) -> float:
+        """Linear ramp factor (0.0→1.0) over bucket_ramp_years before retirement."""
+        retirement_age = max(self.husband_work_end_age, self.wife_work_end_age)
+        start_age = retirement_age - self.bucket_ramp_years
+        if age < start_age:
+            return 0.0
+        return min(1.0, (age - start_age) / max(1, self.bucket_ramp_years))
+
     def bucket_targets(
         self, age: int, annual_expenses: float, total_assets: float,
     ) -> tuple[float, float, float, float]:
@@ -187,27 +200,21 @@ class SimulationParams:
         Gold: always at target % (inflation hedge, no ramp).
         Cash/bond: ramp linearly over bucket_ramp_years before retirement.
         """
-        if self.bucket_safe_years <= 0 and self.bucket_gold_pct <= 0:
+        if not self.bucket_enabled:
             return (0.0, 0.0, 0.0, total_assets)
 
-        # Gold: constant allocation (no ramp)
         gold_t = self.bucket_gold_pct * total_assets
 
-        # Cash/bond: ramp only during bucket transition
         cash_t = 0.0
         bond_t = 0.0
         if self.bucket_safe_years > 0:
-            retirement_age = max(self.husband_work_end_age, self.wife_work_end_age)
-            start_age = retirement_age - self.bucket_ramp_years
-            if age >= start_age:
-                ramp = min(1.0, (age - start_age) / max(1, self.bucket_ramp_years))
-                cash_t = self.bucket_cash_years * annual_expenses * ramp
-                bond_t = max(0.0, self.bucket_safe_years - self.bucket_cash_years) * annual_expenses * ramp
+            ramp = self.bucket_ramp_factor(age)
+            cash_t = self.bucket_cash_years * annual_expenses * ramp
+            bond_t = max(0.0, self.bucket_safe_years - self.bucket_cash_years) * annual_expenses * ramp
 
-        # Cap safe assets at 70% of total (keep min 30% equity)
         safe_total = cash_t + bond_t + gold_t
-        if safe_total >= total_assets * 0.7:
-            scale = total_assets * 0.7 / safe_total if safe_total > 0 else 0
+        if safe_total >= total_assets * BUCKET_MAX_SAFE_RATIO:
+            scale = total_assets * BUCKET_MAX_SAFE_RATIO / safe_total if safe_total > 0 else 0
             cash_t *= scale
             bond_t *= scale
             gold_t *= scale
