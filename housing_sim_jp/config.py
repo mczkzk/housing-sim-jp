@@ -34,6 +34,12 @@ DEFAULTS = {
     "husband_work_end_age": 70,
     "wife_work_end_age": 70,
     "special_expenses": "",
+    "bucket_safe_years": 5.0,
+    "bucket_cash_years": 2.0,
+    "bucket_gold_pct": 0.10,
+    "bucket_ramp_years": 5,
+    "bucket_bond_return": 0.005,
+    "bucket_gold_return": 0.04,
 }
 
 
@@ -141,6 +147,12 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--husband-work-end-age", type=int, default=None, help=f"夫の再雇用終了年齢（60-75, default: {d['husband_work_end_age']}）")
     parser.add_argument("--wife-work-end-age", type=int, default=None, help=f"妻の再雇用終了年齢（60-75, default: {d['wife_work_end_age']}）")
     parser.add_argument("--special-expenses", type=str, default=None, help="特別支出（年齢:金額[:ラベル]のカンマ区切り、例: 55:500:リフォーム,65:300）")
+    parser.add_argument("--bucket-safe-years", type=float, default=None, help="バケット戦略: 安全資産=生活費N年分（0=無効, default: 5）")
+    parser.add_argument("--bucket-cash-years", type=float, default=None, help="バケット戦略: うち現金の年数（default: 2）")
+    parser.add_argument("--bucket-gold-pct", type=float, default=None, help="バケット戦略: ゴールド比率（0.10=10%%, default: 0.10）")
+    parser.add_argument("--bucket-ramp-years", type=int, default=None, help="バケット戦略: 退職何年前から移行（default: 5）")
+    parser.add_argument("--bucket-bond-return", type=float, default=None, help="バケット戦略: 債券リターン（default: 0.005）")
+    parser.add_argument("--bucket-gold-return", type=float, default=None, help="バケット戦略: ゴールドリターン（default: 0.04）")
     return parser
 
 
@@ -230,6 +242,12 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=parse_special_expenses(r["special_expenses"]),
+        bucket_safe_years=r["bucket_safe_years"],
+        bucket_cash_years=r["bucket_cash_years"],
+        bucket_gold_pct=r["bucket_gold_pct"],
+        bucket_ramp_years=r["bucket_ramp_years"],
+        bucket_bond_return=r["bucket_bond_return"],
+        bucket_gold_return=r["bucket_gold_return"],
     )
 
 

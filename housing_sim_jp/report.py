@@ -592,7 +592,8 @@ def _render_ch1(ctx: ReportContext) -> str:
         _render_ch1_2_profile(ctx),
         _render_ch1_3_emergency(ctx),
         _render_ch1_4_ideco(ctx),
-        _render_ch1_5_strategies(ctx),
+        _render_ch1_5_bucket(ctx),
+        _render_ch1_6_strategies(ctx),
     ]
     return "\n".join(parts)
 
@@ -906,7 +907,52 @@ def _render_ch1_4_ideco(ctx: ReportContext) -> str:
     )
 
 
-def _render_ch1_5_strategies(ctx: ReportContext) -> str:
+def _render_ch1_5_bucket(ctx: ReportContext) -> str:
+    p = ctx.params
+    if p.bucket_safe_years <= 0 and p.bucket_gold_pct <= 0:
+        return (
+            "\n### 1.5 資産配分\n\n"
+            "バケット戦略は無効（全期間100%株式運用＋生活防衛資金）。"
+        )
+    retirement = max(p.husband_work_end_age, p.wife_work_end_age)
+    ramp_start = retirement - p.bucket_ramp_years
+    bond_years = max(0, p.bucket_safe_years - p.bucket_cash_years)
+    ef_months = p.emergency_fund_months
+    cash_months = p.bucket_cash_years * 12
+    lines = [
+        f"\n### 1.5 資産配分（バケット戦略）\n",
+        f"ライフステージに応じて3フェーズで資産配分を変化させる。\n",
+        f"**フェーズ1（〜{ramp_start - 1}歳・現役前半）：**"
+        f"株式{100 - p.bucket_gold_pct * 100:.0f}%＋ゴールド{p.bucket_gold_pct * 100:.0f}%。"
+        f"生活防衛資金は生活費{ef_months:.0f}ヶ月分を現金確保（§1.3）。\n" if p.bucket_gold_pct > 0 else
+        f"**フェーズ1（〜{ramp_start - 1}歳・現役前半）：**"
+        f"株式100%。生活防衛資金は生活費{ef_months:.0f}ヶ月分を現金確保（§1.3）。\n",
+        f"**フェーズ2（{ramp_start}〜{retirement - 1}歳・移行期）：**"
+        f"現金・債券を段階的に積み増し。"
+        f"生活防衛資金を{ef_months:.0f}ヶ月→{cash_months:.0f}ヶ月（{p.bucket_cash_years:.0f}年分）に拡大。\n",
+        f"**フェーズ3（{retirement}歳〜・退職後）：**"
+        f"ターゲット配分に到達し、年次リバランスで維持。\n",
+        f"| 資産クラス | ターゲット配分 | フェーズ1 | フェーズ2 | フェーズ3 |",
+        f"|-----------|-------------|---------|---------|---------|",
+    ]
+    if p.bucket_gold_pct > 0:
+        lines.append(
+            f"| ゴールド（{p.bucket_gold_return:.0%}） | 総資産の{p.bucket_gold_pct:.0%} | ● | ● | ● |"
+        )
+    lines.extend([
+        f"| 現金 | 生活費{p.bucket_cash_years:.0f}年分 | {ef_months:.0f}ヶ月分 | →拡大 | ● |",
+        f"| 債券（{p.bucket_bond_return:.1%}） | 生活費{bond_years:.0f}年分 | − | →積増 | ● |",
+        f"| 株式（{p.investment_return:.0%}） | 残り全額 | ● | ● | ● |",
+    ])
+    lines.append(
+        f"\n退職後の取り崩し順序：**現金→債券→ゴールド→株式**（暴落時に株式の売却を回避）。"
+        f"計画済み一時支出（旅行等）は株式から直接取り崩す。"
+        f"安全資産の上限は総資産の70%（最低30%は株式を維持）。"
+    )
+    return "\n".join(lines)
+
+
+def _render_ch1_6_strategies(ctx: ReportContext) -> str:
     savings = ctx.savings
 
     # Classify purchase ages: None=feasible at start, INFEASIBLE=impossible, int=deferred
@@ -922,7 +968,7 @@ def _render_ch1_5_strategies(ctx: ReportContext) -> str:
     all_immediate = not has_deferred and not has_infeasible
 
     lines = [
-        "\n### 1.5 4戦略の定義と初期コスト\n",
+        "\n### 1.6 4戦略の定義と初期コスト\n",
         "浦和常盤・北浦和エリアの中古物件（マンション7,580万・築10年、一戸建て6,547万・築7年）。",
     ]
     if all_immediate:
@@ -1628,6 +1674,29 @@ def _render_ch5(ctx: ReportContext) -> str:
         f"この隠れコストはシミュレーションに反映されていない。"
     )
 
+    # --- 5.4 順序リスク ---
+    lines.append("\n### 5.4 順序リスク（Sequence of Returns Risk）\n")
+    lines.append(
+        "退職後の資産取り崩しフェーズでは**順序リスク**が最大の脅威となる。"
+        "同じ平均リターンでも、退職直後に暴落が来ると取り崩しが元本を大きく毀損し、"
+        "その後の回復局面では資産規模が縮小しているため回復力が弱い。"
+        "逆に退職直後に好調なら、取り崩し後も十分な元本が残り複利効果が働く。"
+        "つまり**リターンの順序**が総資産に大きな影響を与える。"
+    )
+    has_bucket = ctx.params.bucket_safe_years > 0 or ctx.params.bucket_gold_pct > 0
+    if has_bucket:
+        lines.append(
+            "\n本シミュレーションではバケット戦略（§1.5）により、"
+            "退職前から安全資産を段階的に積み増し、"
+            "退職後は安全資産から優先的に取り崩すことで、"
+            "暴落時に株式を安値で売却するリスクを軽減している。"
+        )
+    else:
+        lines.append(
+            "\n本シミュレーションでは退職後も100%株式運用を前提としているため、"
+            "暴落時に生活費を捻出するために株式を安値で売却するリスクがある。"
+        )
+
     return "\n".join(lines)
 
 
@@ -2267,5 +2336,6 @@ def render_report(ctx: ReportContext) -> str:
         for old, new in [(5, 4), (6, 5), (7, 6)]:
             result = result.replace(f"第{old}章", f"第__{new}__章")
             result = re.sub(rf"### {old}\.", f"### __{new}__.", result)
+            result = result.replace(f"§{old}", f"§__{new}__")
         result = result.replace("__", "")
     return result

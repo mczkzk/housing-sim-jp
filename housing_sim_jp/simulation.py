@@ -749,6 +749,71 @@ def _swap_taxable_to_nisa(
     return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, net_to_nisa
 
 
+def _rebalance_portfolio(
+    params: SimulationParams, age: int, annual_expenses: float,
+    nisa_balance: float,
+    taxable_balance: float, taxable_cost_basis: float,
+    bond_balance: float, bond_cost_basis: float,
+    gold_balance: float, gold_cost_basis: float,
+    emergency_fund: float,
+) -> tuple[float, float, float, float, float, float, float]:
+    """Annual rebalance toward bucket targets. NISA stays equity (tax-exempt).
+
+    EF (cash bucket) is NOT adjusted here — managed by _manage_emergency_fund().
+    Only bond/gold/equity allocation is rebalanced.
+
+    Returns (taxable_bal, taxable_cb, bond_bal, bond_cb, gold_bal, gold_cb, emergency_fund).
+    """
+    total = nisa_balance + taxable_balance + bond_balance + gold_balance + emergency_fund
+    _, bond_t, gold_t, _ = params.bucket_targets(age, annual_expenses, total)
+
+    # Adjust gold toward gold_t
+    diff = gold_balance - gold_t
+    if diff > 0:
+        # Sell excess gold → taxable equity
+        ratio = diff / gold_balance if gold_balance > 0 else 0
+        cb_portion = gold_cost_basis * ratio
+        gold_balance -= diff
+        gold_cost_basis -= cb_portion
+        taxable_balance += diff
+        taxable_cost_basis += cb_portion
+    elif diff < 0:
+        needed = -diff
+        buy = min(needed, taxable_balance)
+        if buy > 0:
+            ratio = buy / taxable_balance if taxable_balance > 0 else 0
+            cb_portion = taxable_cost_basis * ratio
+            taxable_balance -= buy
+            taxable_cost_basis -= cb_portion
+            gold_balance += buy
+            gold_cost_basis += cb_portion
+
+    # Adjust bond toward bond_t
+    diff = bond_balance - bond_t
+    if diff > 0:
+        ratio = diff / bond_balance if bond_balance > 0 else 0
+        cb_portion = bond_cost_basis * ratio
+        bond_balance -= diff
+        bond_cost_basis -= cb_portion
+        taxable_balance += diff
+        taxable_cost_basis += cb_portion
+    elif diff < 0:
+        needed = -diff
+        buy = min(needed, taxable_balance)
+        if buy > 0:
+            ratio = buy / taxable_balance if taxable_balance > 0 else 0
+            cb_portion = taxable_cost_basis * ratio
+            taxable_balance -= buy
+            taxable_cost_basis -= cb_portion
+            bond_balance += buy
+            bond_cost_basis += cb_portion
+
+    return (taxable_balance, taxable_cost_basis,
+            bond_balance, bond_cost_basis,
+            gold_balance, gold_cost_basis,
+            emergency_fund)
+
+
 def _update_investments(
     investable: float,
     nisa_balance: float,
@@ -818,11 +883,16 @@ def _apply_divorce(
     taxable_cost_basis: float,
     ideco_balance: float,
     emergency_fund: float,
-) -> tuple[float, float, float, float, float, float, float, float]:
+    bond_balance: float = 0.0,
+    bond_cost_basis: float = 0.0,
+    gold_balance: float = 0.0,
+    gold_cost_basis: float = 0.0,
+) -> tuple[float, ...]:
     """Apply divorce event: 50% asset split, property sale, set rental cost.
 
     Returns (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-             ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost).
+             ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost,
+             bond_balance, bond_cost_basis, gold_balance, gold_cost_basis).
     Mutates strategy (clears property/loan).
     """
     nisa_balance *= DIVORCE_ASSET_SPLIT_RATIO
@@ -831,6 +901,10 @@ def _apply_divorce(
     taxable_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
     ideco_balance *= DIVORCE_ASSET_SPLIT_RATIO
     emergency_fund *= DIVORCE_ASSET_SPLIT_RATIO
+    bond_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    bond_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
+    gold_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    gold_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
 
     event_cost_adj = 0.0
     if strategy.property_price > 0:
@@ -852,7 +926,8 @@ def _apply_divorce(
     divorce_rental_cost = PRE_PURCHASE_RENT * params.inflation_factor(years_elapsed)
 
     return (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-            ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost)
+            ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost,
+            bond_balance, bond_cost_basis, gold_balance, gold_cost_basis)
 
 
 def _apply_spouse_death(strategy: Strategy, life_insurance_payout: float) -> float:
@@ -1096,7 +1171,18 @@ def _calc_required_emergency_fund(
         base_living *= params.retirement_living_cost_ratio
     if is_divorced or is_spouse_dead:
         base_living *= SINGLE_LIVING_COST_RATIO
-    return base_living * params.emergency_fund_months * inflation
+
+    # Bucket strategy: ramp EF months up to bucket_cash_years during transition
+    ef_months = params.emergency_fund_months
+    if params.bucket_safe_years > 0:
+        retirement_age = max(params.husband_work_end_age, params.wife_work_end_age)
+        bucket_start = retirement_age - params.bucket_ramp_years
+        if age >= bucket_start:
+            ramp = min(1.0, (age - bucket_start) / max(1, params.bucket_ramp_years))
+            target_months = params.bucket_cash_years * 12
+            ef_months = params.emergency_fund_months + (target_months - params.emergency_fund_months) * ramp
+
+    return base_living * ef_months * inflation
 
 
 def _calc_final_assets(
@@ -1109,12 +1195,16 @@ def _calc_final_assets(
     purchase_closing_cost: float,
     emergency_fund: float = 0.0,
     purchase_year_offset: int = 0,
+    bond_balance: float = 0.0,
+    bond_cost_basis: float = 0.0,
+    gold_balance: float = 0.0,
+    gold_cost_basis: float = 0.0,
 ) -> dict:
     """Calculate final asset values at simulation end (age 80).
 
     purchase_year_offset: years from sim start to purchase (for cyclical land factor indexing).
     """
-    investment_balance = nisa_balance + taxable_balance + emergency_fund
+    investment_balance = nisa_balance + taxable_balance + bond_balance + gold_balance + emergency_fund
 
     if strategy.property_price > 0:
         land_value_initial = strategy.property_price * strategy.land_value_ratio
@@ -1135,7 +1225,9 @@ def _calc_final_assets(
     effective_land_value = land_value_final - liquidity_haircut
 
     taxable_gain = max(0, taxable_balance - taxable_cost_basis)
-    securities_tax = taxable_gain * CAPITAL_GAINS_TAX_RATE
+    bond_gain = max(0, bond_balance - bond_cost_basis)
+    gold_gain = max(0, gold_balance - gold_cost_basis)
+    securities_tax = (taxable_gain + bond_gain + gold_gain) * CAPITAL_GAINS_TAX_RATE
 
     real_estate_tax = 0
     if strategy.property_price > 0:
@@ -1338,6 +1430,12 @@ def simulate_strategy(
     taxable_balance = initial - nisa_deposit
     taxable_cost_basis = initial - nisa_deposit
 
+    # Bucket strategy: bond/gold balances
+    bond_balance = 0.0
+    bond_cost_basis = 0.0
+    gold_balance = 0.0
+    gold_cost_basis = 0.0
+
     # Divorce / death / relocation state
     is_divorced = False
     is_spouse_dead = False
@@ -1384,6 +1482,31 @@ def simulate_strategy(
             )
             nisa_annual_invested += swapped
 
+            # Annual rebalance for bucket strategy
+            if params.bucket_safe_years > 0 or params.bucket_gold_pct > 0:
+                age_for_rebalance = start_age + month // 12
+                # Annual expenses estimate for bucket target calculation
+                num_kids = sum(1 for s, e in child_home_ranges if s <= age_for_rebalance <= e)
+                base = (
+                    base_living_cost(age_for_rebalance) + params.living_premium
+                    + num_kids * params.child_living_cost_monthly
+                ) * params.inflation_factor(month / 12)
+                retire_check = household_retire_sim_age is not None and age_for_rebalance >= household_retire_sim_age
+                if retire_check:
+                    base *= params.retirement_living_cost_ratio
+                annual_exp = base * 12
+                (taxable_balance, taxable_cost_basis,
+                 bond_balance, bond_cost_basis,
+                 gold_balance, gold_cost_basis,
+                 emergency_fund) = _rebalance_portfolio(
+                    params, age_for_rebalance, annual_exp,
+                    nisa_balance,
+                    taxable_balance, taxable_cost_basis,
+                    bond_balance, bond_cost_basis,
+                    gold_balance, gold_cost_basis,
+                    emergency_fund,
+                )
+
         year_idx = month // 12
         if params.annual_investment_returns is not None:
             monthly_return_rate = params.annual_investment_returns[year_idx] / 12
@@ -1397,9 +1520,10 @@ def simulate_strategy(
         w_age = wife_start_age + month // 12
 
         # Car purchase/replacement at year boundaries (deferred if unaffordable)
+        total_liquid = nisa_balance + taxable_balance + bond_balance + gold_balance
         car_one_time, car_owned, car_first_purchase_age, next_car_due_age = _try_car_purchase(
             age, month, start_age, params,
-            nisa_balance + taxable_balance,
+            total_liquid,
             car_owned, car_first_purchase_age, next_car_due_age,
             child_home_ranges, household_retire_sim_age,
         )
@@ -1407,7 +1531,7 @@ def simulate_strategy(
         # Pet adoption at year boundaries (after car, lower priority)
         pet_one_time, pet_active_ends, next_pet_idx, pet_first_adoption_age = _try_pet_adoption(
             age, month, start_age, params,
-            nisa_balance + taxable_balance - car_one_time,
+            total_liquid - car_one_time,
             pet_active_ends, next_pet_idx, pet_first_adoption_age,
             child_home_ranges, household_retire_sim_age,
         )
@@ -1464,10 +1588,14 @@ def simulate_strategy(
             if event_timeline.divorce_month is not None and month == event_timeline.divorce_month and not is_divorced:
                 is_divorced = True
                 (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-                 _, emergency_fund, cost_adj, divorce_rent) = _apply_divorce(
+                 _, emergency_fund, cost_adj, divorce_rent,
+                 bond_balance, bond_cost_basis,
+                 gold_balance, gold_cost_basis) = _apply_divorce(
                     month, strategy, params, purchase_month_offset,
                     nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
                     h_ideco_balance, emergency_fund,
+                    bond_balance, bond_cost_basis,
+                    gold_balance, gold_cost_basis,
                 )
                 # Husband keeps his iDeCo; wife's iDeCo leaves the simulation
                 w_ideco_balance = 0.0
@@ -1581,6 +1709,33 @@ def simulate_strategy(
         if discipline_factor < 1.0 and investable > 0:
             investable *= discipline_factor
 
+        # Safe asset returns (bond/gold grow independently of equity)
+        bond_balance *= 1 + params.bucket_bond_return / 12
+        gold_balance *= 1 + params.bucket_gold_return / 12
+
+        # Bucket withdrawal order: bond → gold → then equity (_update_investments)
+        # Special expenses (planned one-time costs) bypass bucket → funded from equity
+        special_expense_this_month = 0.0
+        if month % 12 == 0 and age in params.special_expenses:
+            special_expense_this_month = (
+                params.special_expenses[age] * params.inflation_factor(age - start_age)
+            )
+        max_bucket_withdrawal = max(0.0, -(investable + special_expense_this_month))
+
+        if investable < 0 and max_bucket_withdrawal > 0 and bond_balance > 0:
+            withdrawal = min(max_bucket_withdrawal, bond_balance, -investable)
+            ratio = withdrawal / bond_balance
+            bond_cost_basis *= (1 - ratio)
+            bond_balance -= withdrawal
+            investable += withdrawal
+            max_bucket_withdrawal -= withdrawal
+        if investable < 0 and max_bucket_withdrawal > 0 and gold_balance > 0:
+            withdrawal = min(max_bucket_withdrawal, gold_balance, -investable)
+            ratio = withdrawal / gold_balance
+            gold_cost_basis *= (1 - ratio)
+            gold_balance -= withdrawal
+            investable += withdrawal
+
         nisa_cb_before = nisa_cost_basis
         nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt = (
             _update_investments(
@@ -1606,15 +1761,29 @@ def simulate_strategy(
                 "investable_core": investable_core,
                 "investable_running": investable_running,
                 "balance": 0,
+                "bond_balance": 0,
+                "gold_balance": 0,
+                "emergency_fund": 0,
+                "real_estate_equity": 0,
             })
             break
 
-        investment_balance = nisa_balance + taxable_balance
+        investment_balance = nisa_balance + taxable_balance + bond_balance + gold_balance
 
         if principal_invaded_age is None and investment_balance + emergency_fund < principal_if_untouched:
             principal_invaded_age = age
 
         if month % 12 == 0:
+            # Real estate equity: property value − loan remaining (0 for rentals)
+            re_equity = 0.0
+            if strategy.property_price > 0 and month >= purchase_month_offset:
+                ownership_years = (month - purchase_month_offset) / 12
+                prop_value = _inflate_property_price(
+                    strategy, params, ownership_years,
+                    base_year_offset=purchase_month_offset / 12,
+                )
+                re_equity = max(0.0, prop_value - strategy.remaining_balance)
+
             monthly_log.append(
                 {
                     "age": age,
@@ -1628,6 +1797,10 @@ def simulate_strategy(
                     "investable_core": investable_core,
                     "investable_running": investable_running,
                     "balance": investment_balance,
+                    "bond_balance": bond_balance,
+                    "gold_balance": gold_balance,
+                    "emergency_fund": emergency_fund,
+                    "real_estate_equity": re_equity,
                 }
             )
 
@@ -1644,6 +1817,10 @@ def simulate_strategy(
             "nisa_cost_basis": 0,
             "taxable_balance": 0,
             "taxable_cost_basis": 0,
+            "bond_balance": 0,
+            "bond_cost_basis": 0,
+            "gold_balance": 0,
+            "gold_cost_basis": 0,
             "emergency_fund_final": 0,
             "bankrupt_age": bankrupt_age,
             "principal_invaded_age": principal_invaded_age,
@@ -1674,6 +1851,8 @@ def simulate_strategy(
         nisa_balance, taxable_balance, taxable_cost_basis,
         purchase_closing_cost, emergency_fund,
         purchase_year_offset=effective_purchase_age - start_age,
+        bond_balance=bond_balance, bond_cost_basis=bond_cost_basis,
+        gold_balance=gold_balance, gold_cost_basis=gold_cost_basis,
     )
 
     return {
@@ -1683,6 +1862,10 @@ def simulate_strategy(
         "nisa_cost_basis": nisa_cost_basis,
         "taxable_balance": taxable_balance,
         "taxable_cost_basis": taxable_cost_basis,
+        "bond_balance": bond_balance,
+        "bond_cost_basis": bond_cost_basis,
+        "gold_balance": gold_balance,
+        "gold_cost_basis": gold_cost_basis,
         "emergency_fund_final": emergency_fund,
         "bankrupt_age": bankrupt_age,
         "principal_invaded_age": principal_invaded_age,

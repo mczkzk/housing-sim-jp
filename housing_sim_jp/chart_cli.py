@@ -124,6 +124,7 @@ def main():
             husband_start_age=husband_age, wife_start_age=wife_age,
         )
         print(f"  → {path}", file=sys.stderr)
+
     else:
         print("  確定論: 有効な結果なし", file=sys.stderr)
 

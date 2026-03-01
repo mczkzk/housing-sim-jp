@@ -101,6 +101,14 @@ class SimulationParams:
     # Special one-time expenses at specific ages (age → amount in 万円, 2026年価値)
     special_expenses: dict[int, float] = field(default_factory=dict)
 
+    # Bucket strategy (bucket_safe_years=0 disables)
+    bucket_safe_years: float = 5.0     # 安全資産バケット=生活費N年分（0=無効）
+    bucket_cash_years: float = 2.0     # うち現金（年分）
+    bucket_gold_pct: float = 0.10      # ゴールド（総資産に対する%）
+    bucket_ramp_years: int = 5         # 退職何年前から段階的に移行
+    bucket_bond_return: float = 0.005  # 個人向け国債変動10年
+    bucket_gold_return: float = 0.04   # ゴールド期待リターン
+
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: list[float] | None = None
 
@@ -170,6 +178,41 @@ class SimulationParams:
         """Get monthly loan rate based on elapsed years (5-year step schedule)"""
         idx = min(int(years_elapsed // 5), len(self.loan_rate_schedule) - 1)
         return self.loan_rate_schedule[idx] / 12
+
+    def bucket_targets(
+        self, age: int, annual_expenses: float, total_assets: float,
+    ) -> tuple[float, float, float, float]:
+        """Compute target bucket allocation. Returns (cash, bond, gold, equity).
+
+        Gold: always at target % (inflation hedge, no ramp).
+        Cash/bond: ramp linearly over bucket_ramp_years before retirement.
+        """
+        if self.bucket_safe_years <= 0 and self.bucket_gold_pct <= 0:
+            return (0.0, 0.0, 0.0, total_assets)
+
+        # Gold: constant allocation (no ramp)
+        gold_t = self.bucket_gold_pct * total_assets
+
+        # Cash/bond: ramp only during bucket transition
+        cash_t = 0.0
+        bond_t = 0.0
+        if self.bucket_safe_years > 0:
+            retirement_age = max(self.husband_work_end_age, self.wife_work_end_age)
+            start_age = retirement_age - self.bucket_ramp_years
+            if age >= start_age:
+                ramp = min(1.0, (age - start_age) / max(1, self.bucket_ramp_years))
+                cash_t = self.bucket_cash_years * annual_expenses * ramp
+                bond_t = max(0.0, self.bucket_safe_years - self.bucket_cash_years) * annual_expenses * ramp
+
+        # Cap safe assets at 70% of total (keep min 30% equity)
+        safe_total = cash_t + bond_t + gold_t
+        if safe_total >= total_assets * 0.7:
+            scale = total_assets * 0.7 / safe_total if safe_total > 0 else 0
+            cash_t *= scale
+            bond_t *= scale
+            gold_t *= scale
+        equity_t = max(0.0, total_assets - cash_t - bond_t - gold_t)
+        return (cash_t, bond_t, gold_t, equity_t)
 
 
 def _calc_equal_payment(principal: float, monthly_rate: float, months: int) -> float:
