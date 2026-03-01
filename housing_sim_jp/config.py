@@ -260,7 +260,7 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
     )
 
 
-def resolve_independence_ages(
+def resolve_grad_independence_ages(
     grad: str, legacy_indep: list[int], num_children: int,
 ) -> list[int]:
     """Resolve per-child independence ages from education_grad setting.
@@ -292,7 +292,7 @@ def parse_args(
     config = load_config(args.config)
     r = resolve(args, config)
     child_birth_ages, legacy_indep = parse_children_config(r["children"])
-    independence_ages = resolve_independence_ages(r["education_grad"], legacy_indep, len(child_birth_ages))
+    independence_ages = resolve_grad_independence_ages(r["education_grad"], legacy_indep, len(child_birth_ages))
     pet_ages = parse_pet_ages(r["pets"])
     return r, child_birth_ages, independence_ages, pet_ages, args
 
