@@ -133,7 +133,8 @@ PRE_PURCHASE_RENEWAL_DIVISOR = 24  # Renewal fee amortized monthly
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
 # Simulation constants
-NISA_LIMIT = 3600  # 夫婦NISA上限（万円）
+NISA_LIMIT = 3600  # 夫婦NISA生涯上限（万円）
+NISA_ANNUAL_LIMIT = 720  # 夫婦合計年間投資枠（360万/人 × 2人）
 RESIDENCE_SPECIAL_DEDUCTION = 3000  # 居住用財産3,000万円特別控除
 
 # Rental moving costs
@@ -716,6 +717,38 @@ def _calc_expenses(
     return housing_cost, education_cost, living_cost, utility_cost, loan_deduction, one_time_expense
 
 
+def _swap_taxable_to_nisa(
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    taxable_balance: float,
+    taxable_cost_basis: float,
+    nisa_limit: float,
+    annual_limit: float,
+) -> tuple[float, float, float, float, float]:
+    """年始の特定口座→NISA乗り換え（売却益に20.315%課税）。
+
+    Returns (nisa_bal, nisa_cb, tax_bal, tax_cb, annual_invested).
+    """
+    lifetime_room = max(0, nisa_limit - nisa_cost_basis)
+    swap_room = min(annual_limit, lifetime_room)
+    sell_amount = min(taxable_balance, swap_room)
+    if sell_amount <= 0 or taxable_balance <= 0:
+        return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, 0.0
+
+    ratio = sell_amount / taxable_balance
+    cost_portion = taxable_cost_basis * ratio
+    gain = sell_amount - cost_portion
+    tax = max(0, gain) * CAPITAL_GAINS_TAX_RATE
+    net_to_nisa = sell_amount - tax
+
+    taxable_balance -= sell_amount
+    taxable_cost_basis -= cost_portion
+    nisa_balance += net_to_nisa
+    nisa_cost_basis += net_to_nisa
+
+    return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, net_to_nisa
+
+
 def _update_investments(
     investable: float,
     nisa_balance: float,
@@ -723,6 +756,7 @@ def _update_investments(
     taxable_balance: float,
     taxable_cost_basis: float,
     nisa_limit: float,
+    nisa_annual_room: float,
     monthly_return_rate: float,
 ) -> tuple[float, float, float, float, bool]:
     """Apply returns and invest/withdraw. Returns (nisa_bal, nisa_cb, tax_bal, tax_cb, bankrupt_flag).
@@ -734,7 +768,8 @@ def _update_investments(
     bankrupt = False
 
     if investable >= 0:
-        nisa_room = max(0, nisa_limit - nisa_cost_basis)
+        lifetime_room = max(0, nisa_limit - nisa_cost_basis)
+        nisa_room = min(investable, lifetime_room, nisa_annual_room)
         to_nisa = min(investable, nisa_room)
         nisa_balance += to_nisa
         nisa_cost_basis += to_nisa
@@ -1296,9 +1331,10 @@ def simulate_strategy(
     invested_principal = initial  # 実際に投資に回った額（元本割れ判定用）
     initial -= emergency_fund
 
-    nisa_deposit = min(initial, NISA_LIMIT)
+    nisa_deposit = min(initial, NISA_LIMIT, NISA_ANNUAL_LIMIT)
     nisa_balance = nisa_deposit
     nisa_cost_basis = nisa_deposit
+    nisa_annual_invested = nisa_deposit
     taxable_balance = initial - nisa_deposit
     taxable_cost_basis = initial - nisa_deposit
 
@@ -1337,6 +1373,17 @@ def simulate_strategy(
     fixed_monthly_return = params.investment_return / 12
 
     for month in range(TOTAL_MONTHS):
+        # 年始: NISA年間枠リセット + 特定→NISA乗り換え
+        if month > 0 and month % 12 == 0:
+            nisa_annual_invested = 0.0
+            (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+             swapped) = _swap_taxable_to_nisa(
+                nisa_balance, nisa_cost_basis,
+                taxable_balance, taxable_cost_basis,
+                NISA_LIMIT, NISA_ANNUAL_LIMIT,
+            )
+            nisa_annual_invested += swapped
+
         year_idx = month // 12
         if params.annual_investment_returns is not None:
             monthly_return_rate = params.annual_investment_returns[year_idx] / 12
@@ -1534,13 +1581,16 @@ def simulate_strategy(
         if discipline_factor < 1.0 and investable > 0:
             investable *= discipline_factor
 
+        nisa_cb_before = nisa_cost_basis
         nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt = (
             _update_investments(
                 investable, nisa_balance, nisa_cost_basis,
                 taxable_balance, taxable_cost_basis,
-                NISA_LIMIT, monthly_return_rate,
+                NISA_LIMIT, NISA_ANNUAL_LIMIT - nisa_annual_invested,
+                monthly_return_rate,
             )
         )
+        nisa_annual_invested += max(0, nisa_cost_basis - nisa_cb_before)
 
         if bankrupt and bankrupt_age is None:
             bankrupt_age = age
