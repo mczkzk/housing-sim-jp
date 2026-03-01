@@ -115,10 +115,14 @@ def main():
             det_results, output_dir, name=chart_name, event_markers=shared_markers,
             initial_principal=savings,
             investment_return=params.investment_return,
+            husband_start_age=husband_age, wife_start_age=wife_age,
         )
         print(f"  → {path}", file=sys.stderr)
 
-        path = plot_cashflow_stack(det_results, output_dir, name=chart_name)
+        path = plot_cashflow_stack(
+            det_results, output_dir, name=chart_name,
+            husband_start_age=husband_age, wife_start_age=wife_age,
+        )
         print(f"  → {path}", file=sys.stderr)
     else:
         print("  確定論: 有効な結果なし", file=sys.stderr)
@@ -139,7 +143,10 @@ def main():
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
-            path = plot_mc_fan(valid_mc, output_dir, name=chart_name)
+            path = plot_mc_fan(
+                valid_mc, output_dir, name=chart_name,
+                husband_start_age=husband_age, wife_start_age=wife_age,
+            )
             print(f"  → {path}", file=sys.stderr)
         else:
             print("  MC: 有効な結果なし", file=sys.stderr)

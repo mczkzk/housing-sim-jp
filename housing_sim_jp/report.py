@@ -247,8 +247,12 @@ def build_report_context(
         plot_trajectory(
             det_results, chart_dir, name=name, event_markers=shared_markers,
             initial_principal=savings, investment_return=params.investment_return,
+            husband_start_age=husband_age, wife_start_age=wife_age,
         )
-        plot_cashflow_stack(det_results, chart_dir, name=name)
+        plot_cashflow_stack(
+            det_results, chart_dir, name=name,
+            husband_start_age=husband_age, wife_start_age=wife_age,
+        )
 
     # ---- 5 Scenarios ----
     print("5シナリオ×4戦略...", file=sys.stderr)
@@ -295,7 +299,10 @@ def build_report_context(
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
-            plot_mc_fan(valid_mc, chart_dir, name=name)
+            plot_mc_fan(
+                valid_mc, chart_dir, name=name,
+                husband_start_age=husband_age, wife_start_age=wife_age,
+            )
 
         # Stress test
         print("  ストレステスト...", file=sys.stderr)

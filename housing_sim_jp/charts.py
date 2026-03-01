@@ -135,6 +135,27 @@ def _draw_event_markers(
         )
 
 
+def _format_age_axis(ax: plt.Axes, husband_start_age: int | None, wife_start_age: int | None) -> None:
+    """Format x-axis to show both spouses' ages when they differ.
+
+    Displays younger age as primary, elder age in parentheses.
+    E.g., husband=37, wife=35 → tick "35(37)", xlabel "妻の年齢（夫の年齢）"
+    """
+    if husband_start_age is None or wife_start_age is None:
+        return
+    age_diff = abs(husband_start_age - wife_start_age)
+    if age_diff == 0:
+        return
+    if husband_start_age > wife_start_age:
+        elder_label, younger_label = "夫", "妻"
+    else:
+        elder_label, younger_label = "妻", "夫"
+    ax.xaxis.set_major_formatter(
+        ticker.FuncFormatter(lambda x, _: f"{int(x)}({int(x) - age_diff})")
+    )
+    ax.set_xlabel(f"{elder_label}の年齢（{younger_label}の年齢）")
+
+
 def _format_oku_axis(ax: plt.Axes):
     """Add 億円 labels on Y axis (secondary tick labels)."""
     ax.yaxis.set_major_formatter(
@@ -152,6 +173,8 @@ def plot_trajectory(
     event_markers: list[tuple[int, float, str]] | None = None,
     initial_principal: float | None = None,
     investment_return: float | None = None,
+    husband_start_age: int | None = None,
+    wife_start_age: int | None = None,
 ) -> Path:
     """Generate a line chart of asset trajectory for deterministic simulation.
 
@@ -194,6 +217,7 @@ def plot_trajectory(
     ax.legend(loc="upper left")
     ax.grid(True, alpha=0.3)
     _format_oku_axis(ax)
+    _format_age_axis(ax, husband_start_age, wife_start_age)
 
     if event_markers:
         _draw_event_markers(ax, event_markers, y_base_ratio=0.05)
@@ -211,6 +235,8 @@ def plot_mc_fan(
     mc_results: list[MonteCarloResult],
     output_path: Path,
     name: str = "",
+    husband_start_age: int | None = None,
+    wife_start_age: int | None = None,
 ) -> Path:
     """Generate a fan chart (P5-P95 bands) for Monte Carlo results.
 
@@ -260,6 +286,7 @@ def plot_mc_fan(
         ax.legend(loc="upper left", fontsize=9)
         ax.grid(True, alpha=0.3)
         _format_oku_axis(ax)
+        _format_age_axis(ax, husband_start_age, wife_start_age)
 
     # Hide unused subplots
     for idx in range(n, rows * cols):
@@ -283,6 +310,8 @@ def plot_cashflow_stack(
     output_path: Path,
     name: str = "",
     per_result_markers: list[list[tuple[int, float, str]]] | None = None,
+    husband_start_age: int | None = None,
+    wife_start_age: int | None = None,
 ) -> Path:
     """Generate stacked cashflow charts (income vs expenses) per strategy.
 
@@ -371,6 +400,7 @@ def plot_cashflow_stack(
         ax.axhline(0, color="black", linewidth=2.0, linestyle="-", zorder=5)
         ax.grid(True, alpha=0.3)
         ax.legend(loc="upper left", fontsize=9)
+        _format_age_axis(ax, husband_start_age, wife_start_age)
 
     # Hide unused subplots
     for idx in range(len(results), rows * cols):
