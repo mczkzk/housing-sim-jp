@@ -1196,24 +1196,25 @@ def _process_ideco(
             ideco_withdrawal_gross)
 
 
-def _manage_emergency_fund(
-    emergency_fund: float,
-    required_ef: float,
+def _manage_reserve(
+    balance: float,
+    required: float,
     investable: float,
 ) -> tuple[float, float]:
-    """Release excess EF to investment, or top up EF from surplus.
+    """Release excess reserve to investment, or top up from surplus.
 
-    Returns (emergency_fund, investable).
+    Used for both emergency fund and cash bucket.
+    Returns (balance, investable).
     """
-    if emergency_fund > required_ef:
-        investable += emergency_fund - required_ef
-        emergency_fund = required_ef
+    if balance > required:
+        investable += balance - required
+        balance = required
     if investable > 0:
-        ef_shortfall = max(0, required_ef - emergency_fund)
-        ef_topup = min(investable, ef_shortfall)
-        emergency_fund += ef_topup
-        investable -= ef_topup
-    return emergency_fund, investable
+        shortfall = max(0, required - balance)
+        topup = min(investable, shortfall)
+        balance += topup
+        investable -= topup
+    return balance, investable
 
 
 def _calc_required_emergency_fund(
@@ -1304,19 +1305,8 @@ def _manage_cash_bucket(
     required_cb: float,
     investable: float,
 ) -> tuple[float, float]:
-    """Release excess cash bucket to investment, or top up from surplus.
-
-    Returns (cash_bucket, investable).
-    """
-    if cash_bucket > required_cb:
-        investable += cash_bucket - required_cb
-        cash_bucket = required_cb
-    if investable > 0:
-        cb_shortfall = max(0, required_cb - cash_bucket)
-        cb_topup = min(investable, cb_shortfall)
-        cash_bucket += cb_topup
-        investable -= cb_topup
-    return cash_bucket, investable
+    """Release excess cash bucket to investment, or top up from surplus."""
+    return _manage_reserve(cash_bucket, required_cb, investable)
 
 
 def _calc_final_assets(
@@ -1874,7 +1864,7 @@ def simulate_strategy(
             age, month, params, child_home_ranges, is_divorced, is_spouse_dead,
             household_retire_sim_age,
         )
-        emergency_fund, investable = _manage_emergency_fund(
+        emergency_fund, investable = _manage_reserve(
             emergency_fund, required_ef, investable,
         )
 
