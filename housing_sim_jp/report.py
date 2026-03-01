@@ -885,9 +885,10 @@ def _render_ch1_3_emergency(ctx: ReportContext) -> str:
     ratio = ef / ctx.savings * 100 if ctx.savings > 0 else 0
     return (
         f"\n### 1.3 生活防衛資金\n\n"
-        f"**生活費{ctx.params.emergency_fund_months:.0f}ヶ月分を現金確保。** "
+        f"**生活費{ctx.params.emergency_fund_months:.0f}ヶ月分を現金確保（最終防衛ライン）。** "
         f"{ctx.start_age}歳時点で約{ef:.0f}万円（初期資産の約{ratio:.0f}%）。"
         f"世帯構成とインフレに連動。"
+        f"株式・債券・ゴールド・現金ポジションが全て枯渇した場合にのみ取り崩す。"
     )
 
 
@@ -930,18 +931,20 @@ def _render_ch1_5_bucket(ctx: ReportContext) -> str:
     ramp_start = retirement - p.bucket_ramp_years
     bond_years = max(0, p.bucket_safe_years - p.bucket_cash_years)
     ef_months = p.emergency_fund_months
-    cash_months = p.bucket_cash_years * 12
     lines = [
         f"\n### 1.5 資産配分（バケット戦略）\n",
+        f"**生活防衛資金**（§1.3）と**現金ポジション**は独立した現金プール。\n",
+        f"- **生活防衛資金**: 生活費{ef_months:.0f}ヶ月分。最終防衛ライン（全資産枯渇時のみ取り崩し）\n",
+        f"- **現金ポジション**: フェーズで変動する運用バッファ\n",
+        f"  - 現役（教育費あり）: 年間教育費の半年分（1学期分）\n",
+        f"  - 移行期（{ramp_start}〜{retirement - 1}歳）: 教育費 or 生活費{p.bucket_cash_years:.0f}年分×ランプ率\n",
+        f"  - 退職後（{retirement}歳〜）: 生活費{p.bucket_cash_years:.0f}年分\n\n",
         f"ライフステージに応じて3フェーズで資産配分を変化させる。\n",
         f"**フェーズ1（〜{ramp_start - 1}歳・現役前半）：**"
-        f"株式{100 - p.bucket_gold_pct * 100:.0f}%＋ゴールド{p.bucket_gold_pct * 100:.0f}%。"
-        f"生活防衛資金は生活費{ef_months:.0f}ヶ月分を現金確保（§1.3）。\n" if p.bucket_gold_pct > 0 else
-        f"**フェーズ1（〜{ramp_start - 1}歳・現役前半）：**"
-        f"株式100%。生活防衛資金は生活費{ef_months:.0f}ヶ月分を現金確保（§1.3）。\n",
+        f"株式{100 - p.bucket_gold_pct * 100:.0f}%＋ゴールド{p.bucket_gold_pct * 100:.0f}%。\n" if p.bucket_gold_pct > 0 else
+        f"**フェーズ1（〜{ramp_start - 1}歳・現役前半）：**株式100%。\n",
         f"**フェーズ2（{ramp_start}〜{retirement - 1}歳・移行期）：**"
-        f"現金・債券を段階的に積み増し。"
-        f"生活防衛資金を{ef_months:.0f}ヶ月→{cash_months:.0f}ヶ月（{p.bucket_cash_years:.0f}年分）に拡大。\n",
+        f"現金ポジション・債券を段階的に積み増し。\n",
         f"**フェーズ3（{retirement}歳〜・退職後）：**"
         f"ターゲット配分に到達し、年次リバランスで維持。\n",
         f"| 資産クラス | ターゲット配分 | フェーズ1 | フェーズ2 | フェーズ3 |",
@@ -952,14 +955,17 @@ def _render_ch1_5_bucket(ctx: ReportContext) -> str:
             f"| ゴールド（{p.bucket_gold_return:.0%}） | 総資産の{p.bucket_gold_pct:.0%} | ● | ● | ● |"
         )
     lines.extend([
-        f"| 現金 | 生活費{p.bucket_cash_years:.0f}年分 | {ef_months:.0f}ヶ月分 | →拡大 | ● |",
+        f"| 現金ポジション | 生活費{p.bucket_cash_years:.0f}年分 | 教育費半年分 | →拡大 | ● |",
         f"| 債券（{p.bucket_bond_return:.1%}） | 生活費{bond_years:.0f}年分 | − | →積増 | ● |",
         f"| 株式（{p.investment_return:.0%}） | 残り全額 | ● | ● | ● |",
     ])
     lines.append(
-        f"\n退職後の取り崩し順序：**現金→債券→ゴールド→株式**（暴落時に株式の売却を回避）。"
-        f"計画済み一時支出（旅行等）は株式から直接取り崩す。"
-        f"安全資産の上限は総資産の70%（最低30%は株式を維持）。"
+        f"\n**取り崩し順序：**\n"
+        f"- **現役**: 現金ポジション → 株式(特定) → 株式(NISA) → 生活防衛資金"
+        f"（毎月の収入があるため通常/暴落を区別しない。現金ポジションは教育費ピーク等の月次赤字バッファ）\n"
+        f"- **退職後(通常)**: 株式(特定) → 株式(NISA) → 債券 → ゴールド → 生活防衛資金\n"
+        f"- **退職後(暴落)**: 現金ポジション → 債券 → ゴールド → 株式 → 生活防衛資金"
+        f"（順序リスク対策: 暴落時に株式の安値売りを回避し、現金ポジションと安全資産で凌ぐ）"
     )
     return "\n".join(lines)
 
@@ -1031,7 +1037,7 @@ def _render_ch1_6_strategies(ctx: ReportContext) -> str:
 
     lines.append(
         "\n**投資口座：** NISA（夫婦合計上限3,600万円、非課税）→ 特定口座（課税20.315%）の順で運用。"
-        "取り崩しは特定口座 → NISA → 生活防衛資金の逆順。"
+        "取り崩し順序は§1.5を参照（生活防衛資金は最終防衛ライン）。"
     )
 
     return "\n".join(lines)
@@ -1373,7 +1379,7 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
 
     # NISA breakdown
     lines.append("\n**NISA・特定口座の内訳：**\n")
-    lines.append("※運用資産残高はNISA＋特定口座＋債券＋ゴールド＋生活防衛資金の合計\n")
+    lines.append("※運用資産残高はNISA＋特定口座＋債券＋ゴールド＋現金ポジション（生活防衛資金除く）の合計\n")
     all4 = [r for r in ordered if r is not None]
     lines.append("| 戦略 | NISA残高（元本） | 特定口座残高（元本） | 金融所得税 |")
     lines.append("|------|-----------------|------------------|----------|")

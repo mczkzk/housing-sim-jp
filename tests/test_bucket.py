@@ -110,19 +110,21 @@ class TestRebalancePortfolio:
             bucket_gold_pct=0.10, bucket_ramp_years=5,
             husband_work_end_age=70, wife_work_end_age=70,
         )
-        (tax_b, tax_cb, bond_b, bond_cb, gold_b, gold_cb, ef) = _rebalance_portfolio(
+        (tax_b, tax_cb, bond_b, bond_cb, gold_b, gold_cb, cb) = _rebalance_portfolio(
             p, age=70, annual_expenses=300,
             nisa_balance=2000,
             taxable_balance=8000, taxable_cost_basis=6000,
             bond_balance=0, bond_cost_basis=0,
             gold_balance=0, gold_cost_basis=0,
-            emergency_fund=100,
+            cash_bucket=100,
+            required_cash_bucket=600,
         )
         assert bond_b > 0
         assert gold_b > 0
-        assert ef == 100  # EF not touched by rebalance (managed separately)
+        # CB refilled from taxable: cash_t = max(bucket_target, required_cb) = 600
+        assert cb == pytest.approx(600.0)
         total_non_nisa = 8000 + 100
-        assert tax_b + bond_b + gold_b + ef == pytest.approx(total_non_nisa)
+        assert tax_b + bond_b + gold_b + cb == pytest.approx(total_non_nisa)
 
     def test_nisa_untouched(self):
         """NISA balance should remain unchanged."""
@@ -132,18 +134,18 @@ class TestRebalancePortfolio:
             husband_work_end_age=70, wife_work_end_age=70,
         )
         nisa = 3000
-        (tax_b, tax_cb, bond_b, bond_cb, gold_b, gold_cb, ef) = _rebalance_portfolio(
+        (tax_b, tax_cb, bond_b, bond_cb, gold_b, gold_cb, cb) = _rebalance_portfolio(
             p, age=70, annual_expenses=300,
             nisa_balance=nisa,
             taxable_balance=5000, taxable_cost_basis=4000,
             bond_balance=0, bond_cost_basis=0,
             gold_balance=0, gold_cost_basis=0,
-            emergency_fund=200,
+            cash_bucket=200,
         )
         # NISA is not returned from _rebalance_portfolio, it stays unchanged
         # Total minus NISA should be conserved
         total_non_nisa = 5000 + 200
-        result_non_nisa = tax_b + bond_b + gold_b + ef
+        result_non_nisa = tax_b + bond_b + gold_b + cb
         assert result_non_nisa == pytest.approx(total_non_nisa)
 
 
@@ -162,13 +164,15 @@ class TestWithdrawalOrder:
         result = simulate_strategy(
             s, p, husband_start_age=30, wife_start_age=28,
         )
-        # Check that bond_balance and gold_balance are present in result
+        # Check that bond_balance, gold_balance, cash_bucket_final are present in result
         assert "bond_balance" in result
         assert "gold_balance" in result
-        # With bucket strategy, log should have bond/gold fields
+        assert "cash_bucket_final" in result
+        # With bucket strategy, log should have bond/gold/cash_bucket fields
         log = result["monthly_log"]
         assert all("bond_balance" in e for e in log)
         assert all("gold_balance" in e for e in log)
+        assert all("cash_bucket" in e for e in log)
 
 
 class TestFinalAssetsWithBucket:
@@ -246,13 +250,16 @@ class TestDivorceWithBucket:
             ideco_balance=500, emergency_fund=300,
             bond_balance=400, bond_cost_basis=350,
             gold_balance=200, gold_cost_basis=180,
+            cash_bucket=100,
         )
-        # result: (..., bond_bal, bond_cb, gold_bal, gold_cb)
+        # result: (..., bond_bal, bond_cb, gold_bal, gold_cb, cash_bucket)
         bond_bal = result[8]
         bond_cb = result[9]
         gold_bal = result[10]
         gold_cb = result[11]
+        cash_bucket = result[12]
         assert bond_bal == pytest.approx(400 * DIVORCE_ASSET_SPLIT_RATIO)
         assert bond_cb == pytest.approx(350 * DIVORCE_ASSET_SPLIT_RATIO)
         assert gold_bal == pytest.approx(200 * DIVORCE_ASSET_SPLIT_RATIO)
         assert gold_cb == pytest.approx(180 * DIVORCE_ASSET_SPLIT_RATIO)
+        assert cash_bucket == pytest.approx(100 * DIVORCE_ASSET_SPLIT_RATIO)
