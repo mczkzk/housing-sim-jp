@@ -1826,8 +1826,6 @@ def simulate_strategy(
             + loan_deduction
             - event_extra_cost
         )
-        investable_core = investable_running
-
         # iDeCo: husband's account
         (investable, h_ideco_balance, h_ideco_total_contribution,
          h_ideco_tax_benefit_total, h_ideco_contribution_years, h_ideco_tax_paid,
@@ -1950,7 +1948,6 @@ def simulate_strategy(
                 "education": education_cost,
                 "living": living_cost,
                 "investable": investable,
-                "investable_core": investable_core,
                 "investable_running": investable_running,
                 "balance": 0,
                 "bond_balance": 0,
@@ -1987,8 +1984,7 @@ def simulate_strategy(
                     "education": education_cost,
                     "living": living_cost,
                     "investable": investable,
-                    "investable_core": investable_core,
-                    "investable_running": investable_running,
+                        "investable_running": investable_running,
                     "balance": investment_balance,
                     "bond_balance": bond_balance,
                     "gold_balance": gold_balance,

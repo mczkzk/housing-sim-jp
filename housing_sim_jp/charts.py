@@ -357,7 +357,7 @@ def plot_cashflow_stack(
         living = [entry["living"] for entry in log]
         income = [entry["income"] for entry in log]
         investable = [
-            entry.get("investable_running", entry.get("investable_core", entry["investable"]))
+            entry.get("investable_running", entry["investable"])
             for entry in log
         ]
 
