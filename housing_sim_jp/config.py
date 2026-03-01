@@ -257,6 +257,19 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
     )
 
 
+def resolve_independence_ages(
+    grad: str, legacy_indep: list[int], num_children: int,
+) -> list[int]:
+    """Resolve per-child independence ages from education_grad setting.
+
+    education_grad takes precedence over per-child legacy spec (e.g. "30:修士").
+    """
+    grad_age = GRAD_SCHOOL_MAP.get(grad, DEFAULT_INDEPENDENCE_AGE)
+    if grad != DEFAULTS["education_grad"] or all(a == DEFAULT_INDEPENDENCE_AGE for a in legacy_indep):
+        return [grad_age] * num_children
+    return legacy_indep
+
+
 def parse_args(
     description: str,
     add_args_fn: "Callable[[argparse.ArgumentParser], None] | None" = None,
@@ -276,13 +289,7 @@ def parse_args(
     config = load_config(args.config)
     r = resolve(args, config)
     child_birth_ages, legacy_indep = parse_children_config(r["children"])
-    # education_grad takes precedence; fall back to per-child legacy spec
-    grad = r["education_grad"]
-    grad_age = GRAD_SCHOOL_MAP.get(grad, DEFAULT_INDEPENDENCE_AGE)
-    if grad != DEFAULTS["education_grad"] or all(a == DEFAULT_INDEPENDENCE_AGE for a in legacy_indep):
-        independence_ages = [grad_age] * len(child_birth_ages)
-    else:
-        independence_ages = legacy_indep
+    independence_ages = resolve_independence_ages(r["education_grad"], legacy_indep, len(child_birth_ages))
     pet_ages = parse_pet_ages(r["pets"])
     return r, child_birth_ages, independence_ages, pet_ages, args
 

@@ -21,6 +21,7 @@ from housing_sim_jp.config import (
     parse_special_expense_labels,
     parse_special_expenses,
     resolve,
+    resolve_independence_ages,
     resolve_sim_ages,
 )
 from housing_sim_jp.events import EventRiskConfig
@@ -146,12 +147,7 @@ def _resolve_config(config_path: Path | None) -> tuple[dict, list[int], list[int
     ns.config = config_path
     r = resolve(ns, config)
     child_birth_ages, legacy_indep = parse_children_config(r["children"])
-    grad = r["education_grad"]
-    grad_age = GRAD_SCHOOL_MAP.get(grad, DEFAULT_INDEPENDENCE_AGE)
-    if grad != DEFAULTS["education_grad"] or all(a == DEFAULT_INDEPENDENCE_AGE for a in legacy_indep):
-        independence_ages = [grad_age] * len(child_birth_ages)
-    else:
-        independence_ages = legacy_indep
+    independence_ages = resolve_independence_ages(r["education_grad"], legacy_indep, len(child_birth_ages))
     pet_ages = parse_pet_ages(r["pets"])
     return r, child_birth_ages, independence_ages, pet_ages
 
