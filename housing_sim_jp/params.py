@@ -98,6 +98,12 @@ class SimulationParams:
     # iDeCo parameters (per-person)
     husband_ideco: float = 2.0  # 夫のiDeCo拠出（万円/月, 企業型DC+DB上限）
     wife_ideco: float = 2.0    # 妻のiDeCo拠出（万円/月）
+    ideco_contribution_end_age: int = 65  # iDeCo拠出終了年齢（60-65）
+    ideco_withdrawal_age: int = 70        # iDeCo一時金受取年齢（60-75）
+
+    # Retirement allowance (退職金: 企業からの一時金、60歳退職時)
+    retirement_allowance: float = 300.0    # 退職金（万円）
+    retirement_service_years: int = 20     # 退職金の勤続年数（退職所得控除計算用）
 
     # Special one-time expenses at specific ages (age → amount in 万円, 2026年価値)
     special_expenses: dict[int, float] = field(default_factory=dict)

@@ -16,7 +16,7 @@
 ## 使い方
 
 ```bash
-# 確定論シミュレーション（4戦略比較）
+# 確定論シミュレーション（3戦略比較: マンション/一戸建て/戦略的賃貸）
 python -m housing_sim_jp.cli
 python -m housing_sim_jp.cli --husband-age 37 --wife-age 35 --savings 1500 --husband-income 45 --wife-income 30
 python -m housing_sim_jp.cli --pets 38,40 --car                       # ペット2匹+車

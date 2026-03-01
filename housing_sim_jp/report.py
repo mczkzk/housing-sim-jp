@@ -903,32 +903,92 @@ def _render_ch1_3_emergency(ctx: ReportContext) -> str:
     )
 
 
+def _ideco_withdrawal_rationale(withdrawal_age: int) -> str:
+    """Return rationale text for the chosen iDeCo withdrawal age."""
+    buffer = 75 - withdrawal_age
+    if buffer >= 8:
+        # Early withdrawal (60-67): giving up tax-free growth
+        return (
+            f"iDeCo口座内は非課税で運用できるが、{withdrawal_age}歳での受取は"
+            f"受取期限（75歳）まで**{buffer}年の非課税運用期間を放棄**している。"
+            f"引き出し後は特定口座（課税20.315%）での運用となるため、"
+            f"NISAが埋まっている場合は受取を遅らせるほど税引後リターンが改善する。"
+        )
+    if buffer <= 2:
+        # Late withdrawal (73-75): minimal crash buffer
+        return (
+            f"iDeCo口座内は非課税運用のため受取は遅いほど有利だが、"
+            f"受取期限（75歳）までのバッファが**わずか{buffer}年**しかない。"
+            f"暴落直後に期限を迎えると回復を待てずに受け取ることになり、"
+            f"数百万円規模の損失が確定するリスクがある。"
+        )
+    # Balanced (68-72)
+    return (
+        f"iDeCo口座内は非課税運用のため受取は遅いほど有利だが、"
+        f"受取期限（75歳）直前に暴落が来ると回復を待てない。"
+        f"{withdrawal_age}歳受取なら**{buffer}年のバッファ**を残しつつ非課税運用を最大化できる。"
+    )
+
+
 def _render_ch1_4_ideco(ctx: ReportContext) -> str:
     h_ideco = ctx.r["husband_ideco"]
     w_ideco = ctx.r["wife_ideco"]
     if h_ideco == 0 and w_ideco == 0:
         return "\n### 1.4 iDeCo\n\niDeCo拠出なし。"
-    h_years = 60 - ctx.husband_age
-    w_years = 60 - ctx.wife_age
+    contribution_end = ctx.r["ideco_contribution_end_age"]
+    withdrawal_age = ctx.r["ideco_withdrawal_age"]
+    h_years = max(0, contribution_end - ctx.husband_age)
+    w_years = max(0, contribution_end - ctx.wife_age)
     h_total = h_ideco * 12 * h_years
     w_total = w_ideco * 12 * w_years
     total = h_total + w_total
+    retirement_allowance = ctx.r["retirement_allowance"]
+    service_years = ctx.r["retirement_service_years"]
     # Get actual values from det_results if available
     tax_benefit = 0.0
     tax_paid = 0.0
+    ra_tax = 0.0
     if ctx.det_results:
         r0 = ctx.det_results[0]
         tax_benefit = r0.get("ideco_tax_benefit_total", 0)
         tax_paid = r0.get("ideco_tax_paid", 0)
+        ra_tax = r0.get("retirement_allowance_tax_paid", 0)
 
-    return (
-        f"\n### 1.4 iDeCo（個人型確定拠出年金）\n\n"
-        f"夫婦各月{h_ideco:.0f}万円（計{h_ideco + w_ideco:.0f}万）を60歳まで拠出（全額所得控除）。"
-        f"**71歳で一時金受取**（退職所得控除を別枠適用）。"
-        f"夫は{h_years}年間（{h_total:.0f}万円）、妻は{w_years}年間（{w_total:.0f}万円）で"
-        f"**拠出累計{total:.0f}万円**"
-        + (f"、税軽減累計約{tax_benefit:.0f}万円、受取時退職所得税約{tax_paid:.0f}万円。" if tax_benefit > 0 else "。")
-    )
+    lines = [
+        f"\n### 1.4 iDeCo（個人型確定拠出年金）\n\n",
+        f"夫婦各月{h_ideco:.0f}万円（計{h_ideco + w_ideco:.0f}万）を**{contribution_end}歳まで拠出**（全額所得控除）し、"
+        f"**{withdrawal_age}歳で一時金として受取**。"
+        + _ideco_withdrawal_rationale(withdrawal_age)
+        + "\n\n",
+        f"| | 拠出期間 | 拠出額 |\n|---|---|---|\n",
+        f"| 夫 | {ctx.husband_age}→{contribution_end}歳（{h_years}年） | {h_total:.0f}万円 |\n",
+        f"| 妻 | {ctx.wife_age}→{contribution_end}歳（{w_years}年） | {w_total:.0f}万円 |\n",
+        f"| **合計** | | **{total:.0f}万円** |\n",
+    ]
+    if tax_benefit > 0:
+        lines.append(
+            f"\n拠出中の税軽減（所得控除）累計約**{tax_benefit:.0f}万円**。"
+            f"{withdrawal_age}歳の一時金受取時に退職所得税約**{tax_paid:.0f}万円**。"
+        )
+
+    if retirement_allowance > 0:
+        gap = withdrawal_age - 60
+        overlap = max(0, service_years - gap)
+        lines.append(
+            f"\n\n**退職金**: {retirement_allowance:.0f}万円（60歳退職時、勤続{service_years}年）。"
+            f"退職所得控除{40 * min(service_years, 20):.0f}万円以内のため非課税。"
+        )
+        if overlap > 0:
+            lines.append(
+                f"退職金→iDeCo受取の間隔が{gap}年（19年ルール適用: "
+                f"重複{overlap}年分の退職所得控除が縮減されるため、iDeCo受取時の税負担が増加）。"
+            )
+        else:
+            lines.append(
+                f"退職金→iDeCo受取の間隔が{gap}年（19年ルール: 重複なし、控除フル適用）。"
+            )
+
+    return "".join(lines)
 
 
 def _render_ch1_5_bucket(ctx: ReportContext) -> str:

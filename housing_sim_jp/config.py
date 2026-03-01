@@ -31,6 +31,10 @@ DEFAULTS = {
     "relocation": False,
     "husband_ideco": 2.0,
     "wife_ideco": 2.0,
+    "ideco_contribution_end_age": 65,
+    "ideco_withdrawal_age": 70,
+    "retirement_allowance": 300.0,
+    "retirement_service_years": 20,
     "emergency_fund": 6.0,
     "husband_pension_start_age": 60,
     "wife_pension_start_age": 60,
@@ -146,6 +150,10 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--relocation", action="store_true", default=None, help="転勤族モード（転勤確率が年3%%→10%%に上昇）")
     parser.add_argument("--husband-ideco", type=float, default=None, help=f"夫のiDeCo拠出額（万円/月）(default: {d['husband_ideco']})")
     parser.add_argument("--wife-ideco", type=float, default=None, help=f"妻のiDeCo拠出額（万円/月）(default: {d['wife_ideco']})")
+    parser.add_argument("--ideco-contribution-end-age", type=int, default=None, help=f"iDeCo拠出終了年齢（60-65, default: {d['ideco_contribution_end_age']}）")
+    parser.add_argument("--ideco-withdrawal-age", type=int, default=None, help=f"iDeCo一時金受取年齢（60-75, default: {d['ideco_withdrawal_age']}）")
+    parser.add_argument("--retirement-allowance", type=float, default=None, help=f"退職金（万円、60歳退職時, default: {d['retirement_allowance']}）")
+    parser.add_argument("--retirement-service-years", type=int, default=None, help=f"退職金の勤続年数（退職所得控除計算用, default: {d['retirement_service_years']}）")
     parser.add_argument("--emergency-fund", type=float, default=None, help=f"生活防衛資金（生活費の何ヶ月分）(default: {d['emergency_fund']})")
     parser.add_argument("--husband-pension-start-age", type=int, default=None, help=f"夫の年金受給開始年齢（60-75, default: {d['husband_pension_start_age']}）")
     parser.add_argument("--wife-pension-start-age", type=int, default=None, help=f"妻の年金受給開始年齢（60-75, default: {d['wife_pension_start_age']}）")
@@ -247,6 +255,10 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
         pet_adoption_ages=pet_sim_ages,
         husband_ideco=r["husband_ideco"],
         wife_ideco=r["wife_ideco"],
+        ideco_contribution_end_age=r["ideco_contribution_end_age"],
+        ideco_withdrawal_age=r["ideco_withdrawal_age"],
+        retirement_allowance=r["retirement_allowance"],
+        retirement_service_years=r["retirement_service_years"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=parse_special_expenses(r["special_expenses"]),
         bucket_safe_years=r["bucket_safe_years"],

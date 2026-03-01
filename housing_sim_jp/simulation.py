@@ -16,6 +16,7 @@ from housing_sim_jp.tax import (
     estimate_taxable_income,
     calc_ideco_tax_benefit_monthly,
     calc_retirement_income_tax,
+    calc_retirement_income_tax_with_prior,
 )
 
 # Simulation age limits
@@ -24,10 +25,9 @@ MAX_START_AGE = 45  # 出産可能上限
 MAX_CHILDREN = 2    # 3LDKの部屋数制約（子供部屋最大2つ）
 
 # Life-stage age thresholds
-REEMPLOYMENT_AGE = 60  # 再雇用開始年齢
+REEMPLOYMENT_AGE = 60  # 再雇用開始年齢（退職金支給年齢）
 STANDARD_PENSION_AGE = 65  # 年金の基準受給開始年齢
 MAX_EVENT_AGE = 70  # 離婚・死亡イベントの発生上限年齢
-IDECO_WITHDRAWAL_AGE = 71  # iDeCo一時金受取年齢（退職金と1年以上ずらす）
 
 # 在職老齢年金（2026年度見込み）
 ZAISHOKU_THRESHOLD = 65.0  # 支給停止調整額（万円/月）
@@ -269,7 +269,7 @@ def find_earliest_purchase_age(
         )
 
         monthly_surplus = projected_income - housing - education - living
-        # iDeCo contributions are locked until 71 → not available for purchase
+        # iDeCo contributions are locked until withdrawal → not available for purchase
         total_ideco = params.husband_ideco + params.wife_ideco
         if total_ideco > 0:
             # Per-person iDeCo with per-person tax benefit
@@ -277,7 +277,7 @@ def find_earliest_purchase_age(
                 (h_age, params.husband_ideco, params.husband_income),
                 (w_age, params.wife_ideco, params.wife_income),
             ]:
-                if person_age < REEMPLOYMENT_AGE and contribution > 0:
+                if person_age < params.ideco_contribution_end_age and contribution > 0:
                     gross_annual = base_inc * 12 / TAKEHOME_TO_GROSS
                     taxable_income = estimate_taxable_income(gross_annual)
                     marginal_rate = calc_marginal_income_tax_rate(taxable_income)
@@ -1166,14 +1166,23 @@ def _process_ideco(
     monthly_return_rate: float,
     contribution: float,
     marginal_tax_rate: float,
+    *,
+    contribution_end_age: int,
+    withdrawal_age: int,
+    prior_retirement_service_years: int = 0,
 ) -> tuple[float, float, float, float, int, float, float]:
-    """Process iDeCo contribution (before 60) and lump-sum withdrawal (at 71).
+    """Process iDeCo contribution and lump-sum withdrawal.
+
+    Args:
+        contribution_end_age: iDeCo拠出終了年齢（params.ideco_contribution_end_age）
+        withdrawal_age: iDeCo一時金受取年齢（params.ideco_withdrawal_age）
+        prior_retirement_service_years: 退職金の勤続年数（19年ルール重複計算用）
 
     Returns (investable, ideco_balance, ideco_total_contribution,
              ideco_tax_benefit_total, ideco_contribution_years, ideco_tax_paid,
              ideco_withdrawal_gross).
     """
-    if contribution > 0 and person_age < REEMPLOYMENT_AGE:
+    if contribution > 0 and person_age < contribution_end_age:
         investable -= contribution
         tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_tax_rate)
         investable += tax_benefit
@@ -1187,11 +1196,18 @@ def _process_ideco(
         ideco_balance *= 1 + monthly_return_rate
 
     ideco_withdrawal_gross = 0.0
-    if contribution > 0 and person_age == IDECO_WITHDRAWAL_AGE and month % 12 == 0 and ideco_balance > 0:
+    if contribution > 0 and person_age == withdrawal_age and month % 12 == 0 and ideco_balance > 0:
         ideco_withdrawal_gross = ideco_balance
-        retirement_tax = calc_retirement_income_tax(
-            ideco_balance, ideco_contribution_years,
-        )
+        gap = withdrawal_age - REEMPLOYMENT_AGE
+        if prior_retirement_service_years > 0 and gap < 20:
+            retirement_tax = calc_retirement_income_tax_with_prior(
+                ideco_balance, ideco_contribution_years,
+                prior_retirement_service_years, gap,
+            )
+        else:
+            retirement_tax = calc_retirement_income_tax(
+                ideco_balance, ideco_contribution_years,
+            )
         ideco_tax_paid = retirement_tax
         ideco_net = ideco_balance - retirement_tax
         investable += ideco_net
@@ -1594,6 +1610,7 @@ def simulate_strategy(
     w_ideco_tax_paid = 0.0
     w_ideco_withdrawal_gross = 0.0
     w_ideco_contribution_years = 0
+    retirement_allowance_tax_paid = 0.0
 
     # Per-person marginal tax rates
     h_gross_annual = params.husband_income * 12 / TAKEHOME_TO_GROSS
@@ -1826,6 +1843,16 @@ def simulate_strategy(
             + loan_deduction
             - event_extra_cost
         )
+        # Retirement allowance (退職金) — one-time at sim-age 60
+        # params.retirement_allowance is in 2026 real value; inflate to nominal
+        if params.retirement_allowance > 0 and age == REEMPLOYMENT_AGE and month % 12 == 0:
+            ra_nominal = params.retirement_allowance * params.inflation_factor(month / 12)
+            ra_tax = calc_retirement_income_tax(
+                ra_nominal, params.retirement_service_years,
+            )
+            investable += ra_nominal - ra_tax
+            retirement_allowance_tax_paid = ra_tax
+
         # iDeCo: husband's account
         (investable, h_ideco_balance, h_ideco_total_contribution,
          h_ideco_tax_benefit_total, h_ideco_contribution_years, h_ideco_tax_paid,
@@ -1834,6 +1861,9 @@ def simulate_strategy(
             h_ideco_balance, h_ideco_total_contribution,
             h_ideco_tax_benefit_total, h_ideco_contribution_years, h_ideco_tax_paid,
             monthly_return_rate, params.husband_ideco, h_marginal_rate,
+            contribution_end_age=params.ideco_contribution_end_age,
+            withdrawal_age=params.ideco_withdrawal_age,
+            prior_retirement_service_years=params.retirement_service_years if params.retirement_allowance > 0 else 0,
         )
         if _h_gross > 0:
             h_ideco_withdrawal_gross = _h_gross
@@ -1847,17 +1877,27 @@ def simulate_strategy(
                 w_ideco_balance, w_ideco_total_contribution,
                 w_ideco_tax_benefit_total, w_ideco_contribution_years, w_ideco_tax_paid,
                 monthly_return_rate, params.wife_ideco, w_marginal_rate,
+                contribution_end_age=params.ideco_contribution_end_age,
+                withdrawal_age=params.ideco_withdrawal_age,
+                prior_retirement_service_years=params.retirement_service_years if params.retirement_allowance > 0 else 0,
             )
             if _w_gross > 0:
                 w_ideco_withdrawal_gross = _w_gross
         elif w_ideco_balance > 0:
             # Wife's iDeCo still grows (inherited/remaining balance)
             w_ideco_balance *= 1 + monthly_return_rate
-            # Withdraw at husband's age 71 if still balance
-            if h_age == IDECO_WITHDRAWAL_AGE and month % 12 == 0:
-                retirement_tax = calc_retirement_income_tax(
-                    w_ideco_balance, w_ideco_contribution_years,
-                )
+            # Withdraw at husband's withdrawal age if still balance
+            if h_age == params.ideco_withdrawal_age and month % 12 == 0:
+                gap = params.ideco_withdrawal_age - REEMPLOYMENT_AGE
+                if params.retirement_allowance > 0 and params.retirement_service_years > 0 and gap < 20:
+                    retirement_tax = calc_retirement_income_tax_with_prior(
+                        w_ideco_balance, w_ideco_contribution_years,
+                        params.retirement_service_years, gap,
+                    )
+                else:
+                    retirement_tax = calc_retirement_income_tax(
+                        w_ideco_balance, w_ideco_contribution_years,
+                    )
                 w_ideco_tax_paid = retirement_tax
                 investable += w_ideco_balance - retirement_tax
                 w_ideco_withdrawal_gross = w_ideco_balance
@@ -2024,6 +2064,7 @@ def simulate_strategy(
             "ideco_withdrawal_gross": ideco_withdrawal_gross,
             "h_ideco_withdrawal_gross": h_ideco_withdrawal_gross,
             "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
+            "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
             "monthly_log": monthly_log,
             "investment_balance_80": 0,
             "securities_tax": 0,
@@ -2071,6 +2112,7 @@ def simulate_strategy(
         "ideco_withdrawal_gross": ideco_withdrawal_gross,
         "h_ideco_withdrawal_gross": h_ideco_withdrawal_gross,
         "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
+        "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
         "monthly_log": monthly_log,
         **final,
     }

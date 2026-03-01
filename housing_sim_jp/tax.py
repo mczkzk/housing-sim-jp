@@ -98,3 +98,35 @@ def calc_retirement_income_tax(lump_sum: float, years: int) -> float:
     resident_tax = taxable * RESIDENT_TAX_RATE
 
     return max(0, income_tax) + resident_tax
+
+
+def calc_retirement_income_tax_with_prior(
+    lump_sum: float, years: int,
+    prior_service_years: int, gap_years: int,
+) -> float:
+    """Calculate retirement income tax considering prior retirement income (19-year rule).
+
+    When a second retirement lump-sum is received within 19 years of a prior one
+    (退職金 → iDeCo), the overlapping portion of the deduction is subtracted.
+
+    重複期間 = max(0, prior_service_years - gap_years)
+    調整後控除 = calc_deduction(years) - calc_deduction(重複期間)
+    """
+    overlap = max(0, prior_service_years - gap_years)
+    base_deduction = calc_retirement_income_deduction(years)
+    if overlap > 0:
+        base_deduction -= calc_retirement_income_deduction(overlap)
+    base_deduction = max(0, base_deduction)
+
+    taxable = max(0, lump_sum - base_deduction) / _RETIREMENT_HALF_DIVISOR
+    if taxable <= 0:
+        return 0.0
+
+    income_tax = 0.0
+    for upper, rate, deduction_amount in _INCOME_TAX_BRACKETS:
+        if taxable <= upper:
+            income_tax = taxable * rate - deduction_amount
+            break
+
+    resident_tax = taxable * RESIDENT_TAX_RATE
+    return max(0, income_tax) + resident_tax
