@@ -409,7 +409,7 @@ def _savings_level(savings: float) -> str:
 
 # Simulation design target: 浦和エリア物件前提
 # - 個人年収2,000万以下（手取り≒110万/月）
-# - 世帯年収1,000〜2,000万がコアターゲット
+# - 世帯年収1,000〜2,000万が主要対象帯
 # - 世帯年収3,000万超→ローン7倍で2億超→都内文教区が射程、浦和前提から逸脱
 # - 初期資産5億超→都内高額物件が現金購入可能、浦和前提が希薄化
 # - 初期資産10億超→FIRE可能、就労前提のキャリアモデル自体が不適切
@@ -503,7 +503,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
             # Young household: low income now but long compounding + career growth
             warnings.append(
                 f"**現時点の世帯手取り月{total:.0f}万円（年{annual_total:.0f}万）は"
-                f"コアターゲット（世帯年収1,000〜2,000万）を下回るが、"
+                f"主要対象帯（浦和エリア物件を前提とした世帯年収1,000〜2,000万）を下回るが、"
                 f"キャリアカーブで中年期には大幅に上昇する。**"
                 f"一方で{remaining}年間の投資期間は最大の武器であり、"
                 f"初期の低収入を複利効果が長期で補う構造。"
@@ -512,7 +512,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         else:
             warnings.append(
                 f"**世帯手取り月{total:.0f}万円（年{annual_total:.0f}万）は"
-                f"本シミュレーションのコアターゲット（世帯年収1,000〜2,000万）を下回る。**"
+                f"主要対象帯（浦和エリア物件を前提とした世帯年収1,000〜2,000万）を下回る。**"
                 f"ローン審査が厳しく、購入戦略で待機期間が長期化する可能性が高い。"
             )
 
@@ -1058,6 +1058,12 @@ def _render_ch1_6_strategies(ctx: ReportContext) -> str:
 
     lines = [
         "\n### 1.6 4戦略の定義と初期コスト\n",
+        "築10年マンション3LDK（70㎡台）の相場は23区平均で約1.1億、"
+        "港区1.8〜3.3億、文京区1.4〜2.2億。"
+        "ボリュームゾーンの世帯年収1,000〜1,500万（フルローン上限7,000万〜1億）では射程外で、"
+        "郊外すぎると東京30分圏の住職近接が崩れる。"
+        "**浦和区は東京駅30分・池袋20分の通勤圏で、"
+        "ローン審査に収まるバランスポイント。**\n",
         "浦和常盤・北浦和エリアの中古物件（マンション7,580万・築10年、一戸建て6,547万・築7年）。",
     ]
     if all_immediate:
@@ -1608,15 +1614,34 @@ def _render_ch4_4_stress(ctx: ReportContext) -> str:
         "| イベント | 浦和マンション | 浦和一戸建て | 戦略的賃貸 | 通常賃貸 |",
         "|---------|-------------|------------|----------|--------|",
     ]
+    parsed: list[tuple[str, list[float]]] = []
     for label, results in ctx.stress_results:
-        vals = []
+        vals: list[str] = []
+        probs: list[float] = []
         for name in STRATEGY_ORDER:
             r = _mc_by_name(results, name)
             if r:
                 vals.append(f"{r.bankruptcy_probability:.1%}")
+                probs.append(r.bankruptcy_probability)
             else:
                 vals.append("---")
+                probs.append(0.0)
         lines.append(f"| {label} | {' | '.join(vals)} |")
+        parsed.append((label, probs))
+
+    # Detect if "全イベント" < any single-event row (MC noise at low rates)
+    all_ev = next((p for l, p in parsed if "全イベント" in l), None)
+    if all_ev:
+        single_higher = any(
+            any(sp > ap + 0.001 for sp, ap in zip(probs, all_ev))
+            for label, probs in parsed
+            if label != "ベース(イベントなし)" and "全イベント" not in label
+        )
+        if single_higher and max(all_ev) < 0.05:
+            lines.append(
+                "\n※破綻確率が極めて低い場合（数%以下）、N=1,000試行の"
+                "統計的揺らぎにより「全イベント」が単独イベントを下回ることがある。"
+            )
 
     return "\n".join(lines)
 
@@ -2201,8 +2226,23 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
                 over10 = [r for r in mc if r.bankruptcy_probability > 0.10]
                 if over10:
                     avoid = "・".join(r.strategy_name for r in over10)
+                    under10 = [r for r in mc
+                               if r.bankruptcy_probability <= 0.10
+                               and r.bankruptcy_probability != best_bp]
+                    stable_extra = (
+                        f"（{under10[0].strategy_name}"
+                        f"{under10[0].bankruptcy_probability:.1%}も同水準）"
+                        if len(under10) == 1
+                        else "（" + "・".join(
+                            f"{r.strategy_name}{r.bankruptcy_probability:.1%}"
+                            for r in under10
+                        ) + "も同水準）"
+                        if under10
+                        else ""
+                    )
                     lines.append(
                         f"**{best_bp_name}は破綻確率{best_bp:.1%}で概ね安定。**"
+                        f"{stable_extra}"
                         f"ただし{avoid}は10%超で不況シナリオに脆弱。"
                     )
                 else:
