@@ -1,8 +1,11 @@
 """TOML config loader with CLI > config > default resolution."""
 
+from __future__ import annotations
+
 import argparse
 import sys
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
 from housing_sim_jp.params import SimulationParams
@@ -272,7 +275,7 @@ def resolve_independence_ages(
 
 def parse_args(
     description: str,
-    add_args_fn: "Callable[[argparse.ArgumentParser], None] | None" = None,
+    add_args_fn: Callable[[argparse.ArgumentParser], None] | None = None,
 ) -> tuple[dict, list[int], list[int], list[int], argparse.Namespace]:
     """Parse CLI args, load config, resolve values.
 

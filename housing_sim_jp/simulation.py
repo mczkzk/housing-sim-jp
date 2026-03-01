@@ -1,6 +1,12 @@
 """Core simulation engine."""
 
+from __future__ import annotations
+
 import dataclasses
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from housing_sim_jp.events import EventTimeline
 
 from housing_sim_jp.params import END_AGE, SimulationParams, _calc_equal_payment, base_living_cost
 from housing_sim_jp.strategies import Strategy
@@ -1423,7 +1429,7 @@ def simulate_strategy(
     child_birth_ages: list[int] | None = None,
     child_independence_ages: list[int] | None = None,
     purchase_age: int | None = None,
-    event_timeline=None,
+    event_timeline: EventTimeline | None = None,
 ) -> dict:
     """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
