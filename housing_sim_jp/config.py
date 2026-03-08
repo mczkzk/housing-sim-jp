@@ -16,7 +16,10 @@ DEFAULT_CONFIG_PATH = Path("config.toml")
 DEFAULTS = {
     "husband_age": 30,
     "wife_age": 28,
-    "savings": 800.0,
+    "husband_savings": 0.0,
+    "wife_savings": 0.0,
+    "shared_savings": 800.0,
+    "marriage_age": 0,
     "husband_income": 40.0,
     "wife_income": 22.5,
     "children": "30,33",
@@ -117,6 +120,13 @@ def load_config(path: Path | None = None) -> dict:
         raw.setdefault("wife_work_end_age", v)
     elif "work_end_age" in raw:
         raw.pop("work_end_age")
+    # Migrate legacy savings → husband_savings + wife_savings + shared_savings
+    if "savings" in raw and "husband_savings" not in raw and "wife_savings" not in raw:
+        raw["shared_savings"] = raw.pop("savings")
+        raw["husband_savings"] = 0.0
+        raw["wife_savings"] = 0.0
+    elif "savings" in raw:
+        raw.pop("savings")  # new params take precedence
     # Normalize special_expenses: TOML [[age, amount, label?], ...] → "age:amount:label,..." string
     if "special_expenses" in raw:
         v = raw["special_expenses"]
@@ -137,7 +147,10 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=None, help="設定ファイルパス (default: config.toml)")
     parser.add_argument("--husband-age", type=int, default=None, help=f"夫の開始年齢 (default: {d['husband_age']})")
     parser.add_argument("--wife-age", type=int, default=None, help=f"妻の開始年齢 (default: {d['wife_age']})")
-    parser.add_argument("--savings", type=float, default=None, help=f"初期金融資産・万円 (default: {d['savings']:.0f})")
+    parser.add_argument("--husband-savings", type=float, default=None, help=f"夫の婚前資産・万円 (default: {d['husband_savings']:.0f})")
+    parser.add_argument("--wife-savings", type=float, default=None, help=f"妻の婚前資産・万円 (default: {d['wife_savings']:.0f})")
+    parser.add_argument("--shared-savings", type=float, default=None, help=f"共有資産・万円 (default: {d['shared_savings']:.0f})")
+    parser.add_argument("--marriage-age", type=int, default=None, help=f"夫の結婚年齢（0=開始時点で既婚）(default: {d['marriage_age']})")
     parser.add_argument("--husband-income", type=float, default=None, help=f"夫の月額手取り・万円 (default: {d['husband_income']})")
     parser.add_argument("--wife-income", type=float, default=None, help=f"妻の月額手取り・万円 (default: {d['wife_income']})")
     parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、例: 30,33 / noneで子なし）(default: {d['children']})")
@@ -271,6 +284,7 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
         bucket_ramp_years=r["bucket_ramp_years"],
         bucket_bond_return=r["bucket_bond_return"],
         bucket_gold_return=r["bucket_gold_return"],
+        marriage_age=r["marriage_age"],
         wife_parental_leave_months=r["wife_parental_leave_months"],
         husband_parental_leave_months=r["husband_parental_leave_months"],
         kodomo_nisa_enabled=r["kodomo_nisa"],
@@ -338,4 +352,8 @@ def resolve(args: argparse.Namespace, config: dict) -> dict:
     for key, default in DEFAULTS.items():
         cli_val = getattr(args, key, None)
         resolved[key] = cli_val if cli_val is not None else config.get(key, default)
+    # Strategy初期化用の合算値
+    resolved["savings"] = (
+        resolved["husband_savings"] + resolved["wife_savings"] + resolved["shared_savings"]
+    )
     return resolved

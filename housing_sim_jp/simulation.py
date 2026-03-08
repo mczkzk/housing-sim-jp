@@ -166,8 +166,10 @@ PRE_PURCHASE_RENEWAL_DIVISOR = Strategy.RENEWAL_FEE_DIVISOR
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
 # Simulation constants
-NISA_LIMIT = 3600  # 夫婦NISA生涯上限（万円）
-NISA_ANNUAL_LIMIT = 720  # 夫婦合計年間投資枠（360万/人 × 2人）
+NISA_LIMIT_PP = 1800  # NISA生涯上限（万円/人）
+NISA_ANNUAL_LIMIT_PP = 360  # NISA年間投資枠（万円/人）
+NISA_LIMIT = NISA_LIMIT_PP * 2  # 夫婦NISA生涯上限（万円）
+NISA_ANNUAL_LIMIT = NISA_ANNUAL_LIMIT_PP * 2  # 夫婦合計年間投資枠
 KODOMO_NISA_ANNUAL_LIMIT = 60.0   # こどもNISA年間上限（万円/子）
 KODOMO_NISA_LIFETIME_LIMIT = 600.0  # こどもNISA生涯上限（万円/子、元本ベース）
 KODOMO_NISA_CONTRIBUTION_END_AGE = 18  # 18歳でNISA移行→親からの拠出終了
@@ -954,10 +956,13 @@ def _apply_divorce(
     strategy: Strategy,
     params: SimulationParams,
     purchase_month_offset: int,
-    nisa_balance: float,
-    nisa_cost_basis: float,
-    taxable_balance: float,
-    taxable_cost_basis: float,
+    # 3-pool state
+    h_nisa_bal: float, h_nisa_cb: float,
+    w_nisa_bal: float, w_nisa_cb: float,
+    h_tax_bal: float, h_tax_cb: float,
+    w_tax_bal: float, w_tax_cb: float,
+    s_nisa_bal: float, s_nisa_cb: float,
+    s_tax_bal: float, s_tax_cb: float,
     ideco_balance: float,
     emergency_fund: float,
     bond_balance: float = 0.0,
@@ -966,24 +971,39 @@ def _apply_divorce(
     gold_cost_basis: float = 0.0,
     cash_bucket: float = 0.0,
 ) -> tuple[float, ...]:
-    """Apply divorce event: 50% asset split, property sale, set rental cost.
+    """Apply divorce event: proper pool separation.
 
-    Returns (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+    Husband keeps: h_nisa, h_tax (separate property)
+    Wife takes: w_nisa, w_tax (separate property, removed from sim)
+    Shared pool (s_nisa, s_tax, bond, gold, CB, EF): split 50%
+
+    Returns (h_nisa_bal, h_nisa_cb, w_nisa_bal, w_nisa_cb,
+             h_tax_bal, h_tax_cb, w_tax_bal, w_tax_cb,
+             s_nisa_bal, s_nisa_cb, s_tax_bal, s_tax_cb,
              ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost,
              bond_balance, bond_cost_basis, gold_balance, gold_cost_basis, cash_bucket).
     Mutates strategy (clears property/loan).
     """
-    nisa_balance *= DIVORCE_ASSET_SPLIT_RATIO
-    nisa_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
-    taxable_balance *= DIVORCE_ASSET_SPLIT_RATIO
-    taxable_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
-    ideco_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    # Wife's separate property leaves the simulation
+    w_nisa_bal = 0.0
+    w_nisa_cb = 0.0
+    w_tax_bal = 0.0
+    w_tax_cb = 0.0
+
+    # Shared pool: split 50%
+    s_nisa_bal *= DIVORCE_ASSET_SPLIT_RATIO
+    s_nisa_cb *= DIVORCE_ASSET_SPLIT_RATIO
+    s_tax_bal *= DIVORCE_ASSET_SPLIT_RATIO
+    s_tax_cb *= DIVORCE_ASSET_SPLIT_RATIO
     emergency_fund *= DIVORCE_ASSET_SPLIT_RATIO
     bond_balance *= DIVORCE_ASSET_SPLIT_RATIO
     bond_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
     gold_balance *= DIVORCE_ASSET_SPLIT_RATIO
     gold_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
     cash_bucket *= DIVORCE_ASSET_SPLIT_RATIO
+
+    # iDeCoは個人口座のため夫分はそのまま（妻分は離脱）
+    ideco_balance *= DIVORCE_ASSET_SPLIT_RATIO
 
     event_cost_adj = 0.0
     if strategy.property_price > 0:
@@ -1004,7 +1024,9 @@ def _apply_divorce(
     years_elapsed = month / 12
     divorce_rental_cost = PRE_PURCHASE_RENT * params.inflation_factor(years_elapsed)
 
-    return (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+    return (h_nisa_bal, h_nisa_cb, w_nisa_bal, w_nisa_cb,
+            h_tax_bal, h_tax_cb, w_tax_bal, w_tax_cb,
+            s_nisa_bal, s_nisa_cb, s_tax_bal, s_tax_cb,
             ideco_balance, emergency_fund, event_cost_adj, divorce_rental_cost,
             bond_balance, bond_cost_basis, gold_balance, gold_cost_basis,
             cash_bucket)
@@ -1452,6 +1474,8 @@ def simulate_strategy(
     child_independence_ages: list[int] | None = None,
     purchase_age: int | None = None,
     event_timeline: EventTimeline | None = None,
+    husband_savings: float = 0.0,
+    wife_savings: float = 0.0,
 ) -> dict:
     """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
@@ -1566,32 +1590,110 @@ def simulate_strategy(
     else:
         initial = max(0.0, strategy.initial_investment)
 
-    # Allocate emergency fund from initial savings
+    # Deduct purchase costs from pools: shared → husband → wife
+    purchase_deduction = strategy.initial_savings - initial
+    shared_savings = max(0.0, strategy.initial_savings - husband_savings - wife_savings)
+    shared_pool = shared_savings
+    h_pool = max(0.0, husband_savings)
+    w_pool = max(0.0, wife_savings)
+
+    # Deduct costs
+    deduct = purchase_deduction
+    shared_deduct = min(deduct, shared_pool)
+    shared_pool -= shared_deduct
+    deduct -= shared_deduct
+    h_deduct = min(deduct, h_pool)
+    h_pool -= h_deduct
+    deduct -= h_deduct
+    w_deduct = min(deduct, w_pool)
+    w_pool -= w_deduct
+
+    # Allocate emergency fund from pools: shared → husband → wife
     initial_required_ef = _calc_required_emergency_fund(
         start_age, 0, params, child_home_ranges,
         retire_sim_age=household_retire_sim_age,
     )
-    emergency_fund = min(initial, initial_required_ef)
+    emergency_fund = min(h_pool + w_pool + shared_pool, initial_required_ef)
     initial_principal = strategy.initial_savings  # 諸費用控除前の貯蓄額（チャート参照線用）
     invested_principal = initial  # 実際に投資に回った額（元本割れ判定用）
-    initial -= emergency_fund
 
-    # Allocate cash bucket from remaining initial savings
+    ef_remaining = emergency_fund
+    ef_from_shared = min(ef_remaining, shared_pool)
+    shared_pool -= ef_from_shared
+    ef_remaining -= ef_from_shared
+    ef_from_h = min(ef_remaining, h_pool)
+    h_pool -= ef_from_h
+    ef_remaining -= ef_from_h
+    ef_from_w = min(ef_remaining, w_pool)
+    w_pool -= ef_from_w
+
+    # Allocate cash bucket from pools: shared → husband → wife
     initial_required_cb = _calc_required_cash_bucket(
         start_age, 0, params, education_ranges, child_home_ranges,
         retire_sim_age=household_retire_sim_age,
     )
-    cash_bucket = min(initial, initial_required_cb)
-    initial -= cash_bucket
+    cash_bucket = min(h_pool + w_pool + shared_pool, initial_required_cb)
 
-    nisa_deposit = min(initial, NISA_LIMIT, NISA_ANNUAL_LIMIT)
-    nisa_balance = nisa_deposit
-    nisa_cost_basis = nisa_deposit
-    nisa_annual_invested = nisa_deposit
-    taxable_balance = initial - nisa_deposit
-    taxable_cost_basis = initial - nisa_deposit
+    cb_remaining = cash_bucket
+    cb_from_shared = min(cb_remaining, shared_pool)
+    shared_pool -= cb_from_shared
+    cb_remaining -= cb_from_shared
+    cb_from_h = min(cb_remaining, h_pool)
+    h_pool -= cb_from_h
+    cb_remaining -= cb_from_h
+    cb_from_w = min(cb_remaining, w_pool)
+    w_pool -= cb_from_w
 
-    # Bucket strategy: bond/gold balances
+    # 3-pool investment allocation
+    # Each pool's remaining → own NISA (per-person limit) → taxable
+    # Husband's NISA: from h_pool first
+    h_nisa_deposit = min(h_pool, NISA_LIMIT_PP, NISA_ANNUAL_LIMIT_PP)
+    h_nisa_bal = h_nisa_deposit
+    h_nisa_cb = h_nisa_deposit
+    h_tax_bal = h_pool - h_nisa_deposit
+    h_tax_cb = h_pool - h_nisa_deposit
+
+    # Wife's NISA: from w_pool first
+    w_nisa_deposit = min(w_pool, NISA_LIMIT_PP, NISA_ANNUAL_LIMIT_PP)
+    w_nisa_bal = w_nisa_deposit
+    w_nisa_cb = w_nisa_deposit
+    w_tax_bal = w_pool - w_nisa_deposit
+    w_tax_cb = w_pool - w_nisa_deposit
+
+    # Shared NISA: fill remaining room from either person
+    h_nisa_room_left = NISA_LIMIT_PP - h_nisa_cb
+    w_nisa_room_left = NISA_LIMIT_PP - w_nisa_cb
+    h_annual_room_left = NISA_ANNUAL_LIMIT_PP - h_nisa_deposit
+    w_annual_room_left = NISA_ANNUAL_LIMIT_PP - w_nisa_deposit
+    # Track how much of shared NISA uses each person's slot
+    s_nisa_h_used = 0.0
+    s_nisa_w_used = 0.0
+    s_nisa_bal = 0.0
+    s_nisa_cb = 0.0
+
+    # Fill husband's remaining NISA slot with shared funds
+    s_to_h_nisa = min(shared_pool, h_nisa_room_left, h_annual_room_left)
+    s_nisa_bal += s_to_h_nisa
+    s_nisa_cb += s_to_h_nisa
+    s_nisa_h_used += s_to_h_nisa
+    shared_pool -= s_to_h_nisa
+
+    # Fill wife's remaining NISA slot with shared funds
+    s_to_w_nisa = min(shared_pool, w_nisa_room_left, w_annual_room_left)
+    s_nisa_bal += s_to_w_nisa
+    s_nisa_cb += s_to_w_nisa
+    s_nisa_w_used += s_to_w_nisa
+    shared_pool -= s_to_w_nisa
+
+    # Remaining shared → shared taxable
+    s_tax_bal = shared_pool
+    s_tax_cb = shared_pool
+
+    # Per-person annual NISA tracking
+    h_nisa_annual = h_nisa_deposit + s_to_h_nisa
+    w_nisa_annual = w_nisa_deposit + s_to_w_nisa
+
+    # Bucket strategy: bond/gold balances (shared pool)
     bond_balance = 0.0
     bond_cost_basis = 0.0
     gold_balance = 0.0
@@ -1627,19 +1729,23 @@ def simulate_strategy(
     kodomo_nisa_total_contributed = 0.0
     kodomo_nisa_gifted = 0.0
 
-    # こどもNISA: 初年度の年初一括投入（特定口座から）
+    # こどもNISA: 初年度の年初一括投入（両親NISA生涯枠充填後のみ）
     kodomo_annual_target = min(params.kodomo_nisa_monthly * 12, KODOMO_NISA_ANNUAL_LIMIT)
-    if params.kodomo_nisa_enabled:
+    _both_nisa_full = (
+        (h_nisa_cb + s_nisa_h_used >= NISA_LIMIT_PP)
+        and (w_nisa_cb + s_nisa_w_used >= NISA_LIMIT_PP)
+    )
+    if params.kodomo_nisa_enabled and _both_nisa_full:
         for ci in range(n_children):
             child_age = start_age - child_birth_ages[ci]
             if child_age < 0 or child_age >= KODOMO_NISA_CONTRIBUTION_END_AGE:
                 continue
             lifetime_room = KODOMO_NISA_LIFETIME_LIMIT
-            swap_amount = min(kodomo_annual_target, lifetime_room, taxable_balance)
-            if swap_amount > 0 and taxable_balance > 0:
+            swap_amount = min(kodomo_annual_target, lifetime_room, s_tax_bal)
+            if swap_amount > 0 and s_tax_bal > 0:
                 # 初年度は全額元本（含み益なし）→ 税金なし
-                taxable_balance -= swap_amount
-                taxable_cost_basis -= swap_amount
+                s_tax_bal -= swap_amount
+                s_tax_cb -= swap_amount
                 kodomo_nisa_balances[ci] = swap_amount
                 kodomo_nisa_cost_bases[ci] = swap_amount
                 kodomo_nisa_cum_contributed[ci] = swap_amount
@@ -1661,20 +1767,62 @@ def simulate_strategy(
     fixed_monthly_return = params.investment_return / 12
 
     for month in range(TOTAL_MONTHS):
-        # 年始: NISA年間枠リセット + 特定→NISA乗り換え
+        # 年始: NISA年間枠リセット + 特定→NISA乗り換え (3-pool)
         if month > 0 and month % 12 == 0:
-            nisa_annual_invested = 0.0
+            h_nisa_annual = 0.0
+            w_nisa_annual = 0.0
             kodomo_nisa_annual_invested = [0.0] * n_children
-            (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
-             swapped) = _swap_taxable_to_nisa(
-                nisa_balance, nisa_cost_basis,
-                taxable_balance, taxable_cost_basis,
-                NISA_LIMIT, NISA_ANNUAL_LIMIT,
-            )
-            nisa_annual_invested += swapped
 
-            # こどもNISA: 年初一括投入（特定口座→こどもNISA、成人NISAと同じ戦略）
-            if params.kodomo_nisa_enabled:
+            # h_tax → h_nisa
+            (h_nisa_bal, h_nisa_cb, h_tax_bal, h_tax_cb,
+             h_swapped) = _swap_taxable_to_nisa(
+                h_nisa_bal, h_nisa_cb, h_tax_bal, h_tax_cb,
+                NISA_LIMIT_PP - s_nisa_h_used, NISA_ANNUAL_LIMIT_PP,
+            )
+            h_nisa_annual += h_swapped
+
+            # w_tax → w_nisa
+            (w_nisa_bal, w_nisa_cb, w_tax_bal, w_tax_cb,
+             w_swapped) = _swap_taxable_to_nisa(
+                w_nisa_bal, w_nisa_cb, w_tax_bal, w_tax_cb,
+                NISA_LIMIT_PP - s_nisa_w_used, NISA_ANNUAL_LIMIT_PP,
+            )
+            w_nisa_annual += w_swapped
+
+            # s_tax → s_nisa (combined room from both persons)
+            h_lifetime_room = max(0, NISA_LIMIT_PP - h_nisa_cb - s_nisa_h_used)
+            w_lifetime_room = max(0, NISA_LIMIT_PP - w_nisa_cb - s_nisa_w_used)
+            h_annual_left = max(0, NISA_ANNUAL_LIMIT_PP - h_nisa_annual)
+            w_annual_left = max(0, NISA_ANNUAL_LIMIT_PP - w_nisa_annual)
+            combined_lifetime_room = h_lifetime_room + w_lifetime_room
+            combined_annual_room = h_annual_left + w_annual_left
+            (s_nisa_bal, s_nisa_cb, s_tax_bal, s_tax_cb,
+             s_swapped) = _swap_taxable_to_nisa(
+                s_nisa_bal, s_nisa_cb, s_tax_bal, s_tax_cb,
+                combined_lifetime_room, combined_annual_room,
+            )
+            # Attribute shared NISA usage to each person's slot proportionally
+            if s_swapped > 0:
+                h_can = min(h_lifetime_room, h_annual_left)
+                w_can = min(w_lifetime_room, w_annual_left)
+                total_can = h_can + w_can
+                if total_can > 0:
+                    h_share = min(s_swapped * h_can / total_can, h_can)
+                    w_share = s_swapped - h_share
+                else:
+                    h_share = s_swapped / 2
+                    w_share = s_swapped - h_share
+                s_nisa_h_used += h_share
+                s_nisa_w_used += w_share
+                h_nisa_annual += h_share
+                w_nisa_annual += w_share
+
+            # こどもNISA: 年初一括投入（両親NISA生涯枠充填後のみ）
+            _both_nisa_full = (
+                (h_nisa_cb + s_nisa_h_used >= NISA_LIMIT_PP)
+                and (w_nisa_cb + s_nisa_w_used >= NISA_LIMIT_PP)
+            )
+            if params.kodomo_nisa_enabled and _both_nisa_full:
                 age_now = start_age + month // 12
                 for ci in range(n_children):
                     child_age = age_now - child_birth_ages[ci]
@@ -1682,18 +1830,18 @@ def simulate_strategy(
                         continue
                     lifetime_room = KODOMO_NISA_LIFETIME_LIMIT - kodomo_nisa_cum_contributed[ci]
                     target = min(kodomo_annual_target, lifetime_room)
-                    if target <= 0 or taxable_balance <= 0:
+                    if target <= 0 or s_tax_bal <= 0:
                         continue
-                    gain_ratio = max(0.0, 1 - taxable_cost_basis / taxable_balance)
+                    gain_ratio = max(0.0, 1 - s_tax_cb / s_tax_bal) if s_tax_bal > 0 else 0.0
                     effective_rate = 1 - gain_ratio * CAPITAL_GAINS_TAX_RATE
-                    sell_amount = min(target / effective_rate, taxable_balance)
-                    ratio = sell_amount / taxable_balance
-                    cost_portion = taxable_cost_basis * ratio
+                    sell_amount = min(target / effective_rate, s_tax_bal)
+                    ratio = sell_amount / s_tax_bal if s_tax_bal > 0 else 0
+                    cost_portion = s_tax_cb * ratio
                     gain = sell_amount - cost_portion
                     tax = max(0, gain) * CAPITAL_GAINS_TAX_RATE
                     to_kodomo = sell_amount - tax
-                    taxable_balance -= sell_amount
-                    taxable_cost_basis -= cost_portion
+                    s_tax_bal -= sell_amount
+                    s_tax_cb -= cost_portion
                     kodomo_nisa_balances[ci] += to_kodomo
                     kodomo_nisa_cost_bases[ci] += to_kodomo
                     kodomo_nisa_cum_contributed[ci] += to_kodomo
@@ -1723,13 +1871,15 @@ def simulate_strategy(
                     education_ranges, child_home_ranges,
                     is_divorced, is_spouse_dead, household_retire_sim_age,
                 )
-                (taxable_balance, taxable_cost_basis,
+                # Rebalance operates on shared taxable only
+                nisa_total = h_nisa_bal + w_nisa_bal + s_nisa_bal
+                (s_tax_bal, s_tax_cb,
                  bond_balance, bond_cost_basis,
                  gold_balance, gold_cost_basis,
                  cash_bucket) = _rebalance_portfolio(
                     params, age_for_rebalance, annual_exp,
-                    nisa_balance,
-                    taxable_balance, taxable_cost_basis,
+                    nisa_total,
+                    s_tax_bal, s_tax_cb,
                     bond_balance, bond_cost_basis,
                     gold_balance, gold_cost_basis,
                     cash_bucket,
@@ -1750,7 +1900,9 @@ def simulate_strategy(
         w_age = wife_start_age + month // 12
 
         # Car purchase/replacement at year boundaries (deferred if unaffordable)
-        total_liquid = nisa_balance + taxable_balance + bond_balance + gold_balance
+        total_liquid = (h_nisa_bal + w_nisa_bal + s_nisa_bal
+                        + h_tax_bal + w_tax_bal + s_tax_bal
+                        + bond_balance + gold_balance)
         car_one_time, car_owned, car_first_purchase_age, next_car_due_age = _try_car_purchase(
             age, month, start_age, params,
             total_liquid,
@@ -1832,13 +1984,17 @@ def simulate_strategy(
 
             if event_timeline.divorce_month is not None and month == event_timeline.divorce_month and not is_divorced:
                 is_divorced = True
-                (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+                (h_nisa_bal, h_nisa_cb, w_nisa_bal, w_nisa_cb,
+                 h_tax_bal, h_tax_cb, w_tax_bal, w_tax_cb,
+                 s_nisa_bal, s_nisa_cb, s_tax_bal, s_tax_cb,
                  _, emergency_fund, cost_adj, divorce_rent,
                  bond_balance, bond_cost_basis,
                  gold_balance, gold_cost_basis,
                  cash_bucket) = _apply_divorce(
                     month, strategy, params, purchase_month_offset,
-                    nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
+                    h_nisa_bal, h_nisa_cb, w_nisa_bal, w_nisa_cb,
+                    h_tax_bal, h_tax_cb, w_tax_bal, w_tax_cb,
+                    s_nisa_bal, s_nisa_cb, s_tax_bal, s_tax_cb,
                     h_ideco_balance, emergency_fund,
                     bond_balance, bond_cost_basis,
                     gold_balance, gold_cost_basis,
@@ -2036,16 +2192,205 @@ def simulate_strategy(
                     kodomo_nisa_balances[ci] = 0.0
                     kodomo_nisa_cost_bases[ci] = 0.0
 
-        nisa_cb_before = nisa_cost_basis
-        nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt = (
-            _update_investments(
-                investable, nisa_balance, nisa_cost_basis,
-                taxable_balance, taxable_cost_basis,
-                NISA_LIMIT, NISA_ANNUAL_LIMIT - nisa_annual_invested,
-                monthly_return_rate,
-            )
-        )
-        nisa_annual_invested += max(0, nisa_cost_basis - nisa_cb_before)
+        # 3-pool: apply returns to all 6 equity balances
+        h_nisa_bal *= 1 + monthly_return_rate
+        w_nisa_bal *= 1 + monthly_return_rate
+        s_nisa_bal *= 1 + monthly_return_rate
+        h_tax_bal *= 1 + monthly_return_rate
+        w_tax_bal *= 1 + monthly_return_rate
+        s_tax_bal *= 1 + monthly_return_rate
+
+        bankrupt = False
+
+        if investable >= 0:
+            # Positive investable → shared NISA (person with room) → shared taxable
+            h_lifetime_room = max(0, NISA_LIMIT_PP - h_nisa_cb - s_nisa_h_used)
+            w_lifetime_room = max(0, NISA_LIMIT_PP - w_nisa_cb - s_nisa_w_used)
+            h_annual_left = max(0, NISA_ANNUAL_LIMIT_PP - h_nisa_annual)
+            w_annual_left = max(0, NISA_ANNUAL_LIMIT_PP - w_nisa_annual)
+            h_nisa_room = min(h_lifetime_room, h_annual_left)
+            w_nisa_room = min(w_lifetime_room, w_annual_left)
+            total_nisa_room = h_nisa_room + w_nisa_room
+            to_nisa = min(investable, total_nisa_room)
+            if to_nisa > 0:
+                # Distribute between person slots proportionally
+                if total_nisa_room > 0:
+                    h_portion = min(to_nisa * h_nisa_room / total_nisa_room, h_nisa_room)
+                    w_portion = to_nisa - h_portion
+                else:
+                    h_portion = 0
+                    w_portion = 0
+                s_nisa_bal += to_nisa
+                s_nisa_cb += to_nisa
+                s_nisa_h_used += h_portion
+                s_nisa_w_used += w_portion
+                h_nisa_annual += h_portion
+                w_nisa_annual += w_portion
+            to_taxable = investable - to_nisa
+            s_tax_bal += to_taxable
+            s_tax_cb += to_taxable
+        else:
+            # Negative investable: withdrawal order depends on phase
+            withdrawal = -investable
+
+            if not is_retired:
+                # Working: CB already drawn above → s_tax → s_nisa → h_tax → w_tax → h_nisa → w_nisa → EF
+                for pool_name in ('s_tax', 's_nisa', 'h_tax', 'w_tax', 'h_nisa', 'w_nisa'):
+                    if withdrawal <= 0:
+                        break
+                    if pool_name == 's_tax' and s_tax_bal > 0:
+                        draw = min(s_tax_bal, withdrawal)
+                        ratio = draw / s_tax_bal
+                        s_tax_cb *= (1 - ratio)
+                        s_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 's_nisa' and s_nisa_bal > 0:
+                        draw = min(s_nisa_bal, withdrawal)
+                        ratio = draw / s_nisa_bal
+                        s_nisa_cb *= (1 - ratio)
+                        # Proportionally reduce person slot tracking
+                        total_s_used = s_nisa_h_used + s_nisa_w_used
+                        if total_s_used > 0:
+                            s_nisa_h_used *= (1 - ratio)
+                            s_nisa_w_used *= (1 - ratio)
+                        s_nisa_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'h_tax' and h_tax_bal > 0:
+                        draw = min(h_tax_bal, withdrawal)
+                        ratio = draw / h_tax_bal
+                        h_tax_cb *= (1 - ratio)
+                        h_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'w_tax' and w_tax_bal > 0:
+                        draw = min(w_tax_bal, withdrawal)
+                        ratio = draw / w_tax_bal
+                        w_tax_cb *= (1 - ratio)
+                        w_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'h_nisa' and h_nisa_bal > 0:
+                        draw = min(h_nisa_bal, withdrawal)
+                        ratio = draw / h_nisa_bal
+                        h_nisa_cb *= (1 - ratio)
+                        h_nisa_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'w_nisa' and w_nisa_bal > 0:
+                        draw = min(w_nisa_bal, withdrawal)
+                        ratio = draw / w_nisa_bal
+                        w_nisa_cb *= (1 - ratio)
+                        w_nisa_bal -= draw
+                        withdrawal -= draw
+                if withdrawal > 0:
+                    bankrupt = True
+            elif annual_return < 0:
+                # Retired crash: CB already drawn → bond/gold already drawn above
+                # → s_tax → s_nisa → h_tax → w_tax → h_nisa → w_nisa → EF
+                for pool_name in ('s_tax', 's_nisa', 'h_tax', 'w_tax', 'h_nisa', 'w_nisa'):
+                    if withdrawal <= 0:
+                        break
+                    if pool_name == 's_tax' and s_tax_bal > 0:
+                        draw = min(s_tax_bal, withdrawal)
+                        ratio = draw / s_tax_bal
+                        s_tax_cb *= (1 - ratio)
+                        s_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 's_nisa' and s_nisa_bal > 0:
+                        draw = min(s_nisa_bal, withdrawal)
+                        ratio = draw / s_nisa_bal
+                        s_nisa_cb *= (1 - ratio)
+                        total_s_used = s_nisa_h_used + s_nisa_w_used
+                        if total_s_used > 0:
+                            s_nisa_h_used *= (1 - ratio)
+                            s_nisa_w_used *= (1 - ratio)
+                        s_nisa_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'h_tax' and h_tax_bal > 0:
+                        draw = min(h_tax_bal, withdrawal)
+                        ratio = draw / h_tax_bal
+                        h_tax_cb *= (1 - ratio)
+                        h_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'w_tax' and w_tax_bal > 0:
+                        draw = min(w_tax_bal, withdrawal)
+                        ratio = draw / w_tax_bal
+                        w_tax_cb *= (1 - ratio)
+                        w_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'h_nisa' and h_nisa_bal > 0:
+                        draw = min(h_nisa_bal, withdrawal)
+                        ratio = draw / h_nisa_bal
+                        h_nisa_cb *= (1 - ratio)
+                        h_nisa_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'w_nisa' and w_nisa_bal > 0:
+                        draw = min(w_nisa_bal, withdrawal)
+                        ratio = draw / w_nisa_bal
+                        w_nisa_cb *= (1 - ratio)
+                        w_nisa_bal -= draw
+                        withdrawal -= draw
+                if withdrawal > 0:
+                    bankrupt = True
+            else:
+                # Retired normal: s_tax → s_nisa → h_tax → w_tax → h_nisa → w_nisa → bond → gold → EF
+                # (bond/gold already drawn above for retired)
+                for pool_name in ('s_tax', 's_nisa', 'h_tax', 'w_tax', 'h_nisa', 'w_nisa'):
+                    if withdrawal <= 0:
+                        break
+                    if pool_name == 's_tax' and s_tax_bal > 0:
+                        draw = min(s_tax_bal, withdrawal)
+                        ratio = draw / s_tax_bal
+                        s_tax_cb *= (1 - ratio)
+                        s_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 's_nisa' and s_nisa_bal > 0:
+                        draw = min(s_nisa_bal, withdrawal)
+                        ratio = draw / s_nisa_bal
+                        s_nisa_cb *= (1 - ratio)
+                        total_s_used = s_nisa_h_used + s_nisa_w_used
+                        if total_s_used > 0:
+                            s_nisa_h_used *= (1 - ratio)
+                            s_nisa_w_used *= (1 - ratio)
+                        s_nisa_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'h_tax' and h_tax_bal > 0:
+                        draw = min(h_tax_bal, withdrawal)
+                        ratio = draw / h_tax_bal
+                        h_tax_cb *= (1 - ratio)
+                        h_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'w_tax' and w_tax_bal > 0:
+                        draw = min(w_tax_bal, withdrawal)
+                        ratio = draw / w_tax_bal
+                        w_tax_cb *= (1 - ratio)
+                        w_tax_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'h_nisa' and h_nisa_bal > 0:
+                        draw = min(h_nisa_bal, withdrawal)
+                        ratio = draw / h_nisa_bal
+                        h_nisa_cb *= (1 - ratio)
+                        h_nisa_bal -= draw
+                        withdrawal -= draw
+                    elif pool_name == 'w_nisa' and w_nisa_bal > 0:
+                        draw = min(w_nisa_bal, withdrawal)
+                        ratio = draw / w_nisa_bal
+                        w_nisa_cb *= (1 - ratio)
+                        w_nisa_bal -= draw
+                        withdrawal -= draw
+                if withdrawal > 0:
+                    bankrupt = True
+
+        # Clamp negative balances to zero
+        for _pool in ((h_nisa_bal, h_nisa_cb), (w_nisa_bal, w_nisa_cb),
+                      (s_nisa_bal, s_nisa_cb), (h_tax_bal, h_tax_cb),
+                      (w_tax_bal, w_tax_cb), (s_tax_bal, s_tax_cb)):
+            pass  # handled by withdrawal logic; explicit clamp below
+        total_equity = h_nisa_bal + w_nisa_bal + s_nisa_bal + h_tax_bal + w_tax_bal + s_tax_bal
+        if total_equity < 0:
+            h_nisa_bal = h_nisa_cb = 0
+            w_nisa_bal = w_nisa_cb = 0
+            s_nisa_bal = s_nisa_cb = 0
+            h_tax_bal = h_tax_cb = 0
+            w_tax_bal = w_tax_cb = 0
+            s_tax_bal = s_tax_cb = 0
 
         # Emergency fund = last resort (all stocks/bonds/gold/CB exhausted)
         if bankrupt and emergency_fund > 0:
@@ -2074,6 +2419,8 @@ def simulate_strategy(
             })
             break
 
+        nisa_balance = h_nisa_bal + w_nisa_bal + s_nisa_bal
+        taxable_balance = h_tax_bal + w_tax_bal + s_tax_bal
         investment_balance = nisa_balance + taxable_balance + bond_balance + gold_balance + cash_bucket
 
         if principal_invaded_age is None and investment_balance + emergency_fund < principal_if_untouched:
@@ -2142,8 +2489,10 @@ def simulate_strategy(
             "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
             "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
             "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
-
             "kodomo_nisa_gifted": kodomo_nisa_gifted,
+            "h_separate_assets": 0,
+            "w_separate_assets": 0,
+            "shared_assets": 0,
             "monthly_log": monthly_log,
             "investment_balance_80": 0,
             "securities_tax": 0,
@@ -2155,6 +2504,12 @@ def simulate_strategy(
             "final_net_assets": 0,
             "after_tax_net_assets": 0,
         }
+
+    # Compute totals from 3 pools
+    nisa_balance = h_nisa_bal + w_nisa_bal + s_nisa_bal
+    nisa_cost_basis = h_nisa_cb + w_nisa_cb + s_nisa_cb
+    taxable_balance = h_tax_bal + w_tax_bal + s_tax_bal
+    taxable_cost_basis = h_tax_cb + w_tax_cb + s_tax_cb
 
     ownership_years = END_AGE - effective_purchase_age
     final = _calc_final_assets(
@@ -2194,6 +2549,9 @@ def simulate_strategy(
         "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
         "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
         "kodomo_nisa_gifted": kodomo_nisa_gifted,
+        "h_separate_assets": h_nisa_bal + h_tax_bal,
+        "w_separate_assets": w_nisa_bal + w_tax_bal,
+        "shared_assets": s_nisa_bal + s_tax_bal + bond_balance + gold_balance + cash_bucket + emergency_fund,
         "monthly_log": monthly_log,
         **final,
     }

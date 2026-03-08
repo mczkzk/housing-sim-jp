@@ -81,6 +81,8 @@ def main():
                 child_birth_ages=resolved_children,
                 child_independence_ages=resolved_indep,
                 purchase_age=purchase_age,
+                husband_savings=r["husband_savings"],
+                wife_savings=r["wife_savings"],
             )
             det_results.append(result)
         except ValueError as e:

@@ -197,6 +197,8 @@ def build_report_context(
             child_birth_ages=resolved_children,
             child_independence_ages=resolved_indep,
             purchase_age=purchase_age,
+            husband_savings=r["husband_savings"],
+            wife_savings=r["wife_savings"],
         )
         det_results.append(result)
 
@@ -274,6 +276,8 @@ def build_report_context(
         bucket_ramp_years=r["bucket_ramp_years"],
         bucket_bond_return=r["bucket_bond_return"],
         bucket_gold_return=r["bucket_gold_return"],
+        husband_savings=r["husband_savings"],
+        wife_savings=r["wife_savings"],
     )
     scenario_results = run_scenarios(**scenario_kwargs)
     print("  投資規律感度分析...", file=sys.stderr)
@@ -294,6 +298,8 @@ def build_report_context(
             child_birth_ages=resolved_children,
             child_independence_ages=resolved_indep,
             collect_yearly=True,
+            husband_savings=r["husband_savings"],
+            wife_savings=r["wife_savings"],
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
@@ -319,6 +325,8 @@ def build_report_context(
                 child_birth_ages=resolved_children,
                 child_independence_ages=resolved_indep,
                 quiet=True,
+                husband_savings=r["husband_savings"],
+                wife_savings=r["wife_savings"],
             )
             stress_results.append((label, results))
         print(file=sys.stderr)
@@ -1022,10 +1030,13 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
             f"子供{n_children}人に**月{monthly:.0f}万円（年{annual:.0f}万円）**/人を拠出"
             f"（制度上限: 年60万円/人、生涯600万円/人）。"
             "NISAと同様に年初一括で特定口座から逆算売却→振替。\n\n",
+            "**親NISAの生涯枠（3,600万円）が充填されるまでは、こどもNISAへの拠出は行わない。**"
+            "親NISA枠は非課税効果が最大のため、先に親枠を最大限活用する。\n\n",
             f"デフォルト月{monthly:.0f}万円は保守的な設定。"
             "18歳でNISA口座が子供名義に移行した時点で親に使途の強制力がなくなるため、"
             "過大な拠出リスクを抑えている。\n\n",
-            "- **拠出期間**: 0〜17歳（18歳で成人NISA移行、子供名義に）\n",
+            "- **拠出開始**: 親NISA生涯枠（3,600万円）充填後\n",
+            "- **拠出期間**: 子供0〜17歳（18歳で成人NISA移行、子供名義に）\n",
             "- **独立時**: 残額は全額子供に帰属（親の資産から離脱）\n",
         ])
         if contributed > 0:

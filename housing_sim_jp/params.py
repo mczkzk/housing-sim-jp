@@ -116,6 +116,9 @@ class SimulationParams:
     bucket_bond_return: float = 0.005  # 個人向け国債変動10年
     bucket_gold_return: float = 0.04   # ゴールド期待リターン
 
+    # Marriage age (夫の結婚年齢、0=start_age時点で既婚)
+    marriage_age: int = 0
+
     # Parental leave (産休・育休: 出産月からの月数、0=無効)
     wife_parental_leave_months: int = 12    # 妻: 産前産後+育休
     husband_parental_leave_months: int = 1  # 夫: パパ育休

@@ -242,22 +242,33 @@ class TestDivorceWithBucket:
 
         s = StrategicRental(initial_savings=800, child_birth_ages=[], child_independence_ages=[])
 
+        # 3-pool: husband/wife separate pools stay/go; shared split 50%
         result = _apply_divorce(
             month=120, strategy=s, params=SimulationParams(),
             purchase_month_offset=0,
-            nisa_balance=1000, nisa_cost_basis=800,
-            taxable_balance=2000, taxable_cost_basis=1500,
+            h_nisa_bal=500, h_nisa_cb=400,
+            w_nisa_bal=500, w_nisa_cb=400,
+            h_tax_bal=1000, h_tax_cb=750,
+            w_tax_bal=1000, w_tax_cb=750,
+            s_nisa_bal=0, s_nisa_cb=0,
+            s_tax_bal=0, s_tax_cb=0,
             ideco_balance=500, emergency_fund=300,
             bond_balance=400, bond_cost_basis=350,
             gold_balance=200, gold_cost_basis=180,
             cash_bucket=100,
         )
-        # result: (..., bond_bal, bond_cb, gold_bal, gold_cb, cash_bucket)
-        bond_bal = result[8]
-        bond_cb = result[9]
-        gold_bal = result[10]
-        gold_cb = result[11]
-        cash_bucket = result[12]
+        # result indices: 0-1 h_nisa, 2-3 w_nisa, 4-5 h_tax, 6-7 w_tax,
+        #   8-9 s_nisa, 10-11 s_tax, 12 ideco, 13 ef, 14 cost, 15 rent,
+        #   16-17 bond, 18-19 gold, 20 cb
+        assert result[0] == pytest.approx(500)   # h_nisa stays
+        assert result[2] == pytest.approx(0)     # w_nisa zeroed
+        assert result[4] == pytest.approx(1000)  # h_tax stays
+        assert result[6] == pytest.approx(0)     # w_tax zeroed
+        bond_bal = result[16]
+        bond_cb = result[17]
+        gold_bal = result[18]
+        gold_cb = result[19]
+        cash_bucket = result[20]
         assert bond_bal == pytest.approx(400 * DIVORCE_ASSET_SPLIT_RATIO)
         assert bond_cb == pytest.approx(350 * DIVORCE_ASSET_SPLIT_RATIO)
         assert gold_bal == pytest.approx(200 * DIVORCE_ASSET_SPLIT_RATIO)

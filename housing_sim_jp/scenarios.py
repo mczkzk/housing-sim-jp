@@ -85,6 +85,8 @@ def run_scenarios(
     initial_savings: float = 800,
     husband_income: float = 40.0,
     wife_income: float = 22.5,
+    husband_savings: float = 0.0,
+    wife_savings: float = 0.0,
     discipline_factors=None,
     child_birth_ages: list[int] | None = None,
     child_independence_ages: list[int] | None = None,
@@ -178,6 +180,8 @@ def run_scenarios(
                     child_birth_ages=child_birth_ages,
                     child_independence_ages=child_independence_ages,
                     purchase_age=purchase_age,
+                    husband_savings=husband_savings,
+                    wife_savings=wife_savings,
                 )
             )
         all_results[scenario_name] = results

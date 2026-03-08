@@ -210,6 +210,8 @@ def main():
         bucket_ramp_years=r["bucket_ramp_years"],
         bucket_bond_return=r["bucket_bond_return"],
         bucket_gold_return=r["bucket_gold_return"],
+        husband_savings=r["husband_savings"],
+        wife_savings=r["wife_savings"],
     )
 
     print_parameters()

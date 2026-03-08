@@ -14,9 +14,13 @@ def _print_header(r: dict, params: SimulationParams, start_age: int, child_birth
     h_income = r["husband_income"]
     w_income = r["wife_income"]
     savings = r["savings"]
+    h_sav = r["husband_savings"]
+    w_sav = r["wife_savings"]
+    sh_sav = r["shared_savings"]
     print("=" * 80)
     print(f"住宅資産形成シミュレーション（{start_age}歳-80歳、{sim_years}年間）")
-    print(f"  初期資産: {savings:.0f}万円 / 夫手取り: {h_income:.1f}万円 / 妻手取り: {w_income:.1f}万円（合計{h_income + w_income:.1f}万円）")
+    savings_detail = f"（夫特有{h_sav:.0f}万 + 妻特有{w_sav:.0f}万 + 共有{sh_sav:.0f}万）" if h_sav > 0 or w_sav > 0 else ""
+    print(f"  初期資産: {savings:.0f}万円{savings_detail} / 夫手取り: {h_income:.1f}万円 / 妻手取り: {w_income:.1f}万円（合計{h_income + w_income:.1f}万円）")
     schedule = params.income_growth_schedule
     wi = params.wage_inflation
     for label, age_val, base in [("夫", r["husband_age"], h_income), ("妻", r["wife_age"], w_income)]:
@@ -221,6 +225,8 @@ def main():
                     child_birth_ages=child_birth_ages,
                     child_independence_ages=independence_ages or None,
                     purchase_age=purchase_age,
+                    husband_savings=r["husband_savings"],
+                    wife_savings=r["wife_savings"],
                 )
             )
         except ValueError as e:

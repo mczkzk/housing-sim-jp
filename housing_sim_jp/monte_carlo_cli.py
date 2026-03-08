@@ -132,6 +132,8 @@ def _run_stress_test(
     initial_savings: float,
     child_birth_ages: list[int],
     child_independence_ages: list[int] | None = None,
+    husband_savings: float = 0.0,
+    wife_savings: float = 0.0,
 ):
     """Run stress test scenarios isolating each event type."""
     print("\n【ストレステスト: イベントリスクの影響】")
@@ -153,6 +155,8 @@ def _run_stress_test(
             child_birth_ages=child_birth_ages,
             child_independence_ages=child_independence_ages,
             quiet=True,
+            husband_savings=husband_savings,
+            wife_savings=wife_savings,
         )
         all_scenario_results.append((label, results))
     print(file=sys.stderr)
@@ -221,6 +225,8 @@ def main():
         base_params, mc_config, husband_age, wife_age, initial_savings,
         child_birth_ages=child_birth_ages,
         child_independence_ages=independence_ages or None,
+        husband_savings=r["husband_savings"],
+        wife_savings=r["wife_savings"],
     )
 
     _print_results(results, args.mc_runs, args.volatility, not args.no_events)
@@ -231,6 +237,8 @@ def main():
         _run_stress_test(
             base_params, mc_config, husband_age, wife_age, initial_savings,
             child_birth_ages, independence_ages or None,
+            husband_savings=r["husband_savings"],
+            wife_savings=r["wife_savings"],
         )
 
 
