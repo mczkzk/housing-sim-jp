@@ -227,8 +227,8 @@ def build_report_context(
             h_gross = result.get("h_ideco_withdrawal_gross", 0)
             w_gross = result.get("w_ideco_withdrawal_gross", 0)
             if h_gross > 0 or w_gross > 0:
-                h_sim_age = 71 + (start_age - husband_age)
-                w_sim_age = 71 + (start_age - wife_age)
+                h_sim_age = params.ideco_withdrawal_age + (start_age - husband_age)
+                w_sim_age = params.ideco_withdrawal_age + (start_age - wife_age)
                 if h_sim_age == w_sim_age:
                     shared_markers.append((h_sim_age, h_gross + w_gross, "iDeCo受取"))
                 else:

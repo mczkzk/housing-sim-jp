@@ -105,8 +105,8 @@ def main():
             h_gross = result.get("h_ideco_withdrawal_gross", 0)
             w_gross = result.get("w_ideco_withdrawal_gross", 0)
             if h_gross > 0 or w_gross > 0:
-                h_sim_age = 71 + (start_age - husband_age)
-                w_sim_age = 71 + (start_age - wife_age)
+                h_sim_age = params.ideco_withdrawal_age + (start_age - husband_age)
+                w_sim_age = params.ideco_withdrawal_age + (start_age - wife_age)
                 if h_sim_age == w_sim_age:
                     shared_markers.append((h_sim_age, h_gross + w_gross, "iDeCo受取"))
                 else:
@@ -147,6 +147,12 @@ def main():
             child_birth_ages=resolved_children,
             child_independence_ages=resolved_indep,
             collect_yearly=True,
+            husband_savings=r["husband_savings"],
+            wife_savings=r["wife_savings"],
+            husband_nisa_used=r["husband_nisa_used"],
+            wife_nisa_used=r["wife_nisa_used"],
+            husband_nisa_balance=r["husband_nisa_balance"],
+            wife_nisa_balance=r["wife_nisa_balance"],
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:

@@ -163,6 +163,8 @@ def _run_stress_test(
             wife_savings=wife_savings,
             husband_nisa_used=husband_nisa_used,
             wife_nisa_used=wife_nisa_used,
+            husband_nisa_balance=husband_nisa_balance,
+            wife_nisa_balance=wife_nisa_balance,
         )
         all_scenario_results.append((label, results))
     print(file=sys.stderr)
