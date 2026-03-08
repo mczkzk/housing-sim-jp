@@ -136,6 +136,8 @@ def _run_stress_test(
     wife_savings: float = 0.0,
     husband_nisa_used: float = 0.0,
     wife_nisa_used: float = 0.0,
+    husband_nisa_balance: float = -1.0,
+    wife_nisa_balance: float = -1.0,
 ):
     """Run stress test scenarios isolating each event type."""
     print("\n【ストレステスト: イベントリスクの影響】")
@@ -233,6 +235,8 @@ def main():
         wife_savings=r["wife_savings"],
         husband_nisa_used=r["husband_nisa_used"],
         wife_nisa_used=r["wife_nisa_used"],
+        husband_nisa_balance=r["husband_nisa_balance"],
+        wife_nisa_balance=r["wife_nisa_balance"],
     )
 
     _print_results(results, args.mc_runs, args.volatility, not args.no_events)

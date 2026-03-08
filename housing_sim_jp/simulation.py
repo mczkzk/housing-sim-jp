@@ -1478,6 +1478,8 @@ def simulate_strategy(
     wife_savings: float = 0.0,
     husband_nisa_used: float = 0.0,
     wife_nisa_used: float = 0.0,
+    husband_nisa_balance: float = -1.0,
+    wife_nisa_balance: float = -1.0,
 ) -> dict:
     """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
@@ -1647,26 +1649,30 @@ def simulate_strategy(
     w_pool -= cb_from_w
 
     # 3-pool investment allocation
-    # Pre-existing NISA balances (cost basis = balance at start, gains ignored)
-    h_nisa_pre = min(husband_nisa_used, h_pool, NISA_LIMIT_PP)
-    w_nisa_pre = min(wife_nisa_used, w_pool, NISA_LIMIT_PP)
+    # Pre-existing NISA: balance (market value) and cost basis (lifetime limit consumed)
+    h_nisa_pre_cb = min(husband_nisa_used, NISA_LIMIT_PP)
+    w_nisa_pre_cb = min(wife_nisa_used, NISA_LIMIT_PP)
+    h_nisa_pre_bal = max(h_nisa_pre_cb, husband_nisa_balance if husband_nisa_balance >= 0 else h_nisa_pre_cb)
+    w_nisa_pre_bal = max(w_nisa_pre_cb, wife_nisa_balance if wife_nisa_balance >= 0 else w_nisa_pre_cb)
+    h_nisa_pre_bal = min(h_nisa_pre_bal, h_pool)
+    w_nisa_pre_bal = min(w_nisa_pre_bal, w_pool)
 
     # Each pool's remaining → own NISA (per-person limit) → taxable
     # Husband's NISA: pre-existing + new deposit up to annual limit
-    h_nisa_new = min(h_pool - h_nisa_pre, NISA_LIMIT_PP - h_nisa_pre, NISA_ANNUAL_LIMIT_PP)
-    h_nisa_deposit = h_nisa_pre + h_nisa_new
-    h_nisa_bal = h_nisa_deposit
-    h_nisa_cb = h_nisa_deposit
-    h_tax_bal = h_pool - h_nisa_deposit
-    h_tax_cb = h_pool - h_nisa_deposit
+    h_pool_after_nisa = h_pool - h_nisa_pre_bal
+    h_nisa_new = min(h_pool_after_nisa, NISA_LIMIT_PP - h_nisa_pre_cb, NISA_ANNUAL_LIMIT_PP)
+    h_nisa_bal = h_nisa_pre_bal + h_nisa_new
+    h_nisa_cb = h_nisa_pre_cb + h_nisa_new
+    h_tax_bal = h_pool - h_nisa_bal
+    h_tax_cb = h_tax_bal
 
     # Wife's NISA: pre-existing + new deposit up to annual limit
-    w_nisa_new = min(w_pool - w_nisa_pre, NISA_LIMIT_PP - w_nisa_pre, NISA_ANNUAL_LIMIT_PP)
-    w_nisa_deposit = w_nisa_pre + w_nisa_new
-    w_nisa_bal = w_nisa_deposit
-    w_nisa_cb = w_nisa_deposit
-    w_tax_bal = w_pool - w_nisa_deposit
-    w_tax_cb = w_pool - w_nisa_deposit
+    w_pool_after_nisa = w_pool - w_nisa_pre_bal
+    w_nisa_new = min(w_pool_after_nisa, NISA_LIMIT_PP - w_nisa_pre_cb, NISA_ANNUAL_LIMIT_PP)
+    w_nisa_bal = w_nisa_pre_bal + w_nisa_new
+    w_nisa_cb = w_nisa_pre_cb + w_nisa_new
+    w_tax_bal = w_pool - w_nisa_bal
+    w_tax_cb = w_tax_bal
 
     # Shared NISA: fill remaining room from either person
     h_nisa_room_left = NISA_LIMIT_PP - h_nisa_cb
@@ -1697,9 +1703,9 @@ def simulate_strategy(
     s_tax_bal = shared_pool
     s_tax_cb = shared_pool
 
-    # Per-person annual NISA tracking
-    h_nisa_annual = h_nisa_deposit + s_to_h_nisa
-    w_nisa_annual = w_nisa_deposit + s_to_w_nisa
+    # Per-person annual NISA tracking (pre-existing doesn't count toward annual limit)
+    h_nisa_annual = h_nisa_new + s_to_h_nisa
+    w_nisa_annual = w_nisa_new + s_to_w_nisa
 
     # Bucket strategy: bond/gold balances (shared pool)
     bond_balance = 0.0

@@ -22,6 +22,8 @@ DEFAULTS = {
     "marriage_age": 0,
     "husband_nisa_used": 0.0,
     "wife_nisa_used": 0.0,
+    "husband_nisa_balance": -1.0,
+    "wife_nisa_balance": -1.0,
     "husband_income": 40.0,
     "wife_income": 22.5,
     "children": "30,33",
@@ -155,6 +157,8 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--marriage-age", type=int, default=None, help=f"夫の結婚年齢（0=開始時点で既婚）(default: {d['marriage_age']})")
     parser.add_argument("--husband-nisa-used", type=float, default=None, help=f"夫のNISA既投資元本・万円 (default: {d['husband_nisa_used']:.0f})")
     parser.add_argument("--wife-nisa-used", type=float, default=None, help=f"妻のNISA既投資元本・万円 (default: {d['wife_nisa_used']:.0f})")
+    parser.add_argument("--husband-nisa-balance", type=float, default=None, help="夫のNISA現在評価額・万円（省略時=元本と同額）")
+    parser.add_argument("--wife-nisa-balance", type=float, default=None, help="妻のNISA現在評価額・万円（省略時=元本と同額）")
     parser.add_argument("--husband-income", type=float, default=None, help=f"夫の月額手取り・万円 (default: {d['husband_income']})")
     parser.add_argument("--wife-income", type=float, default=None, help=f"妻の月額手取り・万円 (default: {d['wife_income']})")
     parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、例: 30,33 / noneで子なし）(default: {d['children']})")
@@ -360,4 +364,9 @@ def resolve(args: argparse.Namespace, config: dict) -> dict:
     resolved["savings"] = (
         resolved["husband_savings"] + resolved["wife_savings"] + resolved["shared_savings"]
     )
+    # NISA balance defaults to cost basis if not specified (-1 sentinel)
+    if resolved["husband_nisa_balance"] < 0:
+        resolved["husband_nisa_balance"] = resolved["husband_nisa_used"]
+    if resolved["wife_nisa_balance"] < 0:
+        resolved["wife_nisa_balance"] = resolved["wife_nisa_used"]
     return resolved
