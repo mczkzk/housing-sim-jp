@@ -1476,6 +1476,8 @@ def simulate_strategy(
     event_timeline: EventTimeline | None = None,
     husband_savings: float = 0.0,
     wife_savings: float = 0.0,
+    husband_nisa_used: float = 0.0,
+    wife_nisa_used: float = 0.0,
 ) -> dict:
     """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
@@ -1645,16 +1647,22 @@ def simulate_strategy(
     w_pool -= cb_from_w
 
     # 3-pool investment allocation
+    # Pre-existing NISA balances (cost basis = balance at start, gains ignored)
+    h_nisa_pre = min(husband_nisa_used, h_pool, NISA_LIMIT_PP)
+    w_nisa_pre = min(wife_nisa_used, w_pool, NISA_LIMIT_PP)
+
     # Each pool's remaining → own NISA (per-person limit) → taxable
-    # Husband's NISA: from h_pool first
-    h_nisa_deposit = min(h_pool, NISA_LIMIT_PP, NISA_ANNUAL_LIMIT_PP)
+    # Husband's NISA: pre-existing + new deposit up to annual limit
+    h_nisa_new = min(h_pool - h_nisa_pre, NISA_LIMIT_PP - h_nisa_pre, NISA_ANNUAL_LIMIT_PP)
+    h_nisa_deposit = h_nisa_pre + h_nisa_new
     h_nisa_bal = h_nisa_deposit
     h_nisa_cb = h_nisa_deposit
     h_tax_bal = h_pool - h_nisa_deposit
     h_tax_cb = h_pool - h_nisa_deposit
 
-    # Wife's NISA: from w_pool first
-    w_nisa_deposit = min(w_pool, NISA_LIMIT_PP, NISA_ANNUAL_LIMIT_PP)
+    # Wife's NISA: pre-existing + new deposit up to annual limit
+    w_nisa_new = min(w_pool - w_nisa_pre, NISA_LIMIT_PP - w_nisa_pre, NISA_ANNUAL_LIMIT_PP)
+    w_nisa_deposit = w_nisa_pre + w_nisa_new
     w_nisa_bal = w_nisa_deposit
     w_nisa_cb = w_nisa_deposit
     w_tax_bal = w_pool - w_nisa_deposit
@@ -1663,8 +1671,8 @@ def simulate_strategy(
     # Shared NISA: fill remaining room from either person
     h_nisa_room_left = NISA_LIMIT_PP - h_nisa_cb
     w_nisa_room_left = NISA_LIMIT_PP - w_nisa_cb
-    h_annual_room_left = NISA_ANNUAL_LIMIT_PP - h_nisa_deposit
-    w_annual_room_left = NISA_ANNUAL_LIMIT_PP - w_nisa_deposit
+    h_annual_room_left = NISA_ANNUAL_LIMIT_PP - h_nisa_new
+    w_annual_room_left = NISA_ANNUAL_LIMIT_PP - w_nisa_new
     # Track how much of shared NISA uses each person's slot
     s_nisa_h_used = 0.0
     s_nisa_w_used = 0.0
@@ -1760,6 +1768,13 @@ def simulate_strategy(
 
     h_peak = 0.0
     w_peak = 0.0
+    h_nisa_fill_age = None  # Age when husband's NISA lifetime limit is filled
+    w_nisa_fill_age = None  # Age when wife's NISA lifetime limit is filled
+    # Check if already filled at start
+    if h_nisa_cb + s_nisa_h_used >= NISA_LIMIT_PP - 0.01:
+        h_nisa_fill_age = start_age
+    if w_nisa_cb + s_nisa_w_used >= NISA_LIMIT_PP - 0.01:
+        w_nisa_fill_age = start_age
     monthly_log = []
     bankrupt_age = None
     principal_invaded_age = None
@@ -1816,6 +1831,13 @@ def simulate_strategy(
                 s_nisa_w_used += w_share
                 h_nisa_annual += h_share
                 w_nisa_annual += w_share
+
+            # Track NISA fill age
+            _age_now = start_age + month // 12
+            if h_nisa_fill_age is None and h_nisa_cb + s_nisa_h_used >= NISA_LIMIT_PP - 0.01:
+                h_nisa_fill_age = _age_now
+            if w_nisa_fill_age is None and w_nisa_cb + s_nisa_w_used >= NISA_LIMIT_PP - 0.01:
+                w_nisa_fill_age = _age_now
 
             # こどもNISA: 年初一括投入（両親NISA生涯枠充填後のみ）
             _both_nisa_full = (
@@ -2226,6 +2248,12 @@ def simulate_strategy(
                 s_nisa_w_used += w_portion
                 h_nisa_annual += h_portion
                 w_nisa_annual += w_portion
+                # Track NISA fill age (monthly)
+                age_now = start_age + month // 12
+                if h_nisa_fill_age is None and h_nisa_cb + s_nisa_h_used >= NISA_LIMIT_PP - 0.01:
+                    h_nisa_fill_age = age_now
+                if w_nisa_fill_age is None and w_nisa_cb + s_nisa_w_used >= NISA_LIMIT_PP - 0.01:
+                    w_nisa_fill_age = age_now
             to_taxable = investable - to_nisa
             s_tax_bal += to_taxable
             s_tax_cb += to_taxable
@@ -2549,6 +2577,8 @@ def simulate_strategy(
         "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
         "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
         "kodomo_nisa_gifted": kodomo_nisa_gifted,
+        "h_nisa_fill_age": h_nisa_fill_age,
+        "w_nisa_fill_age": w_nisa_fill_age,
         "h_separate_assets": h_nisa_bal + h_tax_bal,
         "w_separate_assets": w_nisa_bal + w_tax_bal,
         "shared_assets": s_nisa_bal + s_tax_bal + bond_balance + gold_balance + cash_bucket + emergency_fund,

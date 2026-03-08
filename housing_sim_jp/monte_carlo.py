@@ -130,6 +130,8 @@ def run_monte_carlo(
     collect_yearly: bool = False,
     husband_savings: float = 0.0,
     wife_savings: float = 0.0,
+    husband_nisa_used: float = 0.0,
+    wife_nisa_used: float = 0.0,
 ) -> MonteCarloResult:
     """Run N Monte Carlo simulations for a single strategy.
 
@@ -230,6 +232,8 @@ def run_monte_carlo(
                     event_timeline=event_timeline,
                     husband_savings=husband_savings,
                     wife_savings=wife_savings,
+                    husband_nisa_used=husband_nisa_used,
+                    wife_nisa_used=wife_nisa_used,
                 )
             except ValueError:
                 infeasible = True
@@ -301,6 +305,8 @@ def run_monte_carlo_all_strategies(
     collect_yearly: bool = False,
     husband_savings: float = 0.0,
     wife_savings: float = 0.0,
+    husband_nisa_used: float = 0.0,
+    wife_nisa_used: float = 0.0,
 ) -> list[MonteCarloResult]:
     """Run Monte Carlo simulation for all 4 strategies."""
     start_age = max(husband_start_age, wife_start_age)
@@ -335,6 +341,8 @@ def run_monte_carlo_all_strategies(
             collect_yearly=collect_yearly,
             husband_savings=husband_savings,
             wife_savings=wife_savings,
+            husband_nisa_used=husband_nisa_used,
+            wife_nisa_used=wife_nisa_used,
         )
         results.append(mc_result)
 

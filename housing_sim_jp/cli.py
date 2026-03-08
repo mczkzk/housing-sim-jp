@@ -227,6 +227,8 @@ def main():
                     purchase_age=purchase_age,
                     husband_savings=r["husband_savings"],
                     wife_savings=r["wife_savings"],
+                    husband_nisa_used=r["husband_nisa_used"],
+                    wife_nisa_used=r["wife_nisa_used"],
                 )
             )
         except ValueError as e:

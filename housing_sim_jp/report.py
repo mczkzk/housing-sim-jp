@@ -199,6 +199,8 @@ def build_report_context(
             purchase_age=purchase_age,
             husband_savings=r["husband_savings"],
             wife_savings=r["wife_savings"],
+            husband_nisa_used=r["husband_nisa_used"],
+            wife_nisa_used=r["wife_nisa_used"],
         )
         det_results.append(result)
 
@@ -278,6 +280,8 @@ def build_report_context(
         bucket_gold_return=r["bucket_gold_return"],
         husband_savings=r["husband_savings"],
         wife_savings=r["wife_savings"],
+        husband_nisa_used=r["husband_nisa_used"],
+        wife_nisa_used=r["wife_nisa_used"],
     )
     scenario_results = run_scenarios(**scenario_kwargs)
     print("  投資規律感度分析...", file=sys.stderr)
@@ -300,6 +304,8 @@ def build_report_context(
             collect_yearly=True,
             husband_savings=r["husband_savings"],
             wife_savings=r["wife_savings"],
+            husband_nisa_used=r["husband_nisa_used"],
+            wife_nisa_used=r["wife_nisa_used"],
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
@@ -327,6 +333,8 @@ def build_report_context(
                 quiet=True,
                 husband_savings=r["husband_savings"],
                 wife_savings=r["wife_savings"],
+                husband_nisa_used=r["husband_nisa_used"],
+                wife_nisa_used=r["wife_nisa_used"],
             )
             stress_results.append((label, results))
         print(file=sys.stderr)
@@ -1007,8 +1015,23 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
         "- **年初一括振替**: 毎年1月に特定口座から売却→NISA枠へ振替"
         "（売却益に20.315%課税した残額が実質投入額となるよう逆算）\n",
         f"- **運用利回り**: 年{p.investment_return:.0%}（全額株式インデックス、非課税）\n",
-        "- **最速充填**: 余剰資金が十分なら約5年でNISA枠を満額充填\n\n",
     ])
+    # Show actual fill timing from simulation results
+    if ctx.det_results:
+        ref = ctx.det_results[0]
+        h_fill = ref.get("h_nisa_fill_age")
+        w_fill = ref.get("w_nisa_fill_age")
+        if h_fill is not None and w_fill is not None:
+            lines.append(
+                f"- **充填完了**: 夫 **{h_fill}歳**（{h_fill - ctx.start_age}年目）"
+                f"、妻 **{w_fill}歳**（{w_fill - ctx.start_age}年目）\n\n"
+            )
+        elif h_fill is not None:
+            lines.append(f"- **充填完了**: 夫 **{h_fill}歳**（{h_fill - ctx.start_age}年目）、妻は80歳までに未充填\n\n")
+        elif w_fill is not None:
+            lines.append(f"- **充填完了**: 妻 **{w_fill}歳**（{w_fill - ctx.start_age}年目）、夫は80歳までに未充填\n\n")
+        else:
+            lines.append("- **充填**: 80歳までにNISA枠は満額に達しない\n\n")
 
     # --- こどもNISA ---
     has_kodomo = p.kodomo_nisa_enabled and ctx.child_birth_ages

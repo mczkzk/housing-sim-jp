@@ -20,6 +20,8 @@ DEFAULTS = {
     "wife_savings": 0.0,
     "shared_savings": 800.0,
     "marriage_age": 0,
+    "husband_nisa_used": 0.0,
+    "wife_nisa_used": 0.0,
     "husband_income": 40.0,
     "wife_income": 22.5,
     "children": "30,33",
@@ -151,6 +153,8 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--wife-savings", type=float, default=None, help=f"妻の婚前資産・万円 (default: {d['wife_savings']:.0f})")
     parser.add_argument("--shared-savings", type=float, default=None, help=f"共有資産・万円 (default: {d['shared_savings']:.0f})")
     parser.add_argument("--marriage-age", type=int, default=None, help=f"夫の結婚年齢（0=開始時点で既婚）(default: {d['marriage_age']})")
+    parser.add_argument("--husband-nisa-used", type=float, default=None, help=f"夫のNISA既投資元本・万円 (default: {d['husband_nisa_used']:.0f})")
+    parser.add_argument("--wife-nisa-used", type=float, default=None, help=f"妻のNISA既投資元本・万円 (default: {d['wife_nisa_used']:.0f})")
     parser.add_argument("--husband-income", type=float, default=None, help=f"夫の月額手取り・万円 (default: {d['husband_income']})")
     parser.add_argument("--wife-income", type=float, default=None, help=f"妻の月額手取り・万円 (default: {d['wife_income']})")
     parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、例: 30,33 / noneで子なし）(default: {d['children']})")
