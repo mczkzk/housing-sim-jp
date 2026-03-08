@@ -38,6 +38,7 @@ from housing_sim_jp.simulation import (
     END_AGE,
     GRAD_SCHOOL_MAP,
     INFEASIBLE,
+    NISA_LIMIT_PP,
     estimate_pension_monthly,
     resolve_child_birth_ages,
     resolve_independence_ages,
@@ -1017,13 +1018,37 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
 
     # --- Adult NISA ---
     lines.extend([
-        "#### NISA（夫婦合算）\n\n",
+        "#### 新NISA（2024年〜、恒久非課税）\n\n",
         "夫婦各1,800万円（合計**3,600万円**）の生涯非課税枠。"
-        "年間投資上限は夫婦合計**720万円**（360万/人）。\n\n",
+        "年間投資上限は夫婦合計**720万円**（360万/人）。"
+        "旧NISA（一般/つみたて）は非課税期間が有限（5年/20年）のため、"
+        "期限到来後は特定口座に移管される前提で新NISA枠のみを管理対象とする。\n\n",
         "- **年初一括振替**: 毎年1月に特定口座から売却→NISA枠へ振替"
         "（売却益に20.315%課税した残額が実質投入額となるよう逆算）\n",
         f"- **運用利回り**: 年{p.investment_return:.0%}（全額株式インデックス、非課税）\n",
     ])
+    # Show pre-existing NISA if any
+    h_nisa_used = ctx.r.get("husband_nisa_used", 0)
+    w_nisa_used = ctx.r.get("wife_nisa_used", 0)
+    if h_nisa_used > 0 or w_nisa_used > 0:
+        h_bal = ctx.r.get("husband_nisa_balance", h_nisa_used)
+        w_bal = ctx.r.get("wife_nisa_balance", w_nisa_used)
+        parts = []
+        if h_nisa_used > 0:
+            s = f"夫{h_nisa_used:.0f}万"
+            if h_bal > h_nisa_used:
+                s += f"（評価額{h_bal:.0f}万）"
+            parts.append(s)
+        if w_nisa_used > 0:
+            s = f"妻{w_nisa_used:.0f}万"
+            if w_bal > w_nisa_used:
+                s += f"（評価額{w_bal:.0f}万）"
+            parts.append(s)
+        lines.append(
+            f"- **開始時の新NISA投資済み元本**: {' / '.join(parts)}"
+            f"（残枠: 夫{NISA_LIMIT_PP - h_nisa_used:.0f}万・妻{NISA_LIMIT_PP - w_nisa_used:.0f}万）\n"
+        )
+
     # Show actual fill timing from simulation results
     if ctx.det_results:
         ref = ctx.det_results[0]

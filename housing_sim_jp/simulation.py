@@ -166,9 +166,9 @@ PRE_PURCHASE_RENEWAL_DIVISOR = Strategy.RENEWAL_FEE_DIVISOR
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
 # Simulation constants
-NISA_LIMIT_PP = 1800  # NISA生涯上限（万円/人）
-NISA_ANNUAL_LIMIT_PP = 360  # NISA年間投資枠（万円/人）
-NISA_LIMIT = NISA_LIMIT_PP * 2  # 夫婦NISA生涯上限（万円）
+NISA_LIMIT_PP = 1800  # 新NISA生涯上限（万円/人、2024年〜恒久非課税）
+NISA_ANNUAL_LIMIT_PP = 360  # 新NISA年間投資枠（万円/人）
+NISA_LIMIT = NISA_LIMIT_PP * 2  # 夫婦新NISA生涯上限（万円）
 NISA_ANNUAL_LIMIT = NISA_ANNUAL_LIMIT_PP * 2  # 夫婦合計年間投資枠
 KODOMO_NISA_ANNUAL_LIMIT = 60.0   # こどもNISA年間上限（万円/子）
 KODOMO_NISA_LIFETIME_LIMIT = 600.0  # こどもNISA生涯上限（万円/子、元本ベース）
@@ -1649,7 +1649,8 @@ def simulate_strategy(
     w_pool -= cb_from_w
 
     # 3-pool investment allocation
-    # Pre-existing NISA: balance (market value) and cost basis (lifetime limit consumed)
+    # Pre-existing 新NISA: balance (market value) and cost basis (lifetime limit consumed)
+    # 旧NISAは期限付き（一般5年/つみたて20年）のため特定口座に含める
     h_nisa_pre_cb = min(husband_nisa_used, NISA_LIMIT_PP)
     w_nisa_pre_cb = min(wife_nisa_used, NISA_LIMIT_PP)
     h_nisa_pre_bal = max(h_nisa_pre_cb, husband_nisa_balance if husband_nisa_balance >= 0 else h_nisa_pre_cb)
