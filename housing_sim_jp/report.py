@@ -81,14 +81,6 @@ def fmt_bankrupt(r: dict | None) -> str:
         return "---"
     if r.get("bankrupt_age") is not None:
         return f"⚠{r['bankrupt_age']}歳破綻"
-    return fmt_oku(r["after_tax_net_assets"])
-
-
-def fmt_bankrupt_short(r: dict | None) -> str:
-    if r is None:
-        return "---"
-    if r.get("bankrupt_age") is not None:
-        return f"⚠{r['bankrupt_age']}歳破綻"
     return fmt_oku_short(r["after_tax_net_assets"])
 
 
@@ -1334,7 +1326,7 @@ def _render_ch3_1_scenarios(ctx: ReportContext) -> str:
         vals = []
         best_val = max((r["after_tax_net_assets"] for r in ordered if r and r.get("bankrupt_age") is None), default=0)
         for r in ordered:
-            s = fmt_bankrupt_short(r)
+            s = fmt_bankrupt(r)
             if r and r.get("bankrupt_age") is None and r["after_tax_net_assets"] == best_val:
                 s = f"**{s}**"
             vals.append(s)
@@ -1589,7 +1581,7 @@ def _render_ch3_4_discipline(ctx: ReportContext) -> str:
         full_ordered = _scenario_row(full)
         vals = []
         for d, f in zip(disc_ordered, full_ordered):
-            ds = fmt_bankrupt_short(d)
+            ds = fmt_bankrupt(d)
             if d and f and d.get("bankrupt_age") is None and f.get("bankrupt_age") is None:
                 diff = d["after_tax_net_assets"] - f["after_tax_net_assets"]
                 ds += f"(▲{abs(diff)/10000:.2f})"
@@ -2120,7 +2112,7 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
             valid_vals = [r["after_tax_net_assets"] for r in items if r and r.get("bankrupt_age") is None]
             max_v = max(valid_vals) if valid_vals else 0
         for r in items:
-            s = fmt_bankrupt_short(r)
+            s = fmt_bankrupt(r)
             if bold_max and r and r.get("bankrupt_age") is None and r["after_tax_net_assets"] == max_v:
                 s = f"**{s}**"
             vals.append(s)
