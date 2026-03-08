@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -1594,59 +1595,84 @@ def simulate_strategy(
     else:
         initial = max(0.0, strategy.initial_investment)
 
-    # Deduct purchase costs from pools: shared → husband → wife
+    # Deduct startup costs from pools by income ratio
     purchase_deduction = strategy.initial_savings - initial
     shared_savings = max(0.0, strategy.initial_savings - husband_savings - wife_savings)
     shared_pool = shared_savings
     h_pool = max(0.0, husband_savings)
     w_pool = max(0.0, wife_savings)
 
-    # Deduct costs
-    deduct = purchase_deduction
-    shared_deduct = min(deduct, shared_pool)
-    shared_pool -= shared_deduct
-    deduct -= shared_deduct
-    h_deduct = min(deduct, h_pool)
-    h_pool -= h_deduct
-    deduct -= h_deduct
-    w_deduct = min(deduct, w_pool)
-    w_pool -= w_deduct
+    # Income ratio for sharing startup costs
+    total_income = params.husband_income + params.wife_income
+    h_startup_ratio = params.husband_income / total_income if total_income > 0 else 0.5
 
-    # Allocate emergency fund from pools: shared → husband → wife
     initial_required_ef = _calc_required_emergency_fund(
         start_age, 0, params, child_home_ranges,
         retire_sim_age=household_retire_sim_age,
     )
-    emergency_fund = min(h_pool + w_pool + shared_pool, initial_required_ef)
-    initial_principal = strategy.initial_savings  # 諸費用控除前の貯蓄額（チャート参照線用）
-    invested_principal = initial  # 実際に投資に回った額（元本割れ判定用）
-
-    ef_remaining = emergency_fund
-    ef_from_shared = min(ef_remaining, shared_pool)
-    shared_pool -= ef_from_shared
-    ef_remaining -= ef_from_shared
-    ef_from_h = min(ef_remaining, h_pool)
-    h_pool -= ef_from_h
-    ef_remaining -= ef_from_h
-    ef_from_w = min(ef_remaining, w_pool)
-    w_pool -= ef_from_w
-
-    # Allocate cash bucket from pools: shared → husband → wife
     initial_required_cb = _calc_required_cash_bucket(
         start_age, 0, params, education_ranges, child_home_ranges,
         retire_sim_age=household_retire_sim_age,
     )
-    cash_bucket = min(h_pool + w_pool + shared_pool, initial_required_cb)
 
-    cb_remaining = cash_bucket
-    cb_from_shared = min(cb_remaining, shared_pool)
-    shared_pool -= cb_from_shared
-    cb_remaining -= cb_from_shared
-    cb_from_h = min(cb_remaining, h_pool)
-    h_pool -= cb_from_h
-    cb_remaining -= cb_from_h
-    cb_from_w = min(cb_remaining, w_pool)
-    w_pool -= cb_from_w
+    # Waiting check: based on minimum rental startup (105万 + EF)
+    # Purchase shortfall is handled by find_earliest_purchase_age, not waiting
+    rental_startup = PRE_PURCHASE_INITIAL_COST + initial_required_ef + initial_required_cb
+    rental_from_shared = min(shared_pool, rental_startup)
+    rental_remaining = rental_startup - rental_from_shared
+    h_rental_share = rental_remaining * h_startup_ratio
+    w_rental_share = rental_remaining - h_rental_share
+
+    h_shortfall = max(0.0, h_rental_share - h_pool)
+    w_shortfall = max(0.0, w_rental_share - w_pool)
+    waiting_months = 0
+
+    if h_shortfall > 0 or w_shortfall > 0:
+        monthly_living = base_living_cost(start_age) + params.living_premium
+        monthly_surplus = total_income - monthly_living
+        if monthly_surplus > 0:
+            h_save_rate = monthly_surplus * h_startup_ratio
+            w_save_rate = monthly_surplus - h_save_rate
+            h_months = (
+                math.ceil(h_shortfall / h_save_rate)
+                if h_shortfall > 0 and h_save_rate > 0
+                else 0
+            )
+            w_months = (
+                math.ceil(w_shortfall / w_save_rate)
+                if w_shortfall > 0 and w_save_rate > 0
+                else 0
+            )
+            waiting_months = max(h_months, w_months)
+            h_pool += h_save_rate * waiting_months
+            w_pool += w_save_rate * waiting_months
+
+    # Total startup = purchase costs + EF + CB
+    total_startup = purchase_deduction + initial_required_ef + initial_required_cb
+
+    # Shared pool covers first
+    startup_from_shared = min(shared_pool, total_startup)
+    shared_pool -= startup_from_shared
+    startup_remaining = total_startup - startup_from_shared
+
+    # Remainder split by income ratio
+    h_startup_share = startup_remaining * h_startup_ratio
+    w_startup_share = startup_remaining - h_startup_share
+
+    # If personal pool can't cover full share (purchase cost > rental cost),
+    # cap deduction to pool size — shortfall stays as reduced initial investment
+    h_deduct = min(h_startup_share, h_pool)
+    w_deduct = min(w_startup_share, w_pool)
+    h_pool -= h_deduct
+    w_pool -= w_deduct
+
+    # Distribute deducted amount into purchase / EF / CB
+    actually_deducted = startup_from_shared + h_deduct + w_deduct
+    emergency_fund = min(initial_required_ef, actually_deducted)
+    cash_bucket = min(initial_required_cb, max(0.0, actually_deducted - purchase_deduction))
+
+    initial_principal = strategy.initial_savings  # 諸費用控除前の貯蓄額（チャート参照線用）
+    invested_principal = initial  # 実際に投資に回った額（元本割れ判定用）
 
     # 3-pool investment allocation
     # Pre-existing 新NISA: balance (market value) and cost basis (lifetime limit consumed)
@@ -2525,6 +2551,9 @@ def simulate_strategy(
             "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
             "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
             "kodomo_nisa_gifted": kodomo_nisa_gifted,
+            "h_nisa_fill_age": h_nisa_fill_age,
+            "w_nisa_fill_age": w_nisa_fill_age,
+            "waiting_months": waiting_months,
             "h_separate_assets": 0,
             "w_separate_assets": 0,
             "shared_assets": 0,
@@ -2586,6 +2615,7 @@ def simulate_strategy(
         "kodomo_nisa_gifted": kodomo_nisa_gifted,
         "h_nisa_fill_age": h_nisa_fill_age,
         "w_nisa_fill_age": w_nisa_fill_age,
+        "waiting_months": waiting_months,
         "h_separate_assets": h_nisa_bal + h_tax_bal,
         "w_separate_assets": w_nisa_bal + w_tax_bal,
         "shared_assets": s_nisa_bal + s_tax_bal + bond_balance + gold_balance + cash_bucket + emergency_fund,

@@ -1056,13 +1056,13 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
         w_fill = ref.get("w_nisa_fill_age")
         if h_fill is not None and w_fill is not None:
             lines.append(
-                f"- **充填完了**: 夫 **{h_fill}歳**（{h_fill - ctx.start_age}年目）"
-                f"、妻 **{w_fill}歳**（{w_fill - ctx.start_age}年目）\n\n"
+                f"- **充填完了**: 夫 **{h_fill}歳**（{h_fill - ctx.start_age + 1}年目）"
+                f"、妻 **{w_fill}歳**（{w_fill - ctx.start_age + 1}年目）\n\n"
             )
         elif h_fill is not None:
-            lines.append(f"- **充填完了**: 夫 **{h_fill}歳**（{h_fill - ctx.start_age}年目）、妻は80歳までに未充填\n\n")
+            lines.append(f"- **充填完了**: 夫 **{h_fill}歳**（{h_fill - ctx.start_age + 1}年目）、妻は80歳までに未充填\n\n")
         elif w_fill is not None:
-            lines.append(f"- **充填完了**: 妻 **{w_fill}歳**（{w_fill - ctx.start_age}年目）、夫は80歳までに未充填\n\n")
+            lines.append(f"- **充填完了**: 妻 **{w_fill}歳**（{w_fill - ctx.start_age + 1}年目）、夫は80歳までに未充填\n\n")
         else:
             lines.append("- **充填**: 80歳までにNISA枠は満額に達しない\n\n")
 
@@ -1256,6 +1256,26 @@ def _render_ch1_7_strategies(ctx: ReportContext) -> str:
     lines.append(f"| 諸費用（物件価格の8%） | **{UrawaMansion.INITIAL_COST}万円** | **{UrawaHouse.INITIAL_COST}万円** | **{StrategicRental.INITIAL_COST}万円**（敷金等） | **{NormalRental.INITIAL_COST}万円**（敷金等） |")
     lines.append(f"| 生活防衛資金 | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** |")
     lines.append(f"| **{ctx.start_age}歳時の運用開始元本** | **{max(0, m_init):.0f}万円** | **{max(0, h_init):.0f}万円** | **{max(0, r_init):.0f}万円** | **{max(0, r_init):.0f}万円** |")
+
+    # Startup cost sharing note
+    h_ratio_pct = ctx.params.husband_income / (ctx.params.husband_income + ctx.params.wife_income) * 100 if (ctx.params.husband_income + ctx.params.wife_income) > 0 else 50
+    lines.append(
+        f"\n初期コスト（諸費用＋生活防衛資金）は"
+        f"共有財産から優先的に充当し、不足分を収入比率（夫{h_ratio_pct:.0f}%・妻{100 - h_ratio_pct:.0f}%）で按分。"
+    )
+
+    # Waiting period note (per strategy)
+    if ctx.det_results:
+        wait_notes = []
+        for r in ctx.det_results:
+            w = r.get("waiting_months", 0)
+            if w > 0:
+                wait_notes.append(f"{r['strategy']}（{w}ヶ月）")
+        if wait_notes:
+            lines.append(
+                f"\n**⚠️ 初期資金不足により待機が必要: {', '.join(wait_notes)}。**"
+                f"待機中は現在の住居で給与蓄積し、不足解消後に新生活開始。"
+            )
 
     lines.append(
         "\n投資口座（§1.5）と資産配分（§1.6）の詳細は各節を参照。"
