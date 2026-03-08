@@ -598,8 +598,9 @@ def _render_ch1(ctx: ReportContext) -> str:
         _render_ch1_2_profile(ctx),
         _render_ch1_3_emergency(ctx),
         _render_ch1_4_ideco(ctx),
-        _render_ch1_5_bucket(ctx),
-        _render_ch1_6_strategies(ctx),
+        _render_ch1_5_investment_accounts(ctx),
+        _render_ch1_6_bucket(ctx),
+        _render_ch1_7_strategies(ctx),
     ]
     return "\n".join(parts)
 
@@ -991,11 +992,95 @@ def _render_ch1_4_ideco(ctx: ReportContext) -> str:
     return "".join(lines)
 
 
-def _render_ch1_5_bucket(ctx: ReportContext) -> str:
+def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
+    p = ctx.params
+    lines = [
+        "\n### 1.5 投資口座\n\n",
+        "毎月の余剰資金は以下の優先順位で投資口座に振り分ける。\n\n",
+    ]
+
+    # --- Adult NISA ---
+    lines.extend([
+        "#### NISA（夫婦合算）\n\n",
+        "夫婦各1,800万円（合計**3,600万円**）の生涯非課税枠。"
+        "年間投資上限は夫婦合計**720万円**（360万/人）。\n\n",
+        "- **年初一括振替**: 毎年1月に特定口座から売却→NISA枠へ振替"
+        "（売却益に20.315%課税した残額が実質投入額となるよう逆算）\n",
+        f"- **運用利回り**: 年{p.investment_return:.0%}（全額株式インデックス、非課税）\n",
+        "- **最速充填**: 余剰資金が十分なら約5年でNISA枠を満額充填\n\n",
+    ])
+
+    # --- こどもNISA ---
+    has_kodomo = p.kodomo_nisa_enabled and ctx.child_birth_ages
+    if has_kodomo:
+        n_children = len(ctx.child_birth_ages)
+        contributed = 0.0
+        education = 0.0
+        gifted = 0.0
+        if ctx.det_results:
+            for r in ctx.det_results:
+                contributed = max(contributed, r.get("kodomo_nisa_total_contributed", 0))
+                education = max(education, r.get("kodomo_nisa_total_education", 0))
+                gifted = max(gifted, r.get("kodomo_nisa_gifted", 0))
+
+        max_possible = 600 * n_children
+        lines.extend([
+            "#### こどもNISA（子供名義非課税口座、2027年〜）\n\n",
+            f"2027年創設の子供名義非課税口座。"
+            f"子供{n_children}人に年初一括で最大60万円/人（生涯上限600万円/人、成人NISA 1,800万の内枠）を拠出。"
+            "NISAと同様に特定口座から逆算売却→振替。\n\n",
+            "- **拠出期間**: 0〜17歳（18歳で成人NISA移行）\n",
+            "- **教育費充当**: 大学入学（19歳）以降、こどもNISA残高から優先的に充当\n",
+            "- **独立時**: 残額は子供に帰属（親の資産から離脱）\n",
+        ])
+        if contributed >= 100:
+            lines.append(
+                f"\n| 項目 | 金額 |\n|------|------|\n"
+                f"| 拠出累計 | {contributed:.0f}万円（上限{max_possible:.0f}万） |\n"
+                f"| 教育費充当 | {education:.0f}万円 |\n"
+                f"| 子供への贈与 | {gifted:.0f}万円 |\n"
+            )
+            lines.append(
+                f"\n※教育費充当額は運用益を含む（拠出元本{contributed:.0f}万が非課税運用で成長した結果）。\n\n"
+            )
+        elif contributed > 0:
+            lines.append(
+                f"\n親NISA枠充填後の余剰が少なく、こどもNISA拠出は{contributed:.0f}万にとどまる。\n\n"
+            )
+        else:
+            lines.append(
+                "\n親NISA枠充填後の余剰が不足するため、こどもNISA拠出なし。\n\n"
+            )
+
+    # --- 特定口座 ---
+    lines.extend([
+        "#### 特定口座（課税口座）\n\n",
+        "NISA枠を超える投資資金は特定口座で運用。"
+        "売却益・配当に**20.315%**課税。"
+        "NISA枠に空きがある場合は年初に特定口座→NISAへ自動振替。\n",
+    ])
+
+    # --- 投資優先順位まとめ ---
+    if has_kodomo:
+        lines.append(
+            "\n**投資優先順位**: iDeCo → NISA → こどもNISA → 特定口座"
+        )
+    else:
+        lines.append(
+            "\n**投資優先順位**: iDeCo → NISA → 特定口座"
+        )
+    lines.append(
+        f"（取り崩し順序は§1.6を参照）。\n"
+    )
+
+    return "".join(lines)
+
+
+def _render_ch1_6_bucket(ctx: ReportContext) -> str:
     p = ctx.params
     if p.bucket_safe_years <= 0 and p.bucket_gold_pct <= 0:
         return (
-            "\n### 1.5 資産配分\n\n"
+            "\n### 1.6 資産配分\n\n"
             "バケット戦略は無効（全期間100%株式運用＋生活防衛資金）。"
         )
     retirement = max(p.husband_work_end_age, p.wife_work_end_age)
@@ -1003,7 +1088,7 @@ def _render_ch1_5_bucket(ctx: ReportContext) -> str:
     bond_years = max(0, p.bucket_safe_years - p.bucket_cash_years)
     ef_months = p.emergency_fund_months
     lines = [
-        f"\n### 1.5 資産配分（バケット戦略）\n",
+        f"\n### 1.6 資産配分（バケット戦略）\n",
         f"**生活防衛資金**（§1.3）と**現金ポジション**は独立した現金プール。\n",
         f"- **生活防衛資金**: 生活費{ef_months:.0f}ヶ月分。最終防衛ライン（全資産枯渇時のみ取り崩し）\n",
         f"- **現金ポジション**: フェーズで変動する運用バッファ\n",
@@ -1041,7 +1126,7 @@ def _render_ch1_5_bucket(ctx: ReportContext) -> str:
     return "\n".join(lines)
 
 
-def _render_ch1_6_strategies(ctx: ReportContext) -> str:
+def _render_ch1_7_strategies(ctx: ReportContext) -> str:
     savings = ctx.savings
 
     # Classify purchase ages: None=feasible at start, INFEASIBLE=impossible, int=deferred
@@ -1057,7 +1142,7 @@ def _render_ch1_6_strategies(ctx: ReportContext) -> str:
     all_immediate = not has_deferred and not has_infeasible
 
     lines = [
-        "\n### 1.6 4戦略の定義と初期コスト\n",
+        "\n### 1.7 4戦略の定義と初期コスト\n",
         "築10年マンション3LDK（70㎡台）の相場は23区平均で約1.1億、"
         "港区1.8〜3.3億、文京区1.4〜2.2億。"
         "ボリュームゾーンの世帯年収1,000〜1,500万（フルローン上限7,000万〜1億）では射程外で、"
@@ -1113,8 +1198,7 @@ def _render_ch1_6_strategies(ctx: ReportContext) -> str:
     lines.append(f"| **{ctx.start_age}歳時の運用開始元本** | **{max(0, m_init):.0f}万円** | **{max(0, h_init):.0f}万円** | **{max(0, r_init):.0f}万円** | **{max(0, r_init):.0f}万円** |")
 
     lines.append(
-        "\n**投資口座：** NISA（夫婦合計上限3,600万円、非課税）→ 特定口座（課税20.315%）の順で運用。"
-        "取り崩し順序は§1.5を参照（生活防衛資金は最終防衛ライン）。"
+        "\n投資口座（§1.5）と資産配分（§1.6）の詳細は各節を参照。"
     )
 
     return "\n".join(lines)
@@ -1458,15 +1542,33 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
     lines.append("\n**NISA・特定口座の内訳：**\n")
     lines.append("※運用資産残高はNISA＋特定口座＋債券＋ゴールド＋現金ポジション（生活防衛資金除く）の合計\n")
     all4 = [r for r in ordered if r is not None]
+    from housing_sim_jp.simulation import NISA_LIMIT
     lines.append("| 戦略 | NISA残高（元本） | 特定口座残高（元本） | 金融所得税 |")
     lines.append("|------|-----------------|------------------|----------|")
     for r in all4:
+        nisa_cb = r['nisa_cost_basis']
+        nisa_pct = min(100.0, nisa_cb / NISA_LIMIT * 100) if NISA_LIMIT > 0 else 0
+        fill_label = "満額" if nisa_cb >= NISA_LIMIT - 1 else f"{nisa_pct:.0f}%"
         lines.append(
             f"| {r['strategy']} | "
-            f"{fmt_man(r['nisa_balance'])}（元本{fmt_man(r['nisa_cost_basis'])}） | "
+            f"{fmt_man(r['nisa_balance'])}（元本{fmt_man(nisa_cb)}、{fill_label}） | "
             f"{fmt_man(r['taxable_balance'])}（元本{fmt_man(r['taxable_cost_basis'])}） | "
             f"{fmt_man(r['securities_tax'])} |"
         )
+
+    # こどもNISA summary
+    has_kodomo = any(r.get("kodomo_nisa_total_contributed", 0) > 0 for r in all4)
+    if has_kodomo:
+        lines.append("\n**こどもNISA（教育費充当）：**\n")
+        lines.append("| 戦略 | 拠出累計 | 教育費充当 | 子供へ贈与 |")
+        lines.append("|------|---------|----------|----------|")
+        for r in all4:
+            lines.append(
+                f"| {r['strategy']} | "
+                f"{fmt_man(r.get('kodomo_nisa_total_contributed', 0))} | "
+                f"{fmt_man(r.get('kodomo_nisa_total_education', 0))} | "
+                f"{fmt_man(r.get('kodomo_nisa_gifted', 0))} |"
+            )
 
     return "\n".join(lines)
 
@@ -1822,7 +1924,7 @@ def _render_ch5(ctx: ReportContext) -> str:
     has_bucket = ctx.params.bucket_enabled
     if has_bucket:
         lines.append(
-            "\n本シミュレーションではバケット戦略（§1.5）により、"
+            "\n本シミュレーションではバケット戦略（§1.6）により、"
             "退職前から安全資産を段階的に積み増し、"
             "退職後は安全資産から優先的に取り崩すことで、"
             "暴落時に株式を安値で売却するリスクを軽減している。"
@@ -2295,6 +2397,28 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
         )
 
     # Children
+    kodomo_nisa_summary = ""
+    if ctx.params.kodomo_nisa_enabled and ctx.num_children > 0:
+        contributed = [r.get("kodomo_nisa_total_contributed", 0) for r in valid_std]
+        education = [r.get("kodomo_nisa_total_education", 0) for r in valid_std]
+        gifted = [r.get("kodomo_nisa_gifted", 0) for r in valid_std]
+        max_contrib = max(contributed)
+        max_ed = max(education)
+        total_gifted = sum(gifted)
+        if max_contrib > 0:
+            n = ctx.num_children
+            per_child = f"（{n}人合計）" if n >= 2 else ""
+            kodomo_nisa_summary = (
+                f"こどもNISA{per_child}: "
+                f"拠出最大{max_contrib:.0f}万→教育費{max_ed:.0f}万充当"
+            )
+            if total_gifted > 0:
+                avg_gift = sum(gifted) / len(gifted)
+                kodomo_nisa_summary += f"、子供へ{avg_gift:.0f}万贈与（独立時残額、戦略平均）"
+            else:
+                kodomo_nisa_summary += "、教育費で使い切り（子供への贈与なし）"
+            kodomo_nisa_summary += "。"
+
     if ctx.num_children == 0:
         advice_parts.append(
             "**子なし** → 3LDKが不要なため通常賃貸のコスト構造が改善。"
@@ -2302,16 +2426,22 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
             "購入は資産形成が目的で、実需面では賃貸でも十分。"
         )
     elif ctx.num_children == 1:
-        advice_parts.append(
+        base = (
             "**子1人** → 教育費の重複がなく、どの戦略でも家計の圧迫は限定的。"
             "賃貸の柔軟性（転居・ダウンサイズ）が活きる場面が多い。"
         )
+        if kodomo_nisa_summary:
+            base += kodomo_nisa_summary
+        advice_parts.append(base)
     else:
-        advice_parts.append(
+        base = (
             f"**子{ctx.num_children}人** → 教育費が重複する期間があり、"
             "購入戦略の住居費固定が家計の安定に寄与。"
             "通常賃貸は3LDK＋インフレで投資余力が構造的に圧迫される。"
         )
+        if kodomo_nisa_summary:
+            base += kodomo_nisa_summary
+        advice_parts.append(base)
 
     # Purchase deferral
     deferred = []

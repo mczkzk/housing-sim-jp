@@ -139,6 +139,12 @@ def _print_summary(valid_results: list[dict], start_age: int):
                 f" / 税軽減累計{r['ideco_tax_benefit_total']:.0f}万"
                 f" / 退職所得税▲{r['ideco_tax_paid']:.0f}万"
             )
+        if r.get("kodomo_nisa_total_contributed", 0) > 0:
+            print(
+                f"    こどもNISA: 拠出累計{r['kodomo_nisa_total_contributed']:.0f}万"
+                f" / 教育費充当{r['kodomo_nisa_total_education']:.0f}万"
+                f" / 子供へ贈与{r['kodomo_nisa_gifted']:.0f}万"
+            )
         if r.get("car_first_purchase_age") is not None and r["car_first_purchase_age"] > start_age:
             print(f"    車: {r['car_first_purchase_age']}歳で購入（{start_age}歳時点では資金不足）")
         if r.get("pet_first_adoption_age") is not None and r["pet_first_adoption_age"] > start_age:

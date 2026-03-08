@@ -168,6 +168,10 @@ PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介
 # Simulation constants
 NISA_LIMIT = 3600  # 夫婦NISA生涯上限（万円）
 NISA_ANNUAL_LIMIT = 720  # 夫婦合計年間投資枠（360万/人 × 2人）
+KODOMO_NISA_ANNUAL_LIMIT = 60.0   # こどもNISA年間上限（万円/子）
+KODOMO_NISA_LIFETIME_LIMIT = 600.0  # こどもNISA生涯上限（万円/子、元本ベース）
+KODOMO_NISA_CONTRIBUTION_END_AGE = 18  # 18歳でNISA移行→親からの拠出終了
+KODOMO_NISA_UNIVERSITY_AGE = 19        # 大学入学=取り崩し開始の子供年齢
 RESIDENCE_SPECIAL_DEDUCTION = 3000  # 居住用財産3,000万円特別控除
 
 # Rental moving costs
@@ -758,28 +762,32 @@ def _swap_taxable_to_nisa(
     nisa_limit: float,
     annual_limit: float,
 ) -> tuple[float, float, float, float, float]:
-    """年始の特定口座→NISA乗り換え（売却益に20.315%課税）。
+    """年始の特定口座→NISA乗り換え（目標額をNISAに入れるため逆算して売却）。
 
     Returns (nisa_bal, nisa_cb, tax_bal, tax_cb, annual_invested).
     """
     lifetime_room = max(0, nisa_limit - nisa_cost_basis)
-    swap_room = min(annual_limit, lifetime_room)
-    sell_amount = min(taxable_balance, swap_room)
-    if sell_amount <= 0 or taxable_balance <= 0:
+    target = min(annual_limit, lifetime_room)
+    if target <= 0 or taxable_balance <= 0:
         return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, 0.0
+
+    # Solve for sell_amount such that sell_amount - tax = target
+    gain_ratio = max(0.0, 1 - taxable_cost_basis / taxable_balance)
+    effective_rate = 1 - gain_ratio * CAPITAL_GAINS_TAX_RATE
+    sell_amount = min(target / effective_rate, taxable_balance)
 
     ratio = sell_amount / taxable_balance
     cost_portion = taxable_cost_basis * ratio
     gain = sell_amount - cost_portion
     tax = max(0, gain) * CAPITAL_GAINS_TAX_RATE
-    net_to_nisa = sell_amount - tax
+    to_nisa = sell_amount - tax
 
     taxable_balance -= sell_amount
     taxable_cost_basis -= cost_portion
-    nisa_balance += net_to_nisa
-    nisa_cost_basis += net_to_nisa
+    nisa_balance += to_nisa
+    nisa_cost_basis += to_nisa
 
-    return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, net_to_nisa
+    return nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, to_nisa
 
 
 def _transfer_between_assets(
@@ -1612,6 +1620,34 @@ def simulate_strategy(
     w_ideco_contribution_years = 0
     retirement_allowance_tax_paid = 0.0
 
+    # こどもNISA state (per-child)
+    n_children = len(child_birth_ages)
+    kodomo_nisa_balances = [0.0] * n_children
+    kodomo_nisa_cost_bases = [0.0] * n_children
+    kodomo_nisa_annual_invested = [0.0] * n_children
+    kodomo_nisa_cum_contributed = [0.0] * n_children  # per-child cumulative (for lifetime cap)
+    kodomo_nisa_total_contributed = 0.0
+    kodomo_nisa_total_education = 0.0
+    kodomo_nisa_gifted = 0.0
+
+    # こどもNISA: 初年度の年初一括投入（特定口座から）
+    if params.kodomo_nisa_enabled:
+        for ci in range(n_children):
+            child_age = start_age - child_birth_ages[ci]
+            if child_age < 0 or child_age >= KODOMO_NISA_CONTRIBUTION_END_AGE:
+                continue
+            lifetime_room = KODOMO_NISA_LIFETIME_LIMIT
+            swap_amount = min(KODOMO_NISA_ANNUAL_LIMIT, lifetime_room, taxable_balance)
+            if swap_amount > 0 and taxable_balance > 0:
+                # 初年度は全額元本（含み益なし）→ 税金なし
+                taxable_balance -= swap_amount
+                taxable_cost_basis -= swap_amount
+                kodomo_nisa_balances[ci] = swap_amount
+                kodomo_nisa_cost_bases[ci] = swap_amount
+                kodomo_nisa_cum_contributed[ci] = swap_amount
+                kodomo_nisa_total_contributed += swap_amount
+                kodomo_nisa_annual_invested[ci] = swap_amount
+
     # Per-person marginal tax rates
     h_gross_annual = params.husband_income * 12 / TAKEHOME_TO_GROSS
     h_marginal_rate = calc_marginal_income_tax_rate(estimate_taxable_income(h_gross_annual))
@@ -1630,6 +1666,7 @@ def simulate_strategy(
         # 年始: NISA年間枠リセット + 特定→NISA乗り換え
         if month > 0 and month % 12 == 0:
             nisa_annual_invested = 0.0
+            kodomo_nisa_annual_invested = [0.0] * n_children
             (nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis,
              swapped) = _swap_taxable_to_nisa(
                 nisa_balance, nisa_cost_basis,
@@ -1637,6 +1674,33 @@ def simulate_strategy(
                 NISA_LIMIT, NISA_ANNUAL_LIMIT,
             )
             nisa_annual_invested += swapped
+
+            # こどもNISA: 年初一括投入（特定口座→こどもNISA、成人NISAと同じ戦略）
+            if params.kodomo_nisa_enabled:
+                age_now = start_age + month // 12
+                for ci in range(n_children):
+                    child_age = age_now - child_birth_ages[ci]
+                    if child_age < 0 or child_age >= KODOMO_NISA_CONTRIBUTION_END_AGE:
+                        continue
+                    lifetime_room = KODOMO_NISA_LIFETIME_LIMIT - kodomo_nisa_cum_contributed[ci]
+                    target = min(KODOMO_NISA_ANNUAL_LIMIT, lifetime_room)
+                    if target <= 0 or taxable_balance <= 0:
+                        continue
+                    gain_ratio = max(0.0, 1 - taxable_cost_basis / taxable_balance)
+                    effective_rate = 1 - gain_ratio * CAPITAL_GAINS_TAX_RATE
+                    sell_amount = min(target / effective_rate, taxable_balance)
+                    ratio = sell_amount / taxable_balance
+                    cost_portion = taxable_cost_basis * ratio
+                    gain = sell_amount - cost_portion
+                    tax = max(0, gain) * CAPITAL_GAINS_TAX_RATE
+                    to_kodomo = sell_amount - tax
+                    taxable_balance -= sell_amount
+                    taxable_cost_basis -= cost_portion
+                    kodomo_nisa_balances[ci] += to_kodomo
+                    kodomo_nisa_cost_bases[ci] += to_kodomo
+                    kodomo_nisa_cum_contributed[ci] += to_kodomo
+                    kodomo_nisa_total_contributed += to_kodomo
+                    kodomo_nisa_annual_invested[ci] += to_kodomo
 
             # Annual rebalance for bucket strategy
             if params.bucket_enabled:
@@ -1960,6 +2024,36 @@ def simulate_strategy(
             gold_balance -= withdrawal
             investable += withdrawal
 
+        # こどもNISA: returns + education withdrawal (before parent investment)
+        if params.kodomo_nisa_enabled:
+            years_elapsed_now = month / 12
+            inflation_now = params.inflation_factor(years_elapsed_now)
+            for ci in range(n_children):
+                child_age = age - child_birth_ages[ci]
+                # Apply investment returns
+                if kodomo_nisa_balances[ci] > 0:
+                    kodomo_nisa_balances[ci] *= 1 + monthly_return_rate
+                # University education withdrawal (before gift check)
+                if child_age >= KODOMO_NISA_UNIVERSITY_AGE and kodomo_nisa_balances[ci] > 0:
+                    child_ed_annual = _get_education_annual_cost(
+                        child_age, params.education_private_from,
+                        params.education_field, params.education_boost,
+                    )
+                    child_ed_monthly = child_ed_annual / 12 * inflation_now
+                    withdraw = min(kodomo_nisa_balances[ci], child_ed_monthly)
+                    if withdraw > 0:
+                        ratio = withdraw / kodomo_nisa_balances[ci]
+                        kodomo_nisa_cost_bases[ci] *= (1 - ratio)
+                        kodomo_nisa_balances[ci] -= withdraw
+                        investable += withdraw
+                        kodomo_nisa_total_education += withdraw
+                # Gift remainder at independence (year start, after education paid)
+                if (child_age == indep_ages[ci] and month % 12 == 0
+                        and kodomo_nisa_balances[ci] > 0):
+                    kodomo_nisa_gifted += kodomo_nisa_balances[ci]
+                    kodomo_nisa_balances[ci] = 0.0
+                    kodomo_nisa_cost_bases[ci] = 0.0
+
         nisa_cb_before = nisa_cost_basis
         nisa_balance, nisa_cost_basis, taxable_balance, taxable_cost_basis, bankrupt = (
             _update_investments(
@@ -2065,6 +2159,9 @@ def simulate_strategy(
             "h_ideco_withdrawal_gross": h_ideco_withdrawal_gross,
             "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
             "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
+            "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
+            "kodomo_nisa_total_education": kodomo_nisa_total_education,
+            "kodomo_nisa_gifted": kodomo_nisa_gifted,
             "monthly_log": monthly_log,
             "investment_balance_80": 0,
             "securities_tax": 0,
@@ -2113,6 +2210,9 @@ def simulate_strategy(
         "h_ideco_withdrawal_gross": h_ideco_withdrawal_gross,
         "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
         "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
+        "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
+        "kodomo_nisa_total_education": kodomo_nisa_total_education,
+        "kodomo_nisa_gifted": kodomo_nisa_gifted,
         "monthly_log": monthly_log,
         **final,
     }

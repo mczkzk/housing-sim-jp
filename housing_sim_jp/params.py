@@ -120,6 +120,9 @@ class SimulationParams:
     wife_parental_leave_months: int = 12    # 妻: 産前産後+育休
     husband_parental_leave_months: int = 1  # 夫: パパ育休
 
+    # こどもNISA (2027年～: 子供名義の非課税口座)
+    kodomo_nisa_enabled: bool = True
+
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: list[float] | None = None
 
