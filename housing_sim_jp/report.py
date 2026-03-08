@@ -559,7 +559,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
 
 # Education cost helpers
 _EDUCATION_STAGE_MAP = {
-    "": "全公立",
+    "": "全国公立",
     "大学": "大学のみ私立",
     "高校": "高校から私立",
     "中学": "中学から私立",
@@ -1007,41 +1007,42 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
     if has_kodomo:
         n_children = len(ctx.child_birth_ages)
         contributed = 0.0
-        education = 0.0
         gifted = 0.0
         if ctx.det_results:
             for r in ctx.det_results:
                 contributed = max(contributed, r.get("kodomo_nisa_total_contributed", 0))
-                education = max(education, r.get("kodomo_nisa_total_education", 0))
                 gifted = max(gifted, r.get("kodomo_nisa_gifted", 0))
 
         max_possible = 600 * n_children
+        monthly = p.kodomo_nisa_monthly
+        annual = min(monthly * 12, 60)
         lines.extend([
             "#### こどもNISA（子供名義非課税口座、2027年〜）\n\n",
             f"2027年創設の子供名義非課税口座。"
-            f"子供{n_children}人に年初一括で最大60万円/人（生涯上限600万円/人、成人NISA 1,800万の内枠）を拠出。"
-            "NISAと同様に特定口座から逆算売却→振替。\n\n",
-            "- **拠出期間**: 0〜17歳（18歳で成人NISA移行）\n",
-            "- **教育費充当**: 大学入学（19歳）以降、こどもNISA残高から優先的に充当\n",
-            "- **独立時**: 残額は子供に帰属（親の資産から離脱）\n",
+            f"子供{n_children}人に**月{monthly:.0f}万円（年{annual:.0f}万円）**/人を拠出"
+            f"（制度上限: 年60万円/人、生涯600万円/人）。"
+            "NISAと同様に年初一括で特定口座から逆算売却→振替。\n\n",
+            f"デフォルト月{monthly:.0f}万円は保守的な設定。"
+            "18歳でNISA口座が子供名義に移行した時点で親に使途の強制力がなくなるため、"
+            "過大な拠出リスクを抑えている。\n\n",
+            "- **拠出期間**: 0〜17歳（18歳で成人NISA移行、子供名義に）\n",
+            "- **独立時**: 残額は全額子供に帰属（親の資産から離脱）\n",
         ])
-        if contributed >= 100:
+        if contributed > 0:
             lines.append(
                 f"\n| 項目 | 金額 |\n|------|------|\n"
                 f"| 拠出累計 | {contributed:.0f}万円（上限{max_possible:.0f}万） |\n"
-                f"| 教育費充当 | {education:.0f}万円 |\n"
-                f"| 子供への贈与 | {gifted:.0f}万円 |\n"
+                f"| 子供への贈与（独立時） | {gifted:.0f}万円 |\n"
             )
-            lines.append(
-                f"\n※教育費充当額は運用益を含む（拠出元本{contributed:.0f}万が非課税運用で成長した結果）。\n\n"
-            )
-        elif contributed > 0:
-            lines.append(
-                f"\n親NISA枠充填後の余剰が少なく、こどもNISA拠出は{contributed:.0f}万にとどまる。\n\n"
-            )
+            if gifted > 0:
+                lines.append(
+                    f"\n※贈与額は運用益を含む（拠出元本{contributed:.0f}万が非課税運用で成長した結果）。\n\n"
+                )
+            else:
+                lines.append("\n")
         else:
             lines.append(
-                "\n親NISA枠充填後の余剰が不足するため、こどもNISA拠出なし。\n\n"
+                "\n特定口座の残高不足により、こどもNISA拠出なし。\n\n"
             )
 
     # --- 特定口座 ---
@@ -1551,14 +1552,13 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
     # こどもNISA summary
     has_kodomo = any(r.get("kodomo_nisa_total_contributed", 0) > 0 for r in all4)
     if has_kodomo:
-        lines.append("\n**こどもNISA（教育費充当）：**\n")
-        lines.append("| 戦略 | 拠出累計 | 教育費充当 | 子供へ贈与 |")
-        lines.append("|------|---------|----------|----------|")
+        lines.append("\n**こどもNISA（子供への資産移転）：**\n")
+        lines.append("| 戦略 | 拠出累計 | 子供へ贈与（独立時） |")
+        lines.append("|------|---------|------------------|")
         for r in all4:
             lines.append(
                 f"| {r['strategy']} | "
                 f"{fmt_man(r.get('kodomo_nisa_total_contributed', 0))} | "
-                f"{fmt_man(r.get('kodomo_nisa_total_education', 0))} | "
                 f"{fmt_man(r.get('kodomo_nisa_gifted', 0))} |"
             )
 
@@ -2392,23 +2392,17 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
     kodomo_nisa_summary = ""
     if ctx.params.kodomo_nisa_enabled and ctx.num_children > 0:
         contributed = [r.get("kodomo_nisa_total_contributed", 0) for r in valid_std]
-        education = [r.get("kodomo_nisa_total_education", 0) for r in valid_std]
         gifted = [r.get("kodomo_nisa_gifted", 0) for r in valid_std]
         max_contrib = max(contributed)
-        max_ed = max(education)
         total_gifted = sum(gifted)
         if max_contrib > 0:
             n = ctx.num_children
             per_child = f"（{n}人合計）" if n >= 2 else ""
+            avg_gift = sum(gifted) / len(gifted) if gifted else 0
             kodomo_nisa_summary = (
                 f"こどもNISA{per_child}: "
-                f"拠出最大{max_contrib:.0f}万→教育費{max_ed:.0f}万充当"
+                f"拠出{max_contrib:.0f}万→独立時{avg_gift:.0f}万贈与（戦略平均）"
             )
-            if total_gifted > 0:
-                avg_gift = sum(gifted) / len(gifted)
-                kodomo_nisa_summary += f"、子供へ{avg_gift:.0f}万贈与（独立時残額、戦略平均）"
-            else:
-                kodomo_nisa_summary += "、教育費で使い切り（子供への贈与なし）"
             kodomo_nisa_summary += "。"
 
     if ctx.num_children == 0:

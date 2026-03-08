@@ -50,6 +50,7 @@ DEFAULTS = {
     "wife_parental_leave_months": 12,
     "husband_parental_leave_months": 1,
     "kodomo_nisa": True,
+    "kodomo_nisa_monthly": 1.0,
 }
 
 
@@ -142,7 +143,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--children", type=str, default=None, help=f"出産時の妻の年齢（カンマ区切り、例: 30,33 / noneで子なし）(default: {d['children']})")
     parser.add_argument("--living-premium", type=float, default=None, help=f"生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月）(default: {d['living_premium']})")
     parser.add_argument("--child-living", type=float, default=None, help=f"子1人あたりの追加生活費（万円/月）(default: {d['child_living']})")
-    parser.add_argument("--education-private-from", type=str, default=None, help="私立切替ステージ: \"\"=全公立, 中学, 高校, 大学 (default: 全公立)")
+    parser.add_argument("--education-private-from", type=str, default=None, help="私立切替ステージ: \"\"=全国公立, 中学, 高校, 大学 (default: 全国公立)")
     parser.add_argument("--education-field", type=str, default=None, help="進路: 理系, 文系 (default: 理系)")
     parser.add_argument("--education-boost", type=float, default=None, help="受験年費用倍率 0.8=節約, 1.0=標準, 1.2=積極 (default: 1.0)")
     parser.add_argument("--education-grad", type=str, default=None, help="最終学歴: 学部(22歳独立), 修士(24歳), 博士(27歳) (default: 学部)")
@@ -170,6 +171,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--wife-parental-leave-months", type=int, default=None, help="妻の産休・育休月数（default: 12）")
     parser.add_argument("--husband-parental-leave-months", type=int, default=None, help="夫の育休月数（default: 1）")
     parser.add_argument("--no-kodomo-nisa", dest="kodomo_nisa", action="store_false", default=None, help="こどもNISAを無効化")
+    parser.add_argument("--kodomo-nisa-monthly", type=float, default=None, help="こどもNISA拠出額（万円/月/子、制度上限5万、default: 1.0）")
     return parser
 
 
@@ -272,6 +274,7 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
         wife_parental_leave_months=r["wife_parental_leave_months"],
         husband_parental_leave_months=r["husband_parental_leave_months"],
         kodomo_nisa_enabled=r["kodomo_nisa"],
+        kodomo_nisa_monthly=r["kodomo_nisa_monthly"],
     )
 
 

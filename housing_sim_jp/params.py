@@ -122,6 +122,7 @@ class SimulationParams:
 
     # こどもNISA (2027年～: 子供名義の非課税口座)
     kodomo_nisa_enabled: bool = True
+    kodomo_nisa_monthly: float = 1.0  # 拠出額（万円/月/子、制度上限5万=年60万）
 
     # Monte Carlo: per-year investment returns (None=use fixed investment_return)
     annual_investment_returns: list[float] | None = None

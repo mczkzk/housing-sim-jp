@@ -171,7 +171,6 @@ NISA_ANNUAL_LIMIT = 720  # 夫婦合計年間投資枠（360万/人 × 2人）
 KODOMO_NISA_ANNUAL_LIMIT = 60.0   # こどもNISA年間上限（万円/子）
 KODOMO_NISA_LIFETIME_LIMIT = 600.0  # こどもNISA生涯上限（万円/子、元本ベース）
 KODOMO_NISA_CONTRIBUTION_END_AGE = 18  # 18歳でNISA移行→親からの拠出終了
-KODOMO_NISA_UNIVERSITY_AGE = 19        # 大学入学=取り崩し開始の子供年齢
 RESIDENCE_SPECIAL_DEDUCTION = 3000  # 居住用財産3,000万円特別控除
 
 # Rental moving costs
@@ -600,15 +599,15 @@ def _calc_monthly_income(
 # child_birth_age + offset → education cost period
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
 
-# 4トラック年次教育費データ (child_age → (国立文系, 国立理系, 私立文系, 私立理系), 万円/年)
+# 4トラック年次教育費データ (child_age → (国公立文系, 国公立理系, 私立文系, 私立理系), 万円/年)
 _EDUCATION_COSTS: dict[int, tuple[float, float, float, float]] = {
-    7:  (35, 35, 35, 35),      # 小1: 全トラック公立共通
+    7:  (35, 35, 35, 35),      # 小1: 全トラック国公立共通
     8:  (35, 35, 35, 35),
     9:  (40, 40, 40, 40),
     10: (70, 70, 70, 70),      # 小4: 中受塾スタート
     11: (90, 90, 90, 90),
     12: (130, 130, 130, 130),  # 小6: 中受本番 ← boost対象
-    13: (55, 55, 150, 160),    # 中1: 公立/私立で分岐
+    13: (55, 55, 150, 160),    # 中1: 国公立/私立で分岐
     14: (75, 75, 100, 110),
     15: (110, 110, 110, 120),  # 中3: 高校受験 ← boost対象
     16: (50, 50, 110, 120),    # 高1
@@ -628,7 +627,7 @@ _EXAM_YEARS = {12, 15, 18}  # boost対象の受験年
 
 
 def _education_track_index(child_age: int, private_from: str, field: str) -> int:
-    """0=国立文系, 1=国立理系, 2=私立文系, 3=私立理系."""
+    """0=国公立文系, 1=国公立理系, 2=私立文系, 3=私立理系."""
     is_private = (
         (private_from == "中学" and child_age >= 13)
         or (private_from == "高校" and child_age >= 16)
@@ -1626,17 +1625,17 @@ def simulate_strategy(
     kodomo_nisa_annual_invested = [0.0] * n_children
     kodomo_nisa_cum_contributed = [0.0] * n_children  # per-child cumulative (for lifetime cap)
     kodomo_nisa_total_contributed = 0.0
-    kodomo_nisa_total_education = 0.0
     kodomo_nisa_gifted = 0.0
 
     # こどもNISA: 初年度の年初一括投入（特定口座から）
+    kodomo_annual_target = min(params.kodomo_nisa_monthly * 12, KODOMO_NISA_ANNUAL_LIMIT)
     if params.kodomo_nisa_enabled:
         for ci in range(n_children):
             child_age = start_age - child_birth_ages[ci]
             if child_age < 0 or child_age >= KODOMO_NISA_CONTRIBUTION_END_AGE:
                 continue
             lifetime_room = KODOMO_NISA_LIFETIME_LIMIT
-            swap_amount = min(KODOMO_NISA_ANNUAL_LIMIT, lifetime_room, taxable_balance)
+            swap_amount = min(kodomo_annual_target, lifetime_room, taxable_balance)
             if swap_amount > 0 and taxable_balance > 0:
                 # 初年度は全額元本（含み益なし）→ 税金なし
                 taxable_balance -= swap_amount
@@ -1682,7 +1681,7 @@ def simulate_strategy(
                     if child_age < 0 or child_age >= KODOMO_NISA_CONTRIBUTION_END_AGE:
                         continue
                     lifetime_room = KODOMO_NISA_LIFETIME_LIMIT - kodomo_nisa_cum_contributed[ci]
-                    target = min(KODOMO_NISA_ANNUAL_LIMIT, lifetime_room)
+                    target = min(kodomo_annual_target, lifetime_room)
                     if target <= 0 or taxable_balance <= 0:
                         continue
                     gain_ratio = max(0.0, 1 - taxable_cost_basis / taxable_balance)
@@ -2025,28 +2024,12 @@ def simulate_strategy(
 
         # こどもNISA: returns + education withdrawal (before parent investment)
         if params.kodomo_nisa_enabled:
-            years_elapsed_now = month / 12
-            inflation_now = params.inflation_factor(years_elapsed_now)
             for ci in range(n_children):
                 child_age = age - child_birth_ages[ci]
                 # Apply investment returns
                 if kodomo_nisa_balances[ci] > 0:
                     kodomo_nisa_balances[ci] *= 1 + monthly_return_rate
-                # University education withdrawal (before gift check)
-                if child_age >= KODOMO_NISA_UNIVERSITY_AGE and kodomo_nisa_balances[ci] > 0:
-                    child_ed_annual = _get_education_annual_cost(
-                        child_age, params.education_private_from,
-                        params.education_field, params.education_boost,
-                    )
-                    child_ed_monthly = child_ed_annual / 12 * inflation_now
-                    withdraw = min(kodomo_nisa_balances[ci], child_ed_monthly)
-                    if withdraw > 0:
-                        ratio = withdraw / kodomo_nisa_balances[ci]
-                        kodomo_nisa_cost_bases[ci] *= (1 - ratio)
-                        kodomo_nisa_balances[ci] -= withdraw
-                        investable += withdraw
-                        kodomo_nisa_total_education += withdraw
-                # Gift remainder at independence (year start, after education paid)
+                # Gift at independence (18歳以降は子供名義→親に使途強制力なし)
                 if (child_age == indep_ages[ci] and month % 12 == 0
                         and kodomo_nisa_balances[ci] > 0):
                     kodomo_nisa_gifted += kodomo_nisa_balances[ci]
@@ -2159,7 +2142,7 @@ def simulate_strategy(
             "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
             "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
             "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
-            "kodomo_nisa_total_education": kodomo_nisa_total_education,
+
             "kodomo_nisa_gifted": kodomo_nisa_gifted,
             "monthly_log": monthly_log,
             "investment_balance_80": 0,
@@ -2210,7 +2193,6 @@ def simulate_strategy(
         "w_ideco_withdrawal_gross": w_ideco_withdrawal_gross,
         "retirement_allowance_tax_paid": retirement_allowance_tax_paid,
         "kodomo_nisa_total_contributed": kodomo_nisa_total_contributed,
-        "kodomo_nisa_total_education": kodomo_nisa_total_education,
         "kodomo_nisa_gifted": kodomo_nisa_gifted,
         "monthly_log": monthly_log,
         **final,

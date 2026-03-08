@@ -8,7 +8,7 @@ husband_income = 34.0 # 夫の月額手取り（万円）
 wife_income = 23.0    # 妻の月額手取り（万円）
 children = [27, 30]   # 出産時の妻の年齢（[] で子なし、最大2人）
 living_premium = 3.0    # 生活費プレミアム（年齢別ベースラインへの上乗せ、万円/月）
-education_private_from = "高校"  # 私立切替ステージ: ""=全公立, "中学", "高校", "大学"
+education_private_from = "高校"  # 私立切替ステージ: ""=全国公立, "中学", "高校", "大学"
 education_field = "理系"         # 進路: "理系", "文系"
 education_boost = 1.0            # 受験年費用倍率: 0.8=節約, 1.0=標準, 1.2=積極
 education_grad = "学部"          # 最終学歴: "学部"(22歳独立), "修士"(24歳), "博士"(27歳)
