@@ -317,7 +317,7 @@ def find_earliest_purchase_age(
         w_projected = _project_working_income(
             years_to_target, wife_start_age, params.wife_income, params,
         )
-        loan_months = min(35, 80 - target_age) * 12
+        loan_months = min(params.loan_years, END_AGE - target_age) * 12
         if loan_months <= 0:
             continue
 
@@ -1064,7 +1064,7 @@ def _apply_relocation(
 
         # Reset loan for new property
         age = start_age + month // 12
-        new_loan_months = min(35, END_AGE - age) * 12
+        new_loan_months = min(params.loan_years, END_AGE - age) * 12
         if new_loan_months <= 0:
             new_loan_months = 12  # minimum 1 year
         strategy.property_price = new_price
@@ -1504,7 +1504,7 @@ def simulate_strategy(
         strategy.loan_amount = inflated_price
 
         # Cap loan term
-        loan_months_cap = min(35, 80 - effective_purchase_age) * 12
+        loan_months_cap = min(params.loan_years, END_AGE - effective_purchase_age) * 12
         if loan_months_cap < strategy.loan_months:
             strategy.loan_months = loan_months_cap
     else:
