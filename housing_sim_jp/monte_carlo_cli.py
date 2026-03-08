@@ -253,6 +253,8 @@ def main():
             wife_savings=r["wife_savings"],
             husband_nisa_used=r["husband_nisa_used"],
             wife_nisa_used=r["wife_nisa_used"],
+            husband_nisa_balance=r["husband_nisa_balance"],
+            wife_nisa_balance=r["wife_nisa_balance"],
         )
 
 
