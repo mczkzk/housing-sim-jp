@@ -274,7 +274,26 @@ def find_earliest_purchase_age(
             age, years_from_start, params, education_ranges, child_home_ranges,
         )
 
-        monthly_surplus = projected_income - housing - education - living
+        # Child allowance (児童手当)
+        child_allowance = _calc_child_allowance(age, child_birth_ages)
+
+        monthly_surplus = projected_income + child_allowance - housing - education - living
+
+        # Car costs (running + amortised purchase)
+        if params.has_car:
+            car_monthly = params.car_running_cost_monthly + params.car_parking_cost_monthly
+            car_monthly += params.car_purchase_price / (params.car_replacement_years * 12)
+            monthly_surplus -= car_monthly * inflation
+
+        # Pet costs
+        pet_active = sum(
+            1 for pa in params.pet_adoption_ages
+            if pa <= age < pa + params.pet_lifespan_years
+        )
+        if pet_active > 0:
+            monthly_surplus -= params.pet_monthly_cost * pet_active * inflation
+            monthly_surplus -= params.pet_rental_premium * inflation
+
         # iDeCo contributions are locked until withdrawal → not available for purchase
         total_ideco = params.husband_ideco + params.wife_ideco
         if total_ideco > 0:
@@ -289,6 +308,16 @@ def find_earliest_purchase_age(
                     marginal_rate = calc_marginal_income_tax_rate(taxable_income)
                     tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_rate)
                     monthly_surplus -= contribution - tax_benefit
+
+        # Special expenses (one-time, deducted in the year they occur)
+        if age in params.special_expenses:
+            monthly_surplus -= params.special_expenses[age] * inflation / 12
+
+        # Pet adoption costs (one-time, in the year of adoption)
+        for pa in params.pet_adoption_ages:
+            if pa == age:
+                monthly_surplus -= params.pet_adoption_cost * inflation / 12
+
         # Accumulate 12 months of surplus with investment returns
         year_idx = target_age - start_age - 1
         if params.annual_investment_returns is not None:
