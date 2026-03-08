@@ -2247,19 +2247,19 @@ def simulate_strategy(
         bond_balance *= 1 + params.bucket_bond_return / 12
         gold_balance *= 1 + params.bucket_gold_return / 12
 
-        # Retirement-only: bond → gold withdrawal before equity
-        if is_retired and investable < 0 and bond_balance > 0:
-            withdrawal = min(bond_balance, -investable)
-            ratio = withdrawal / bond_balance
+        # Retired crash only: bond → gold withdrawal before equity
+        if is_retired and annual_return < 0 and investable < 0 and bond_balance > 0:
+            draw = min(bond_balance, -investable)
+            ratio = draw / bond_balance
             bond_cost_basis *= (1 - ratio)
-            bond_balance -= withdrawal
-            investable += withdrawal
-        if is_retired and investable < 0 and gold_balance > 0:
-            withdrawal = min(gold_balance, -investable)
-            ratio = withdrawal / gold_balance
+            bond_balance -= draw
+            investable += draw
+        if is_retired and annual_return < 0 and investable < 0 and gold_balance > 0:
+            draw = min(gold_balance, -investable)
+            ratio = draw / gold_balance
             gold_cost_basis *= (1 - ratio)
-            gold_balance -= withdrawal
-            investable += withdrawal
+            gold_balance -= draw
+            investable += draw
 
         # こどもNISA: returns + education withdrawal (before parent investment)
         if params.kodomo_nisa_enabled:
@@ -2419,8 +2419,8 @@ def simulate_strategy(
                 if withdrawal > 0:
                     bankrupt = True
             else:
-                # Retired normal: s_tax → s_nisa → h_tax → w_tax → h_nisa → w_nisa → bond → gold → EF
-                # (bond/gold already drawn above for retired)
+                # Retired normal: equity first (4% rule), then safe assets
+                # s_tax → s_nisa → h_tax → w_tax → h_nisa → w_nisa → bond → gold → EF
                 for pool_name in ('s_tax', 's_nisa', 'h_tax', 'w_tax', 'h_nisa', 'w_nisa'):
                     if withdrawal <= 0:
                         break
@@ -2464,6 +2464,19 @@ def simulate_strategy(
                         w_nisa_cb *= (1 - ratio)
                         w_nisa_bal -= draw
                         withdrawal -= draw
+                # After equity, draw from bond → gold
+                if withdrawal > 0 and bond_balance > 0:
+                    draw = min(bond_balance, withdrawal)
+                    ratio = draw / bond_balance
+                    bond_cost_basis *= (1 - ratio)
+                    bond_balance -= draw
+                    withdrawal -= draw
+                if withdrawal > 0 and gold_balance > 0:
+                    draw = min(gold_balance, withdrawal)
+                    ratio = draw / gold_balance
+                    gold_cost_basis *= (1 - ratio)
+                    gold_balance -= draw
+                    withdrawal -= draw
                 if withdrawal > 0:
                     bankrupt = True
 
