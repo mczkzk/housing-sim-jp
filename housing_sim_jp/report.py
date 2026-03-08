@@ -2006,8 +2006,9 @@ def _render_ch5(ctx: ReportContext) -> str:
         lines.append(
             "\n本シミュレーションではバケット戦略（§1.6）により、"
             "退職前から安全資産を段階的に積み増し、"
-            "退職後は安全資産から優先的に取り崩すことで、"
-            "暴落時に株式を安値で売却するリスクを軽減している。"
+            "通常時は株式から取り崩し（4%ルール）、"
+            "暴落時には安全資産から優先的に取り崩すことで、"
+            "株式を安値で売却するリスクを軽減している。"
         )
     else:
         lines.append(
@@ -2481,15 +2482,14 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
     if ctx.params.kodomo_nisa_enabled and ctx.num_children > 0:
         contributed = [r.get("kodomo_nisa_total_contributed", 0) for r in valid_std]
         gifted = [r.get("kodomo_nisa_gifted", 0) for r in valid_std]
-        max_contrib = max(contributed)
-        total_gifted = sum(gifted)
-        if max_contrib > 0:
+        avg_contrib = sum(contributed) / len(contributed) if contributed else 0
+        avg_gift = sum(gifted) / len(gifted) if gifted else 0
+        if avg_contrib > 0:
             n = ctx.num_children
             per_child = f"（{n}人合計）" if n >= 2 else ""
-            avg_gift = sum(gifted) / len(gifted) if gifted else 0
             kodomo_nisa_summary = (
                 f"こどもNISA{per_child}: "
-                f"拠出{max_contrib:.0f}万→独立時{avg_gift:.0f}万贈与（戦略平均）"
+                f"拠出{avg_contrib:.0f}万→独立時{avg_gift:.0f}万贈与（戦略平均）"
             )
             kodomo_nisa_summary += "。"
 
