@@ -162,7 +162,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
 # Purchase age auto-detection constants
 MAX_PURCHASE_AGE = 45  # 住宅ローン審査の現実的上限
 PRE_PURCHASE_RENT = 18.0  # 2LDK rent during pre-purchase phase
-PRE_PURCHASE_RENEWAL_DIVISOR = 24  # Renewal fee amortized monthly
+PRE_PURCHASE_RENEWAL_DIVISOR = Strategy.RENEWAL_FEE_DIVISOR
 PRE_PURCHASE_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料）
 
 # Simulation constants
