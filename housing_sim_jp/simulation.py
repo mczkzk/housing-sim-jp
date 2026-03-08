@@ -599,7 +599,6 @@ def _calc_monthly_income(
 
 # child_birth_age + offset → education cost period
 EDUCATION_CHILD_AGE_START = 7   # 小学校入学
-EDUCATION_CHILD_AGE_END = 22    # 大学卒業（デフォルト）
 
 # 4トラック年次教育費データ (child_age → (国立文系, 国立理系, 私立文系, 私立理系), 万円/年)
 _EDUCATION_COSTS: dict[int, tuple[float, float, float, float]] = {
@@ -1430,7 +1429,7 @@ def resolve_child_birth_ages(
         return child_birth_ages
     return [
         a for a in DEFAULT_CHILD_BIRTH_AGES
-        if a + EDUCATION_CHILD_AGE_END >= start_age
+        if a + DEFAULT_INDEPENDENCE_AGE >= start_age
     ]
 
 
