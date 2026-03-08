@@ -1003,8 +1003,7 @@ def _apply_divorce(
     gold_cost_basis *= DIVORCE_ASSET_SPLIT_RATIO
     cash_bucket *= DIVORCE_ASSET_SPLIT_RATIO
 
-    # iDeCoは個人口座のため夫分はそのまま（妻分は離脱）
-    ideco_balance *= DIVORCE_ASSET_SPLIT_RATIO
+    # iDeCoは個人口座のため夫分はそのまま（妻分は呼び出し側で離脱処理）
 
     event_cost_adj = 0.0
     if strategy.property_price > 0:
@@ -2159,8 +2158,8 @@ def simulate_strategy(
         elif w_ideco_balance > 0:
             # Wife's iDeCo still grows (inherited/remaining balance)
             w_ideco_balance *= 1 + monthly_return_rate
-            # Withdraw at husband's withdrawal age if still balance
-            if h_age == params.ideco_withdrawal_age and month % 12 == 0:
+            # Withdraw at wife's withdrawal age (inherited iDeCo)
+            if w_age == params.ideco_withdrawal_age and month % 12 == 0:
                 gap = params.ideco_withdrawal_age - REEMPLOYMENT_AGE
                 if params.retirement_allowance > 0 and params.retirement_service_years > 0 and gap < 20:
                     retirement_tax = calc_retirement_income_tax_with_prior(
