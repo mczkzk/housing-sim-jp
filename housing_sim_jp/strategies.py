@@ -10,6 +10,8 @@ from housing_sim_jp.params import END_AGE, SimulationParams, _calc_equal_payment
 CHILD_ROOM_AGE_START = 7   # 小学校入学
 CHILD_ROOM_AGE_END = 22    # 大学卒業
 
+RENTAL_INITIAL_COST = 105  # 賃貸初期費用（敷金・礼金・仲介手数料・引越し）
+
 
 def _stepped_multiplier(age: float, steps: list[tuple[float, float]], final: float) -> float:
     """Return multiplier based on stepped age thresholds.
@@ -206,7 +208,7 @@ class StrategicRental(Strategy):
     - Phase3 (2LDK安エリア): 子供独立後〜80歳
     """
 
-    INITIAL_COST = 105  # 敷金・礼金・仲介手数料・引越し
+    INITIAL_COST = RENTAL_INITIAL_COST
     RENT_PHASE1 = 18.0
     RENT_PHASE2_BASE = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
     RENT_PHASE2_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
@@ -264,7 +266,7 @@ class StrategicRental(Strategy):
 class NormalRental(Strategy):
     """Normal Rental (No Downsizing, 3LDK for entire period)"""
 
-    INITIAL_COST = 105  # 敷金・礼金・仲介手数料・引越し
+    INITIAL_COST = RENTAL_INITIAL_COST
     BASE_RENT = 23.0  # 小さめ3LDK ~65-70㎡ (子1人)
     RENT_EXTRA = 2.0  # 大きめ3LDK ~70-75㎡ (子2人: +2万)
 
