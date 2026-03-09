@@ -716,7 +716,7 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     if ctx.child_birth_ages:
         child_desc_parts = [f"妻{a}歳出産" for a in ctx.child_birth_ages]
         grad_label = _GRAD_LABEL.get(r["education_grad"], r["education_grad"])
-        child_desc = f"子{len(ctx.child_birth_ages)}人（{', '.join(child_desc_parts)}、**{grad_label}**）"
+        child_desc = f"子{len(ctx.child_birth_ages)}人（{'・'.join(child_desc_parts)}、**{grad_label}**）"
     else:
         child_desc = "子なし"
 
@@ -835,8 +835,9 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             parts.append(f"夫{h_leave}ヶ月")
         lines.append(
             f"\n**産休・育休：** 出産ごとに{'・'.join(parts)}の休業を想定。"
-            "休業中の収入は育児休業給付金（最初の180日: 額面の67%、以降50%）で補填。"
-            "社会保険料免除を加味し、手取りベースで最初の6ヶ月約89%、以降約67%で計算。"
+            "休業中の収入は育児休業給付金で補填（2025年4月改正: "
+            "産後28日は出生後休業支援給付金で額面80%、その後6ヶ月は67%、以降50%）。"
+            "社会保険料免除を加味し、手取りベースで産後1ヶ月は実質10割（上限100%）、6ヶ月まで約89%、以降約67%で計算。"
         )
 
     # Parameter plausibility warnings
@@ -1081,8 +1082,8 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
         monthly = p.kodomo_nisa_monthly
         annual = min(monthly * 12, 60)
         lines.extend([
-            "#### こどもNISA（子供名義非課税口座、2027年〜）\n\n",
-            f"2027年創設の子供名義非課税口座。"
+            "#### こどもNISA（子供名義非課税口座、2027年〜想定）\n\n",
+            "2027年創設を想定した子供名義非課税口座（未制度化、シミュレーション上の仮定）。"
             f"子供{n_children}人に**月{monthly:.0f}万円（年{annual:.0f}万円）**/人を拠出"
             f"（制度上限: 年60万円/人、生涯600万円/人）。"
             "NISAと同様に年初一括で特定口座から逆算売却→振替。\n\n",
@@ -1213,7 +1214,7 @@ def _render_ch1_7_strategies(ctx: ReportContext) -> str:
         "浦和常盤・北浦和エリアの中古物件（マンション7,580万・築10年、一戸建て6,547万・築7年）。",
     ]
     if all_immediate:
-        lines[-1] += f"**年収倍率7倍以内をクリアし、全戦略が{ctx.start_age}歳で即時スタート可能。**"
+        lines[-1] += f"**審査基準（年収倍率7倍・返済比率35%）をクリアし、全戦略が{ctx.start_age}歳で即時スタート可能。**"
     else:
         deferred = []
         for name in purchase_names:

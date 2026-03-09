@@ -50,7 +50,8 @@ REEMPLOYMENT_WAGE_INFLATION_RATIO = 0.5  # 再雇用期: インフレ追従率
 DIVORCE_ASSET_SPLIT_RATIO = 0.5   # 離婚時の財産分与比率
 SINGLE_LIVING_COST_RATIO = 0.7    # 離婚/死別後の生活費比率（1人世帯化）
 
-# 育児休業給付率（法定、2025年改正後）
+# 育児休業給付率（法定、2025年4月改正後）
+PARENTAL_LEAVE_BENEFIT_RATE_EARLY = 0.80   # 出生後休業支援給付金（産後28日、約1ヶ月）
 PARENTAL_LEAVE_BENEFIT_RATE_FIRST = 0.67   # 最初の180日（6ヶ月）
 PARENTAL_LEAVE_BENEFIT_RATE_LATER = 0.50   # 181日目以降
 
@@ -92,10 +93,14 @@ def _parental_leave_rate(
         birth_month = (ba - start_age) * 12
         months_since = month - birth_month
         if 0 <= months_since < leave_months:
-            gross_rate = (PARENTAL_LEAVE_BENEFIT_RATE_FIRST
-                          if months_since < 6
-                          else PARENTAL_LEAVE_BENEFIT_RATE_LATER)
-            return gross_rate / TAKEHOME_TO_GROSS
+            if months_since < 1:
+                gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_EARLY
+            elif months_since < 6:
+                gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_FIRST
+            else:
+                gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_LATER
+            # Cap at 1.0: 80%給付+社保免除で手取り10割相当だが超過しない
+            return min(gross_rate / TAKEHOME_TO_GROSS, 1.0)
     return 1.0
 
 
