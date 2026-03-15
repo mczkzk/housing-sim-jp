@@ -21,9 +21,9 @@ h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
 h2 { page-break-before: always; margin-top: 1.5em; }
 h2:first-of-type { page-break-before: avoid; }
 h3 { margin-top: 1.2em; }
-table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 9.5pt; page-break-inside: avoid; }
-th, td { border: 1px solid #ccc; padding: 4px 8px; }
-th { background: #f5f5f5; font-weight: bold; white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 9pt; page-break-inside: avoid; }
+th, td { border: 1px solid #ccc; padding: 3px 6px; }
+th { background: #f5f5f5; font-weight: bold; }
 tr:nth-child(even) { background: #fafafa; }
 blockquote { border-left: 3px solid #e0a040; padding: 0.5em 1em; margin: 1em 0;
              background: #fffbe6; font-size: 9.5pt; }
