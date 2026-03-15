@@ -82,7 +82,7 @@ class TestSnapshotAge37:
 
     def test_house(self):
         r = simulate_strategy(House(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(74598.531611, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(75080.939694, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])

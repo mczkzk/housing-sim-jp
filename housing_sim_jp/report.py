@@ -453,6 +453,26 @@ def _age_diff(ctx: ReportContext) -> int:
     return abs(ctx.husband_age - ctx.wife_age)
 
 
+def _needs_pair_loan(ctx: ReportContext) -> bool:
+    """片方の年収だけでローン審査を通過できない場合True（ペアローン必須）。"""
+    from housing_sim_jp.simulation import MAX_INCOME_MULTIPLIER, TAKEHOME_TO_GROSS, SCREENING_RATE, MAX_REPAYMENT_RATIO
+    from housing_sim_jp.params import _calc_equal_payment
+    area = ctx.area
+    max_price = max(area.mansion_price, area.house_price)
+    for solo_income in [ctx.params.husband_income, ctx.params.wife_income]:
+        gross_annual = solo_income * 12 / TAKEHOME_TO_GROSS
+        if gross_annual <= 0:
+            continue
+        if max_price / gross_annual > MAX_INCOME_MULTIPLIER:
+            continue
+        monthly_rate = SCREENING_RATE / 12
+        payment = _calc_equal_payment(max_price, monthly_rate, 420)
+        if payment * 12 / gross_annual > MAX_REPAYMENT_RATIO:
+            continue
+        return False  # solo income passes screening
+    return True
+
+
 def _savings_level(savings: float) -> str:
     if savings >= 3000:
         return "潤沢"
@@ -1484,12 +1504,27 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 **通常賃貸（3LDK固定）：** 全期間3LDK（月{normal_rent:g}万）。家賃はインフレ上昇し続ける。""")
 
-    lines.append("""
+    if _needs_pair_loan(ctx):
+        lines.append("""
 ### 2.4 ペアローン必須の構造的制約
 
 - **離婚リスク：** 共有名義で財産分与が複雑（賃貸は契約解除のみ）
 - **片働きリスク：** 片方の収入停止で住宅費を単独負担→破綻リスク
 - **団信：** 片方死亡でその債務のみ免除、もう片方は残存""")
+    else:
+        higher = max(ctx.params.husband_income, ctx.params.wife_income)
+        label = "夫" if ctx.params.husband_income >= ctx.params.wife_income else "妻"
+        lines.append(f"""
+### 2.4 単独ローンの選択肢
+
+{label}の単独年収（手取り月{higher:g}万）で審査基準をクリアできるため、**ペアローンは必須ではない**。
+単独名義ローンを選択した場合:
+
+- **離婚リスク軽減：** 名義人が単独のため財産分与がシンプル
+- **片働き耐性：** 配偶者の収入停止が直接のローン破綻リスクにならない
+- **団信：** 名義人死亡時にローン全額免除（ペアローンは片方のみ）
+
+ただし投資余力の最大化を重視するなら、ペアローンで借入枠を拡大し差額を運用に回す戦略もある。""")
 
     return "\n".join(lines)
 
@@ -2790,9 +2825,14 @@ def _render_ch7_3_risks(ctx: ReportContext) -> str:
                 msg += "ただし破綻確率が高い状況では、特別支出の優先度を再検討する余地がある。"
         lines.append(msg)
 
-    lines.append(
-        "\n**ペアローン：** 夫婦共働き継続が前提。離婚リスクはストレステスト定量化済み。"
-    )
+    if _needs_pair_loan(ctx):
+        lines.append(
+            "\n**ペアローン：** 夫婦共働き継続が前提。離婚リスクはストレステスト定量化済み。"
+        )
+    else:
+        lines.append(
+            "\n**ローン：** 単独名義ローンが可能な収入水準。ペアローンの離婚・片働きリスクを回避できる。"
+        )
 
     return "\n".join(lines)
 

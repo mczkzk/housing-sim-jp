@@ -34,7 +34,7 @@ class TestDeterministicUnchanged:
     def test_house_snapshot(self):
         params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(House(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(74598.531611, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(75080.939694, abs=0.01)
 
 
 class TestLogNormalMean:

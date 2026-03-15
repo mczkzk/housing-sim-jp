@@ -25,7 +25,7 @@ class AreaPreset:
     # 一戸建て
     house_price: float = 0
     house_initial_cost: float = 0
-    house_building_age: int = 7
+    house_building_age: int = 5
     house_property_tax: float = 1.8
     house_insurance: float = 0.4
     house_maintenance_base: float = 1.5
