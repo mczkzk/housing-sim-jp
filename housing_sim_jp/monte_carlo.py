@@ -135,6 +135,7 @@ def run_monte_carlo(
     wife_nisa_used: float = 0.0,
     husband_nisa_balance: float = -1.0,
     wife_nisa_balance: float = -1.0,
+    area: AreaPreset | None = None,
 ) -> MonteCarloResult:
     """Run N Monte Carlo simulations for a single strategy.
 
@@ -218,6 +219,9 @@ def run_monte_carlo(
             run_purchase_age = resolve_purchase_age(
                 strategy, params, husband_start_age, wife_start_age,
                 child_birth_ages, child_independence_ages,
+                pre_purchase_rent=area.rent_2ldk if area else None,
+                pre_purchase_initial_cost=area.rental_initial_cost if area else None,
+                area=area,
             )
             if run_purchase_age == INFEASIBLE:
                 infeasible = True
@@ -239,6 +243,7 @@ def run_monte_carlo(
                     wife_nisa_used=wife_nisa_used,
                     husband_nisa_balance=husband_nisa_balance,
                     wife_nisa_balance=wife_nisa_balance,
+                    area=area,
                 )
             except ValueError:
                 infeasible = True
@@ -354,6 +359,7 @@ def run_monte_carlo_all_strategies(
             wife_nisa_used=wife_nisa_used,
             husband_nisa_balance=husband_nisa_balance,
             wife_nisa_balance=wife_nisa_balance,
+            area=area,
         )
         results.append(mc_result)
 

@@ -319,6 +319,9 @@ def find_earliest_purchase_age(
     wife_start_age: int,
     child_birth_ages: list[int] | None = None,
     child_independence_ages: list[int] | None = None,
+    pre_purchase_rent: float | None = None,
+    pre_purchase_initial_cost: float | None = None,
+    area=None,
 ) -> int | None:
     """Find the earliest age at which the strategy passes loan screening.
 
@@ -330,6 +333,8 @@ def find_earliest_purchase_age(
     If the strategy is already feasible at start_age, returns None (caller uses normal flow).
     """
     start_age = max(husband_start_age, wife_start_age)
+    _rent = pre_purchase_rent if pre_purchase_rent is not None else PRE_PURCHASE_RENT
+    _initial_cost = pre_purchase_initial_cost if pre_purchase_initial_cost is not None else PRE_PURCHASE_INITIAL_COST
 
     if not validate_strategy(strategy, params):
         return None  # Already feasible at start_age
@@ -350,7 +355,7 @@ def find_earliest_purchase_age(
 
     # Project savings year-by-year while living in 2LDK rental
     # Match simulate_strategy: emergency fund is held as cash, not invested
-    initial = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
+    initial = max(0.0, strategy.initial_savings - _initial_cost)
     initial_ef = _calc_required_emergency_fund(start_age, 0, params, child_home_ranges)
     emergency_fund = min(initial, initial_ef)
     savings = initial - emergency_fund
@@ -375,7 +380,7 @@ def find_earliest_purchase_age(
 
         # Monthly expenses during rental phase
         inflation = params.inflation_factor(years_from_start)
-        rent = PRE_PURCHASE_RENT * inflation
+        rent = _rent * inflation
         renewal = rent / PRE_PURCHASE_RENEWAL_DIVISOR
         housing = rent + renewal
 
@@ -479,7 +484,7 @@ def find_earliest_purchase_age(
             + num_children_at_target * params.child_living_cost_monthly
         ) * params.emergency_fund_months * inflation_at_target
 
-        test_strategy = type(strategy)(total_assets)
+        test_strategy = type(strategy)(total_assets, area=area)
         test_strategy.property_price = inflated_price
         test_strategy.loan_amount = inflated_price
         test_strategy.initial_investment = total_assets - inflated_initial_cost - required_ef
@@ -506,6 +511,9 @@ def resolve_purchase_age(
     wife_start_age: int,
     child_birth_ages: list[int] | None = None,
     child_independence_ages: list[int] | None = None,
+    pre_purchase_rent: float | None = None,
+    pre_purchase_initial_cost: float | None = None,
+    area=None,
 ) -> int | None:
     """Determine the purchase age for a strategy.
 
@@ -521,6 +529,9 @@ def resolve_purchase_age(
     age = find_earliest_purchase_age(
         strategy, params, husband_start_age, wife_start_age,
         child_birth_ages, child_independence_ages,
+        pre_purchase_rent=pre_purchase_rent,
+        pre_purchase_initial_cost=pre_purchase_initial_cost,
+        area=area,
     )
     return age if age is not None else INFEASIBLE
 
@@ -1109,6 +1120,7 @@ def _apply_divorce(
     gold_balance: float = 0.0,
     gold_cost_basis: float = 0.0,
     cash_bucket: float = 0.0,
+    pre_purchase_rent: float = 18.0,
 ) -> tuple[float, ...]:
     """Apply divorce event: proper pool separation.
 
@@ -1160,7 +1172,7 @@ def _apply_divorce(
         strategy.property_price = 0
 
     years_elapsed = month / 12
-    divorce_rental_cost = PRE_PURCHASE_RENT * params.inflation_factor(years_elapsed)
+    divorce_rental_cost = pre_purchase_rent * params.inflation_factor(years_elapsed)
 
     return (h_nisa_bal, h_nisa_cb, w_nisa_bal, w_nisa_cb,
             h_tax_bal, h_tax_cb, w_tax_bal, w_tax_cb,
@@ -1618,6 +1630,9 @@ def simulate_strategy(
     wife_nisa_used: float = 0.0,
     husband_nisa_balance: float = -1.0,
     wife_nisa_balance: float = -1.0,
+    pre_purchase_rent: float | None = None,
+    pre_purchase_initial_cost: float | None = None,
+    area=None,
 ) -> dict:
     """Execute simulation from start_age (older spouse) to 80.
     discipline_factor: 1.0=perfect, 0.8=80% of surplus invested.
@@ -1626,6 +1641,8 @@ def simulate_strategy(
     purchase_age: age at which property is purchased (None=start_age, used for deferred purchase).
     """
     start_age = max(husband_start_age, wife_start_age)
+    _pp_rent = pre_purchase_rent or (area.rent_2ldk if area else PRE_PURCHASE_RENT)
+    _pp_initial_cost = pre_purchase_initial_cost or (area.rental_initial_cost if area else PRE_PURCHASE_INITIAL_COST)
 
     child_birth_ages = resolve_child_birth_ages(child_birth_ages, start_age)
     indep_ages = resolve_independence_ages(child_independence_ages, child_birth_ages)
@@ -1728,7 +1745,7 @@ def simulate_strategy(
 
     # Initial investment depends on whether there's a pre-purchase rental phase
     if has_pre_purchase_rental:
-        initial = max(0.0, strategy.initial_savings - PRE_PURCHASE_INITIAL_COST)
+        initial = max(0.0, strategy.initial_savings - _pp_initial_cost)
     else:
         initial = max(0.0, strategy.initial_investment)
 
@@ -1754,7 +1771,7 @@ def simulate_strategy(
 
     # Waiting check: based on minimum rental startup (105万 + EF)
     # Purchase shortfall is handled by find_earliest_purchase_age, not waiting
-    rental_startup = PRE_PURCHASE_INITIAL_COST + initial_required_ef + initial_required_cb
+    rental_startup = _pp_initial_cost + initial_required_ef + initial_required_cb
     rental_from_shared = min(shared_pool, rental_startup)
     rental_remaining = rental_startup - rental_from_shared
     h_rental_share = rental_remaining * h_startup_ratio
@@ -2151,7 +2168,7 @@ def simulate_strategy(
             # Pre-purchase rental phase: 2LDK rental costs
             years_elapsed = month / 12
             inflation = params.inflation_factor(years_elapsed)
-            rent = PRE_PURCHASE_RENT * inflation
+            rent = _pp_rent * inflation
             housing_cost = rent + rent / PRE_PURCHASE_RENEWAL_DIVISOR
 
             # Pre-purchase = renting, so parking cost always applies
@@ -2208,6 +2225,7 @@ def simulate_strategy(
                     bond_balance, bond_cost_basis,
                     gold_balance, gold_cost_basis,
                     cash_bucket,
+                    pre_purchase_rent=_pp_rent,
                 )
                 # Husband keeps his iDeCo; wife's iDeCo leaves the simulation
                 w_ideco_balance = 0.0

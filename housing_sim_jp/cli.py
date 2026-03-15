@@ -213,6 +213,9 @@ def main():
         purchase_age = resolve_purchase_age(
             strategy, params, husband_age, wife_age,
             child_birth_ages, independence_ages or None,
+            pre_purchase_rent=area.rent_2ldk,
+            pre_purchase_initial_cost=area.rental_initial_cost,
+            area=area,
         )
         if purchase_age == INFEASIBLE:
             print(f"\n【{strategy.name}】購入不可（{start_age}〜45歳で審査条件を満たせません）\n")
@@ -235,6 +238,7 @@ def main():
                     wife_nisa_used=r["wife_nisa_used"],
                     husband_nisa_balance=r["husband_nisa_balance"],
                     wife_nisa_balance=r["wife_nisa_balance"],
+                    area=area,
                 )
             )
         except ValueError as e:

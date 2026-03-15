@@ -180,6 +180,9 @@ def run_scenarios(
             purchase_age = resolve_purchase_age(
                 strategy, params, husband_start_age, wife_start_age,
                 child_birth_ages, child_independence_ages,
+                pre_purchase_rent=area.rent_2ldk if area else None,
+                pre_purchase_initial_cost=area.rental_initial_cost if area else None,
+                area=area,
             )
             if purchase_age == INFEASIBLE:
                 results.append(None)
@@ -201,6 +204,7 @@ def run_scenarios(
                     wife_nisa_used=wife_nisa_used,
                     husband_nisa_balance=husband_nisa_balance,
                     wife_nisa_balance=wife_nisa_balance,
+                    area=area,
                 )
             )
         all_results[scenario_name] = results
