@@ -4,6 +4,14 @@
 
 物件価格・家賃は**さいたま市浦和区の実勢価格**（2026年）をハードコード。築10年マンション3LDK（70㎡台）の相場は23区平均で約1.1億、港区1.8〜3.3億、文京区1.4〜2.2億と、ボリュームゾーンの世帯年収1,000〜1,500万（フルローン上限7,000万〜1億）では射程外。郊外すぎると東京30分圏から外れるため、通勤圏・教育環境・ローン審査のバランスで浦和を選定した。都心タワマンや地方物件には対応していない。初期資産3億超や世帯年収600万以下の世帯は想定外。
 
+## 分析レポート
+
+| レポート | 条件 |
+|---------|------|
+| [report-25.pdf](reports/25/report.pdf) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
+| [report-30.pdf](reports/30/report.pdf) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
+| [report-35.pdf](reports/35/report.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
+
 ## 比較戦略
 
 | 戦略 | 概要 |
@@ -13,34 +21,54 @@
 | **戦略的賃貸** | ライフステージに応じて3フェーズで家賃ダウンサイジング（2LDK→3LDK→2LDK） |
 | **通常賃貸** | 3LDK固定で全期間賃貸 |
 
-## 使い方
+## セットアップ
 
 ```bash
-# 確定論シミュレーション（3戦略比較: マンション/一戸建て/戦略的賃貸）
-python -m housing_sim_jp.cli
-python -m housing_sim_jp.cli --husband-age 37 --wife-age 35 --shared-savings 1000 --husband-savings 300 --wife-savings 200 --husband-income 45 --wife-income 30
-python -m housing_sim_jp.cli --pets 38,40 --car                       # ペット2匹+車
-python -m housing_sim_jp.cli --children none --education-grad 修士     # 子なし / 大学院進学
+# 必須
+pip install -e .                    # Python 3.11+, matplotlib
 
-# 5シナリオ×4戦略比較（低成長/標準/高成長/慢性スタグフレーション/サイクル型 + 投資規律の感度分析）
+# PDF生成に必要（任意）
+brew install pandoc                 # Markdown → HTML 変換
+# Google Chrome がインストール済みであること（headless モードで HTML → PDF 変換に使用）
+```
+
+## 使い方
+
+### シミュレーション（CLI出力）
+
+```bash
+# 確定論（3戦略比較）
+python -m housing_sim_jp.cli
+python -m housing_sim_jp.cli --husband-age 37 --wife-age 35 --shared-savings 1000 --husband-income 45 --wife-income 30
+python -m housing_sim_jp.cli --pets 38,40 --car
+python -m housing_sim_jp.cli --children none --education-grad 修士
+
+# 5シナリオ×4戦略（低成長/標準/高成長/慢性スタグフレーション/サイクル型 + 投資規律の感度分析）
 python -m housing_sim_jp.scenario_cli
 
 # Monte Carlo（N=1,000試行 + イベントリスク）
 python -m housing_sim_jp.monte_carlo_cli
-python -m housing_sim_jp.monte_carlo_cli --stress-test                # ストレステスト追加出力
+python -m housing_sim_jp.monte_carlo_cli --stress-test
+```
 
-# チャート生成（確定論+MC → reports/<name>/charts/）
-python -m housing_sim_jp.chart_cli
-python -m housing_sim_jp.chart_cli --name 30 --config config.example-30.toml
-python -m housing_sim_jp.chart_cli --no-mc                            # 確定論のみ（高速）
+### レポート生成（Markdown + チャート + PDF）
 
-# レポート自動生成（7章構成Markdown: 確定論+シナリオ+MC+ストレステスト統合）
-python -m housing_sim_jp.report_cli --config config.example-30.toml --name 30
-python -m housing_sim_jp.report_cli --all                             # 4設定一括
-python -m housing_sim_jp.report_cli --no-mc                           # MC省略（高速）
+```bash
+# 全設定一括（MD + チャート + PDF）
+python -m housing_sim_jp.report_cli --all --pdf
 
-# テスト
-python -m pytest tests/ -v
+# 個別設定
+python -m housing_sim_jp.report_cli --config config.example-30.toml --name 30 --pdf
+
+# MC省略（高速デバッグ用）
+python -m housing_sim_jp.report_cli --all --no-mc --pdf
+
+# PDFなし（Markdownのみ）
+python -m housing_sim_jp.report_cli --all
+
+# PDFだけ再生成（既存MDから）
+python -m housing_sim_jp.pdf_cli
+python -m housing_sim_jp.pdf_cli reports/35/report.md
 ```
 
 全オプションは各CLIの `--help` を参照。
@@ -50,12 +78,11 @@ python -m pytest tests/ -v
 `config.example-*.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
 
 ```bash
-cp config.example-25.toml config.toml   # 25歳プリセット（250万/手取り57万/子2人/生活費P3万）
-cp config.example-30.toml config.toml   # 30歳プリセット（600万/手取り67万/子2人/生活費P3万/ペット1匹）
-cp config.example-35.toml config.toml   # 35歳プリセット（1200万/手取り74万/子1人/生活費P3万/中学〜私立理系/車）
+cp config.example-25.toml config.toml   # 25歳プリセット
+cp config.example-30.toml config.toml   # 30歳プリセット
+cp config.example-35.toml config.toml   # 35歳プリセット
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
-python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラグで個別に上書き
 ```
 
 **優先順位**: CLIフラグ > config.toml > ハードコードデフォルト
@@ -85,20 +112,3 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 ## Monte Carlo
 
 確定論（固定リターン6.0%）では見えない**市場変動リスク**と**生活イベントリスク**を定量化する。投資リターンは対数正規分布（σ=15%）で年ごとに変動し、インフレ・金利・賃金は相関付き正規分布でラン単位に変動。生活イベント（失業・災害・介護・離婚・配偶者死亡・転勤等）を確率的に発生させ、P5〜P95のパーセンタイル分布・破綻確率・ストレステスト結果を出力する。
-
-## 分析レポート
-
-| レポート | 条件 |
-|---------|------|
-| [report-25.pdf](reports/25/report.pdf) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
-| [report-30.pdf](reports/30/report.pdf) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
-| [report-35.pdf](reports/35/report.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
-
-```bash
-# PDF生成（要: pandoc + Google Chrome）
-brew install pandoc                                           # 初回のみ
-python -m housing_sim_jp.pdf_cli                              # 全レポート一括
-python -m housing_sim_jp.pdf_cli reports/35/report.md         # 個別指定
-```
-
-PDF生成には **[pandoc](https://pandoc.org/)** と **Google Chrome**（headlessモードで使用）が必要。
