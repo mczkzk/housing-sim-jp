@@ -203,11 +203,7 @@ def plot_trajectory(
         log = r["monthly_log"]
         ages = [entry["age"] for entry in log]
         balances = [
-            entry["balance"]
-            + entry.get("bond_balance", 0)
-            + entry.get("gold_balance", 0)
-            + entry.get("cash_bucket", 0)
-            + entry.get("emergency_fund", 0)
+            entry["balance"] + entry.get("emergency_fund", 0)
             for entry in log
         ]
         color = STRATEGY_COLORS.get(sname, DEFAULT_COLOR)

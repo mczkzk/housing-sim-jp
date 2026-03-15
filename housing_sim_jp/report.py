@@ -1632,27 +1632,32 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
     lines.append(row("**不動産換金コスト**", "liquidation_cost", negate=True))
     lines.append(row("**流動性ディスカウント**", "liquidity_haircut", negate=True))
 
-    # Pre-tax
+    # Final net assets (pre-tax)
     vals = []
     for r in top3:
         v = r["final_net_assets"]
         vals.append(f"**{fmt_man(v)}（{fmt_oku(v)}）**")
-    lines.append(f"| **最終純資産（税引前）** | " + " | ".join(vals) + " |")
-
-    lines.append(row("**金融所得税**", "securities_tax", negate=True))
-
-    # After-tax
-    vals = []
-    for r in top3:
-        v = r["final_net_assets"]
-        vals.append(f"**{fmt_man(v)}（{fmt_oku(v)}）**")
-    lines.append(f"| **税引後手取り純資産** | " + " | ".join(vals) + " |")
+    lines.append(f"| **最終純資産** | " + " | ".join(vals) + " |")
 
     if normal:
         lines.append(
             f"\n**通常賃貸：** 運用資産{fmt_man(normal['investment_balance_80'])}、"
-            f"金融所得税▲{fmt_man(normal['securities_tax'])}、"
-            f"税引後{fmt_man(normal['final_net_assets'])}（{fmt_oku(normal['final_net_assets'])}）。"
+            f"最終純資産{fmt_man(normal['final_net_assets'])}（{fmt_oku(normal['final_net_assets'])}）。"
+        )
+
+    # Latent tax note
+    all_shown = top3 + ([normal] if normal else [])
+    has_tax = any(r.get("securities_tax", 0) > 0 for r in all_shown)
+    if has_tax:
+        tax_parts = []
+        for r in all_shown:
+            tax = r.get("securities_tax", 0)
+            if tax > 0:
+                tax_parts.append(f"{r['strategy']} {fmt_man(tax)}")
+        lines.append(
+            "\n※特定口座の含み益を現金化する際には譲渡益税20.315%が発生する"
+            "（NISA口座は非課税）。潜在税負担: "
+            + "／".join(tax_parts) + "。"
         )
 
     # Footnotes for the detail table
@@ -1814,8 +1819,9 @@ def _render_ch4_3_divergence(ctx: ReportContext) -> str:
         return ""
     lines = [
         "\n### 4.3 確定論との乖離分析\n",
-        "| 戦略 | 確定論(6.0%固定) | MC P50 | 乖離率 |",
-        "|------|-----------------|--------|-------|",
+        "※いずれも税引後（特定口座の譲渡益税控除済み）ベースで比較。\n",
+        "| 戦略 | 確定論(税引後) | MC P50(税引後) | 乖離率 |",
+        "|------|--------------|--------------|-------|",
     ]
     std_map = {r["strategy"]: r for r in std if r is not None}
     for name in STRATEGY_ORDER:
@@ -1823,7 +1829,7 @@ def _render_ch4_3_divergence(ctx: ReportContext) -> str:
         mc_r = _mc_by_name(mc, name)
         if not det or not mc_r:
             continue
-        det_v = det["final_net_assets"]
+        det_v = det["after_tax_net_assets"]
         mc_v = mc_r.percentiles[50]
         if det_v > 0:
             gap = (mc_v - det_v) / det_v * 100
