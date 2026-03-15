@@ -1478,7 +1478,7 @@ def _render_ch3_1_scenarios(ctx: ReportContext) -> str:
     if std_best:
         real = std_best["final_net_assets"] * ctx.deflator
         lines.append(
-            f"\n※80歳時点の税引後名目値。インフレ{ctx.sim_years}年で貨幣価値は約{ctx.deflator*100:.0f}%に縮小"
+            f"\n※80歳時点の税引前名目値。インフレ{ctx.sim_years}年で貨幣価値は約{ctx.deflator*100:.0f}%に縮小"
             f"（標準・{std_best['strategy']}{fmt_oku_short(std_best['final_net_assets'])}→"
             f"**実質約{fmt_oku_short(real)}**）。"
         )
