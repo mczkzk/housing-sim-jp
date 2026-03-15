@@ -62,11 +62,11 @@ def _md_to_html(md_path: Path, html_path: Path, css: str) -> None:
 def _html_to_pdf(html_path: Path, pdf_path: Path, chrome: str) -> None:
     cmd = [
         chrome,
-        "--headless",
+        "--headless=new",
         "--disable-gpu",
         "--no-sandbox",
         f"--print-to-pdf={pdf_path}",
-        "--print-to-pdf-no-header",
+        "--no-pdf-header-footer",
         str(html_path.resolve()),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
