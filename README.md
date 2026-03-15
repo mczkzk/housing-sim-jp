@@ -89,6 +89,12 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 
 | レポート | 条件 |
 |---------|------|
-| [reports/report-25.md](reports/report-25.md) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
-| [reports/report-30.md](reports/report-30.md) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
-| [reports/report-35.md](reports/report-35.md) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
+| [report-25.pdf](reports/pdf/report-25.pdf) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
+| [report-30.pdf](reports/pdf/report-30.pdf) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
+| [report-35.pdf](reports/pdf/report-35.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
+
+```bash
+# PDF生成（pandoc + Chrome headless）
+python -m housing_sim_jp.pdf_cli                              # 全レポート一括
+python -m housing_sim_jp.pdf_cli reports/report-35.md         # 個別指定
+```

@@ -29,6 +29,7 @@ config.toml
 
 # Personal reports
 report.md
+reports/pdf/report.pdf
 allocation.png
 cashflow.png
 mc_fan.png
