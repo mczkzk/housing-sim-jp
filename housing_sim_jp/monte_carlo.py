@@ -17,10 +17,11 @@ from housing_sim_jp.simulation import (
     resolve_independence_ages,
     INFEASIBLE,
 )
+from housing_sim_jp.areas import AreaPreset
 from housing_sim_jp.strategies import (
     Strategy,
-    UrawaMansion,
-    UrawaHouse,
+    Mansion,
+    House,
     StrategicRental,
     NormalRental,
 )
@@ -313,6 +314,7 @@ def run_monte_carlo_all_strategies(
     wife_nisa_used: float = 0.0,
     husband_nisa_balance: float = -1.0,
     wife_nisa_balance: float = -1.0,
+    area: AreaPreset | None = None,
 ) -> list[MonteCarloResult]:
     """Run Monte Carlo simulation for all 4 strategies."""
     start_age = max(husband_start_age, wife_start_age)
@@ -323,13 +325,14 @@ def run_monte_carlo_all_strategies(
     num_children = len(child_birth_ages)
 
     factories: list[Callable[[], Strategy]] = [
-        lambda: UrawaMansion(initial_savings),
-        lambda: UrawaHouse(initial_savings),
+        lambda: Mansion(initial_savings, area=area),
+        lambda: House(initial_savings, area=area),
         lambda: StrategicRental(
             initial_savings, child_birth_ages=child_birth_ages,
             child_independence_ages=child_independence_ages, start_age=start_age,
+            area=area,
         ),
-        lambda: NormalRental(initial_savings, num_children=num_children),
+        lambda: NormalRental(initial_savings, num_children=num_children, area=area),
     ]
 
     results = []

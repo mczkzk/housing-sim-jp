@@ -1,8 +1,9 @@
 """CLI entry point for single simulation (3 strategy comparison)."""
 
+from housing_sim_jp.areas import get_area
 from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages
 from housing_sim_jp.params import SimulationParams
-from housing_sim_jp.strategies import UrawaMansion, UrawaHouse, StrategicRental
+from housing_sim_jp.strategies import Mansion, House, StrategicRental
 from housing_sim_jp.simulation import simulate_strategy, resolve_purchase_age, estimate_pension_monthly, INFEASIBLE
 from housing_sim_jp.facility import print_facility_grades
 
@@ -159,11 +160,12 @@ def _print_summary(valid_results: list[dict], start_age: int):
 
 
 def _print_yearly_log(valid_results: list[dict]):
-    for strategy_name in ["浦和一戸建て", "戦略的賃貸", "浦和マンション"]:
-        matching = [r for r in valid_results if r["strategy"] == strategy_name]
+    for strategy_key in ["一戸建て", "戦略的賃貸", "マンション"]:
+        matching = [r for r in valid_results if strategy_key in r["strategy"]]
         if not matching:
             continue
         strategy_result = matching[0]
+        strategy_name = matching[0]["strategy"]
         print(f"\n【サンプル年次ログ（5年ごと）- {strategy_name}】")
         print("-" * 100)
         print(
@@ -195,11 +197,13 @@ def main():
     wife_age = r["wife_age"]
     savings = r["savings"]
     params = build_params(r, pet_sim_ages)
+    area = get_area(r["area"])
     strategies = [
-        UrawaMansion(savings),
-        UrawaHouse(savings),
+        Mansion(savings, area=area),
+        House(savings, area=area),
         StrategicRental(savings, child_birth_ages=child_birth_ages,
-                        child_independence_ages=independence_ages or None, start_age=start_age),
+                        child_independence_ages=independence_ages or None, start_age=start_age,
+                        area=area),
     ]
 
     _print_header(r, params, start_age, wife_birth_ages, husband_pet_ages)

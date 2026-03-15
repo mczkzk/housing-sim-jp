@@ -1,8 +1,11 @@
 """Housing Asset Formation Simulation Package."""
 
 from housing_sim_jp.params import END_AGE, SimulationParams
+from housing_sim_jp.areas import AreaPreset, get_area, AREA_PRESETS
 from housing_sim_jp.strategies import (
     Strategy,
+    Mansion,
+    House,
     UrawaMansion,
     UrawaHouse,
     StrategicRental,
@@ -42,8 +45,13 @@ from housing_sim_jp.tax import (
 __all__ = [
     "SimulationParams",
     "Strategy",
+    "Mansion",
+    "House",
     "UrawaMansion",
     "UrawaHouse",
+    "AreaPreset",
+    "get_area",
+    "AREA_PRESETS",
     "StrategicRental",
     "NormalRental",
     "CHILD_ROOM_AGE_START",

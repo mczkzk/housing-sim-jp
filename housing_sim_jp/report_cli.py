@@ -9,9 +9,11 @@ from housing_sim_jp.report import build_report_context, render_report
 
 ALL_CONFIGS = [
     (Path("config.toml"), "personal"),
-    (Path("config.example-25.toml"), "25"),
-    (Path("config.example-30.toml"), "30"),
-    (Path("config.example-35.toml"), "35"),
+    (Path("config.example-25-koiwa.toml"), "25-koiwa"),
+    (Path("config.example-30-urawa.toml"), "30-urawa"),
+    (Path("config.example-30-misono.toml"), "30-misono"),
+    (Path("config.example-35-nakano.toml"), "35-nakano"),
+    (Path("config.example-35-bunkyo.toml"), "35-bunkyo"),
 ]
 
 
@@ -27,7 +29,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--all", action="store_true", dest="run_all",
-        help="4設定（config.toml, config.example-{25,30,35}.toml）を一括生成",
+        help="6設定（config.toml + 5 example）を一括生成",
     )
     parser.add_argument(
         "--no-mc", action="store_true",

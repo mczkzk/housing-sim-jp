@@ -58,6 +58,7 @@ DEFAULTS = {
     "husband_parental_leave_months": 1,
     "kodomo_nisa": True,
     "kodomo_nisa_monthly": 1.0,
+    "area": "浦和",
 }
 
 
@@ -193,6 +194,8 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--husband-parental-leave-months", type=int, default=None, help="夫の育休月数（default: 1）")
     parser.add_argument("--no-kodomo-nisa", dest="kodomo_nisa", action="store_false", default=None, help="こどもNISAを無効化")
     parser.add_argument("--kodomo-nisa-monthly", type=float, default=None, help="こどもNISA拠出額（万円/月/子、制度上限5万、default: 1.0）")
+    from housing_sim_jp.areas import AREA_PRESETS
+    parser.add_argument("--area", type=str, default=None, choices=list(AREA_PRESETS.keys()), help=f"エリアプリセット (default: {d['area']})")
     return parser
 
 

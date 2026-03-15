@@ -300,7 +300,7 @@ def _inflate_property_price(
     base_year_offset: year offset for relative inflation (e.g. purchase year).
     When >0, factor = cum[base+years] / cum[base] for correct cyclical indexing.
     """
-    original = type(strategy).PROPERTY_PRICE
+    original = strategy.original_property_price
     if base_year_offset > 0:
         land_f = params.land_factor(base_year_offset + years) / params.land_factor(base_year_offset)
         build_f = params.inflation_factor(base_year_offset + years) / params.inflation_factor(base_year_offset)
@@ -462,9 +462,9 @@ def find_earliest_purchase_age(
             continue
 
         inflated_price = _inflate_property_price(strategy, params, years_to_target)
-        original_price = type(strategy).PROPERTY_PRICE
+        original_price = strategy.original_property_price
         price_ratio = inflated_price / original_price
-        inflated_initial_cost = type(strategy).INITIAL_COST * price_ratio
+        inflated_initial_cost = strategy.INITIAL_COST * price_ratio
 
         # Total assets = invested savings + emergency fund (cash)
         total_assets = savings + emergency_fund
@@ -1212,9 +1212,9 @@ def _apply_relocation(
         # Buy equivalent property at current market price
         years_elapsed = month / 12
         new_price = _inflate_property_price(strategy, params, years_elapsed)
-        original_price = type(strategy).PROPERTY_PRICE
+        original_price = strategy.original_property_price
         price_ratio = new_price / original_price
-        new_initial_cost = type(strategy).INITIAL_COST * price_ratio
+        new_initial_cost = strategy.INITIAL_COST * price_ratio
 
         # Net cost: initial cost for new property - sale proceeds from old
         event_cost_adj += new_initial_cost
@@ -1660,9 +1660,9 @@ def simulate_strategy(
         # Inflate property price to purchase year
         years_to_purchase = effective_purchase_age - start_age
         inflated_price = _inflate_property_price(strategy, params, years_to_purchase)
-        original_price = type(strategy).PROPERTY_PRICE
+        original_price = strategy.original_property_price
         price_ratio = inflated_price / original_price
-        purchase_closing_cost = type(strategy).INITIAL_COST * price_ratio
+        purchase_closing_cost = strategy.INITIAL_COST * price_ratio
 
         strategy.property_price = inflated_price
         strategy.loan_amount = inflated_price

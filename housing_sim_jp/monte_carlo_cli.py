@@ -2,6 +2,7 @@
 
 import sys
 
+from housing_sim_jp.areas import get_area
 from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.events import EventRiskConfig
@@ -138,6 +139,7 @@ def _run_stress_test(
     wife_nisa_used: float = 0.0,
     husband_nisa_balance: float = -1.0,
     wife_nisa_balance: float = -1.0,
+    area=None,
 ):
     """Run stress test scenarios isolating each event type."""
     print("\n【ストレステスト: イベントリスクの影響】")
@@ -165,6 +167,7 @@ def _run_stress_test(
             wife_nisa_used=wife_nisa_used,
             husband_nisa_balance=husband_nisa_balance,
             wife_nisa_balance=wife_nisa_balance,
+            area=area,
         )
         all_scenario_results.append((label, results))
     print(file=sys.stderr)
@@ -229,6 +232,7 @@ def main():
     print(f"  イベントリスク: {event_info}")
     print("=" * 80)
 
+    area = get_area(r["area"])
     results = run_monte_carlo_all_strategies(
         base_params, mc_config, husband_age, wife_age, initial_savings,
         child_birth_ages=child_birth_ages,
@@ -239,6 +243,7 @@ def main():
         wife_nisa_used=r["wife_nisa_used"],
         husband_nisa_balance=r["husband_nisa_balance"],
         wife_nisa_balance=r["wife_nisa_balance"],
+        area=area,
     )
 
     _print_results(results, args.mc_runs, args.volatility, not args.no_events)
@@ -255,6 +260,7 @@ def main():
             wife_nisa_used=r["wife_nisa_used"],
             husband_nisa_balance=r["husband_nisa_balance"],
             wife_nisa_balance=r["wife_nisa_balance"],
+            area=area,
         )
 
 
