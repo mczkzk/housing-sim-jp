@@ -95,7 +95,10 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 | [report-35.pdf](reports/35/report.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
 
 ```bash
-# PDF生成（pandoc + Chrome headless）
+# PDF生成（要: pandoc + Google Chrome）
+brew install pandoc                                           # 初回のみ
 python -m housing_sim_jp.pdf_cli                              # 全レポート一括
 python -m housing_sim_jp.pdf_cli reports/35/report.md         # 個別指定
 ```
+
+PDF生成には **[pandoc](https://pandoc.org/)** と **Google Chrome**（headlessモードで使用）が必要。
