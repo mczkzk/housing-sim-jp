@@ -234,7 +234,7 @@ def plot_trajectory(
     suffix = f"-{name}" if name else ""
     filepath = output_path / f"trajectory{suffix}.png"
     fig.tight_layout()
-    fig.savefig(filepath, dpi=150)
+    fig.savefig(filepath, dpi=300)
     plt.close(fig)
     return filepath
 
@@ -308,7 +308,7 @@ def plot_mc_fan(
     output_path.mkdir(parents=True, exist_ok=True)
     suffix = f"-{name}" if name else ""
     filepath = output_path / f"mc_fan{suffix}.png"
-    fig.savefig(filepath, dpi=150, bbox_inches="tight")
+    fig.savefig(filepath, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return filepath
 
@@ -421,7 +421,7 @@ def plot_cashflow_stack(
     output_path.mkdir(parents=True, exist_ok=True)
     suffix = f"-{name}" if name else ""
     filepath = output_path / f"cashflow{suffix}.png"
-    fig.savefig(filepath, dpi=150, bbox_inches="tight")
+    fig.savefig(filepath, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return filepath
 
@@ -558,7 +558,7 @@ def plot_allocation(
     output_path.mkdir(parents=True, exist_ok=True)
     suffix = f"-{name}" if name else ""
     filepath = output_path / f"allocation{suffix}.png"
-    fig.savefig(filepath, dpi=150, bbox_inches="tight")
+    fig.savefig(filepath, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return filepath
 
