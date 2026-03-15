@@ -2110,6 +2110,7 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
     th = {g: t for g, _, t in thresholds}
     lines.append(
         f"""**前提条件：**
+
 - 80歳で夫婦2人入居（2LDK・約65〜75㎡）、110歳まで生存（20年本体＋10年長寿バッファ）
 - 入居審査ベース：運用利回り0%（施設側はキャッシュカバレッジで審査、暴落リスク考慮）
 - **年金収入{pension:.1f}万円/月**を月額費用から控除（実態の入居審査に準拠）
