@@ -46,7 +46,8 @@ from housing_sim_jp.simulation import (
     simulate_strategy,
 )
 from housing_sim_jp.areas import AreaPreset, get_area
-from housing_sim_jp.strategies import build_all_strategies
+from housing_sim_jp.params import _calc_equal_payment
+from housing_sim_jp.strategies import STRATEGY_KEYS, build_all_strategies
 
 # ---------------------------------------------------------------------------
 # Format helpers
@@ -388,7 +389,6 @@ def build_report_context(
 # Render helpers
 # ---------------------------------------------------------------------------
 
-STRATEGY_KEYS = ["マンション", "一戸建て", "戦略的賃貸", "通常賃貸"]
 SCENARIO_ORDER = ["低成長", "標準", "高成長", "慢性スタグフレーション", "サイクル型"]
 
 
@@ -400,11 +400,11 @@ def _sname(ctx: ReportContext, key: str) -> str:
 
 
 def _find_by_key(results: list[dict | None] | None, key: str) -> dict | None:
-    """Find result dict matching strategy key (partial match)."""
+    """Find result dict matching strategy key."""
     if results is None:
         return None
     for r in results:
-        if r is not None and key in r.get("strategy", ""):
+        if r is not None and r.get("strategy_key") == key:
             return r
     return None
 
@@ -418,11 +418,11 @@ def _purchase_age(ctx: ReportContext, key: str) -> int | None:
 
 
 def _mc_by_key(results: list[MonteCarloResult] | None, key: str) -> MonteCarloResult | None:
-    """Find MC result by strategy key partial match."""
+    """Find MC result by strategy key."""
     if results is None:
         return None
     for r in results:
-        if key in r.strategy_name:
+        if r.strategy_name.endswith(key) or r.strategy_name == key:
             return r
     return None
 
@@ -431,16 +431,8 @@ def _mc_by_key(results: list[MonteCarloResult] | None, key: str) -> MonteCarloRe
 
 
 def _scenario_row(results: list[dict | None]) -> list[dict | None]:
-    """Reorder scenario results to STRATEGY_KEYS order (partial match)."""
-    ordered: list[dict | None] = []
-    for key in STRATEGY_KEYS:
-        found = None
-        for r in results:
-            if r is not None and key in r.get("strategy", ""):
-                found = r
-                break
-        ordered.append(found)
-    return ordered
+    """Reorder scenario results to STRATEGY_KEYS order."""
+    return [_find_by_key(results, key) for key in STRATEGY_KEYS]
 
 
 
@@ -451,7 +443,6 @@ def _age_diff(ctx: ReportContext) -> int:
 def _needs_pair_loan(ctx: ReportContext) -> bool:
     """片方の年収だけでローン審査を通過できない場合True（ペアローン必須）。"""
     from housing_sim_jp.simulation import MAX_INCOME_MULTIPLIER, TAKEHOME_TO_GROSS, SCREENING_RATE, MAX_REPAYMENT_RATIO
-    from housing_sim_jp.params import _calc_equal_payment
     area = ctx.area
     max_price = max(area.mansion_price, area.house_price)
     for solo_income in [ctx.params.husband_income, ctx.params.wife_income]:

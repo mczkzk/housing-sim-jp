@@ -1,6 +1,14 @@
 """Area presets for housing simulation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+def _default_mansion_one_time() -> dict[int, float]:
+    return {20: 40, 30: 100, 40: 80, 48: 370, 55: 100, 62: 150}
+
+
+def _default_house_one_time() -> dict[int, float]:
+    return {17: 180, 30: 500, 45: 300, 55: 400}
 
 
 @dataclass(frozen=True)
@@ -19,7 +27,7 @@ class AreaPreset:
     mansion_property_tax: float
     mansion_insurance: float = 0.15
     mansion_land_ratio: float = 0.25
-    mansion_one_time_expenses: dict[int, float] | None = None
+    mansion_one_time_expenses: dict[int, float] = field(default_factory=_default_mansion_one_time)
     mansion_liquidation_cost: float = 200
 
     # 一戸建て
@@ -31,7 +39,7 @@ class AreaPreset:
     house_maintenance_base: float = 1.5
     house_other_monthly: float = 0.7
     house_land_ratio: float = 0.55
-    house_one_time_expenses: dict[int, float] | None = None
+    house_one_time_expenses: dict[int, float] = field(default_factory=_default_house_one_time)
     house_liquidation_cost: float = 650
     house_utility_premium: float = 0.3
     house_liquidity_discount: float = 0.15
@@ -41,17 +49,6 @@ class AreaPreset:
     rent_3ldk: float = 25.0
     rent_extra_child: float = 2.0
     rental_initial_cost: float = 105
-
-    def __post_init__(self):
-        # frozen dataclass cannot assign, use object.__setattr__
-        if self.mansion_one_time_expenses is None:
-            object.__setattr__(self, 'mansion_one_time_expenses', {
-                20: 40, 30: 100, 40: 80, 48: 370, 55: 100, 62: 150,
-            })
-        if self.house_one_time_expenses is None:
-            object.__setattr__(self, 'house_one_time_expenses', {
-                17: 180, 30: 500, 45: 300, 55: 400,
-            })
 
 
 DEFAULT_AREA = "浦和"

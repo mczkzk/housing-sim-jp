@@ -2707,6 +2707,7 @@ def simulate_strategy(
     if bankrupt_age is not None:
         return {
             "strategy": strategy.name,
+            "strategy_key": strategy.strategy_key,
             "purchase_age": effective_purchase_age,
             "nisa_balance": 0,
             "nisa_cost_basis": 0,
@@ -2769,6 +2770,7 @@ def simulate_strategy(
 
     return {
         "strategy": strategy.name,
+        "strategy_key": strategy.strategy_key,
         "purchase_age": effective_purchase_age,
         "nisa_balance": nisa_balance,
         "nisa_cost_basis": nisa_cost_basis,
