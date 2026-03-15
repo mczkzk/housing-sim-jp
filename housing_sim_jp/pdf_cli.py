@@ -13,16 +13,17 @@ CHROME_PATHS = [
 ]
 
 CSS = """
+@page { margin: 20mm 15mm 25mm 15mm; }
 body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
-       max-width: 210mm; margin: 0 auto; padding: 20mm 15mm; font-size: 10.5pt; line-height: 1.7;
-       color: #1a1a1a; }
+       max-width: 210mm; margin: 0 auto; font-size: 10.5pt; line-height: 1.7;
+       color: #1a1a1a; counter-reset: page; }
 h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
 h2 { page-break-before: always; margin-top: 1.5em; }
 h2:first-of-type { page-break-before: avoid; }
 h3 { margin-top: 1.2em; }
 table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 9.5pt; }
 th, td { border: 1px solid #ccc; padding: 4px 8px; }
-th { background: #f5f5f5; font-weight: bold; }
+th { background: #f5f5f5; font-weight: bold; white-space: nowrap; }
 tr:nth-child(even) { background: #fafafa; }
 blockquote { border-left: 3px solid #e0a040; padding: 0.5em 1em; margin: 1em 0;
              background: #fffbe6; font-size: 9.5pt; }
