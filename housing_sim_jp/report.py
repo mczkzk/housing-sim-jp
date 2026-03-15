@@ -604,8 +604,8 @@ _GRAD_LABEL = {
 
 def _render_title(ctx: ReportContext) -> str:
     return (
-        f"## {ctx.start_age}歳始動・80歳完結：確率分布に基づく住宅戦略の"
-        f"{ctx.sim_years}年間総合分析\n\n---"
+        f"## 住宅戦略シミュレーション — {ctx.start_age}歳から80歳"
+        f"（{ctx.sim_years}年間）\n\n---"
     )
 
 
