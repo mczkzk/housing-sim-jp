@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
+from housing_sim_jp.charts import plot_allocation, plot_cashflow_stack, plot_mc_fan, plot_trajectory
 from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages, parse_special_expense_labels
 from housing_sim_jp.events import EventRiskConfig
 from housing_sim_jp.monte_carlo import (
@@ -130,6 +130,10 @@ def main():
             husband_start_age=husband_age, wife_start_age=wife_age,
         )
         print(f"  → {path}", file=sys.stderr)
+
+        if params.bucket_safe_years > 0 or params.bucket_gold_pct > 0:
+            path = plot_allocation(params, output_dir, name=chart_name, det_results=det_results)
+            print(f"  → {path}", file=sys.stderr)
 
     else:
         print("  確定論: 有効な結果なし", file=sys.stderr)

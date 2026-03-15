@@ -123,6 +123,9 @@ class SimulationParams:
     wife_parental_leave_months: int = 12    # 妻: 産前産後+育休
     husband_parental_leave_months: int = 1  # 夫: パパ育休
 
+    # ふるさと納税（返礼品を食費に充当、上限いっぱい利用する前提）
+    furusato_nozei: bool = True
+
     # こどもNISA (2027年～: 子供名義の非課税口座)
     kodomo_nisa_enabled: bool = True
     kodomo_nisa_monthly: float = 1.0  # 拠出額（万円/月/子、制度上限5万=年60万）

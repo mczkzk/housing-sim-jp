@@ -50,10 +50,97 @@ REEMPLOYMENT_WAGE_INFLATION_RATIO = 0.5  # 再雇用期: インフレ追従率
 DIVORCE_ASSET_SPLIT_RATIO = 0.5   # 離婚時の財産分与比率
 SINGLE_LIVING_COST_RATIO = 0.7    # 離婚/死別後の生活費比率（1人世帯化）
 
-# 育児休業給付率（法定、2025年4月改正後）
+# 産前産後休暇（出産手当金: 健保、法定）
+MATERNITY_PRENATAL_MONTHS = 2    # 産前休暇 6週(42日) ≈ 1.4ヶ月 → 月次粒度で2
+MATERNITY_POSTNATAL_MONTHS = 2   # 産後休暇 8週(56日) ≈ 1.9ヶ月 → 月次粒度で2
+MATERNITY_BENEFIT_RATE = 2 / 3   # 出産手当金の給付率（標準報酬日額の2/3）
+
+# 育児休業給付率（雇用保険、法定、2025年4月改正後）
 PARENTAL_LEAVE_BENEFIT_RATE_EARLY = 0.80   # 出生後休業支援給付金（産後28日、約1ヶ月）
 PARENTAL_LEAVE_BENEFIT_RATE_FIRST = 0.67   # 最初の180日（6ヶ月）
 PARENTAL_LEAVE_BENEFIT_RATE_LATER = 0.50   # 181日目以降
+
+# ふるさと納税（返礼品を食費充当、全額控除の前提）
+FURUSATO_RETURN_RATE = 0.30       # 返礼品価値率（総務省告示上限30%）
+FURUSATO_SELF_PAYMENT = 0.2      # 自己負担 2,000円 = 0.2万円/人/年
+
+# 給与所得控除テーブル（令和2年分以降）
+_EMPLOYMENT_DEDUCTION_TABLE: tuple[tuple[float, float, float], ...] = (
+    (162.5, 0.0, 55.0),
+    (180.0, 0.4, -10.0),
+    (360.0, 0.3, 8.0),
+    (660.0, 0.2, 44.0),
+    (850.0, 0.1, 110.0),
+)
+_EMPLOYMENT_DEDUCTION_CAP = 195.0
+
+# 所得税率テーブル（復興特別所得税 1.021 は上限額計算で使用）
+_INCOME_TAX_BRACKETS: tuple[tuple[float, float], ...] = (
+    (195.0, 0.05),
+    (330.0, 0.10),
+    (695.0, 0.20),
+    (900.0, 0.23),
+    (1800.0, 0.33),
+    (4000.0, 0.40),
+)
+_INCOME_TAX_TOP_RATE = 0.45
+
+
+def _calc_furusato_limit(gross_annual: float) -> float:
+    """ふるさと納税の控除上限額（万円/年）。給与所得者向け概算。"""
+    if gross_annual <= 0:
+        return 0.0
+
+    # 給与所得控除
+    deduction = _EMPLOYMENT_DEDUCTION_CAP
+    for threshold, rate, offset in _EMPLOYMENT_DEDUCTION_TABLE:
+        if gross_annual <= threshold:
+            deduction = gross_annual * rate + offset if rate > 0 else offset
+            break
+
+    employment_income = gross_annual - deduction
+    social_insurance = gross_annual * 0.15  # 社会保険料控除概算
+    basic_deduction = 48.0                  # 基礎控除
+
+    taxable_income = max(0.0, employment_income - social_insurance - basic_deduction)
+
+    # 住民税所得割額
+    resident_tax = taxable_income * 0.10
+
+    # 所得税の限界税率
+    marginal_rate = _INCOME_TAX_TOP_RATE
+    for bracket, rate in _INCOME_TAX_BRACKETS:
+        if taxable_income <= bracket:
+            marginal_rate = rate
+            break
+
+    # 控除上限額 = 住民税所得割 × 20% / (90% - 所得税率 × 1.021) + 2,000円
+    denominator = 0.90 - marginal_rate * 1.021
+    if denominator <= 0:
+        return 0.0
+    return resident_tax * 0.20 / denominator + FURUSATO_SELF_PAYMENT
+
+
+def _calc_furusato_benefit_monthly(
+    h_monthly_net: float, w_monthly_net: float,
+    h_working: bool, w_working: bool,
+) -> float:
+    """ふるさと納税による月次食費節約額（万円/月、世帯合算）。
+
+    返礼品（寄付額の30%相当）を全額食費に充当する前提。
+    就労中のみ適用（年金収入は控除体系が異なるため除外）。
+    """
+    annual_benefit = 0.0
+    for monthly_net, working in ((h_monthly_net, h_working), (w_monthly_net, w_working)):
+        if not working or monthly_net <= 0:
+            continue
+        gross_annual = monthly_net * 12 / TAKEHOME_TO_GROSS
+        limit = _calc_furusato_limit(gross_annual)
+        benefit = limit * FURUSATO_RETURN_RATE - FURUSATO_SELF_PAYMENT
+        if benefit > 0:
+            annual_benefit += benefit
+    return annual_benefit / 12
+
 
 # 児童手当（2024年改正: 所得制限撤廃・18歳まで延長）
 CHILD_ALLOWANCE_SCHEDULE: tuple[tuple[int, int, float], ...] = (
@@ -80,10 +167,16 @@ def _calc_child_allowance(age: int, child_birth_ages: list[int]) -> float:
 def _parental_leave_rate(
     month: int, child_birth_ages: list[int], start_age: int,
     leave_months: int,
+    *, maternity_prenatal_months: int = 0,
+    maternity_postnatal_months: int = 0,
 ) -> float:
     """Return net income replacement rate during parental leave.
 
     1.0 = not on leave. < 1.0 = on leave.
+
+    妻の場合: 産前休暇(出産手当金) → 産後休暇(出産手当金) → 育休(給付金)
+    夫の場合: 育休のみ（maternity引数=0）
+
     Converts statutory gross benefit rates to net income basis
     (社会保険料免除を加味した手取り換算).
     """
@@ -91,15 +184,26 @@ def _parental_leave_rate(
         return 1.0
     for ba in child_birth_ages:
         birth_month = (ba - start_age) * 12
-        months_since = month - birth_month
-        if 0 <= months_since < leave_months:
-            if months_since < 1:
-                gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_EARLY
-            elif months_since < 6:
-                gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_FIRST
+        m = month - birth_month  # months since birth
+
+        # 産前休暇: 出産手当金（妻のみ、出産前）
+        if maternity_prenatal_months > 0 and -maternity_prenatal_months <= m < 0:
+            return min(MATERNITY_BENEFIT_RATE / TAKEHOME_TO_GROSS, 1.0)
+
+        # 出産後〜leave_months
+        if 0 <= m < leave_months:
+            if m < maternity_postnatal_months:
+                # 産後休暇: 出産手当金
+                gross_rate = MATERNITY_BENEFIT_RATE
             else:
-                gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_LATER
-            # Cap at 1.0: 80%給付+社保免除で手取り10割相当だが超過しない
+                # 育児休業給付金（育休開始からの月数で判定）
+                ikukyu_month = m - maternity_postnatal_months
+                if ikukyu_month < 1:
+                    gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_EARLY
+                elif ikukyu_month < 6:
+                    gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_FIRST
+                else:
+                    gross_rate = PARENTAL_LEAVE_BENEFIT_RATE_LATER
             return min(gross_rate / TAKEHOME_TO_GROSS, 1.0)
     return 1.0
 
@@ -1959,21 +2063,36 @@ def simulate_strategy(
                     education_ranges, child_home_ranges,
                     is_divorced, is_spouse_dead, household_retire_sim_age,
                 )
-                # Rebalance operates on shared taxable only
+                # Rebalance uses all taxable pools (shared + husband + wife)
                 nisa_total = h_nisa_bal + w_nisa_bal + s_nisa_bal
-                (s_tax_bal, s_tax_cb,
+                tax_total = s_tax_bal + h_tax_bal + w_tax_bal
+                tax_cb_total = s_tax_cb + h_tax_cb + w_tax_cb
+                tax_before = tax_total
+                (tax_total, tax_cb_total,
                  bond_balance, bond_cost_basis,
                  gold_balance, gold_cost_basis,
                  cash_bucket) = _rebalance_portfolio(
                     params, age_for_rebalance, annual_exp,
                     nisa_total,
-                    s_tax_bal, s_tax_cb,
+                    tax_total, tax_cb_total,
                     bond_balance, bond_cost_basis,
                     gold_balance, gold_cost_basis,
                     cash_bucket,
                     required_cash_bucket=rebalance_required_cb,
                     prev_year_return=prev_return,
                 )
+                # Distribute taxable change back to 3 pools proportionally
+                if tax_before > 0 and tax_total != tax_before:
+                    ratio = tax_total / tax_before
+                    s_tax_bal *= ratio
+                    h_tax_bal *= ratio
+                    w_tax_bal *= ratio
+                    s_tax_cb *= ratio
+                    h_tax_cb *= ratio
+                    w_tax_cb *= ratio
+                elif tax_before == 0:
+                    s_tax_bal = tax_total
+                    s_tax_cb = tax_cb_total
 
         year_idx = month // 12
         if params.annual_investment_returns is not None:
@@ -2019,6 +2138,8 @@ def simulate_strategy(
         w_leave_rate = _parental_leave_rate(
             month, child_birth_ages, start_age,
             params.wife_parental_leave_months,
+            maternity_prenatal_months=MATERNITY_PRENATAL_MONTHS,
+            maternity_postnatal_months=MATERNITY_POSTNATAL_MONTHS,
         )
         if h_leave_rate < 1.0:
             h_income *= h_leave_rate
@@ -2126,9 +2247,26 @@ def simulate_strategy(
 
         child_allowance = _calc_child_allowance(age, child_birth_ages)
 
+        # ふるさと納税（返礼品の食費充当分）
+        if params.furusato_nozei and not is_divorced and not is_spouse_dead:
+            furusato_benefit = _calc_furusato_benefit_monthly(
+                h_income, w_income,
+                h_working=h_age < params.husband_work_end_age,
+                w_working=w_age < params.wife_work_end_age,
+            )
+        elif params.furusato_nozei and (is_divorced or is_spouse_dead):
+            furusato_benefit = _calc_furusato_benefit_monthly(
+                h_income, 0.0,
+                h_working=h_age < params.husband_work_end_age,
+                w_working=False,
+            )
+        else:
+            furusato_benefit = 0.0
+
         investable = (
             monthly_income
             + child_allowance
+            + furusato_benefit
             - housing_cost
             - education_cost
             - living_cost
@@ -2141,6 +2279,7 @@ def simulate_strategy(
         investable_running = (
             monthly_income
             + child_allowance
+            + furusato_benefit
             - housing_cost
             - education_cost
             - living_cost

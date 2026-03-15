@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 from housing_sim_jp.monte_carlo import MonteCarloResult
+from housing_sim_jp.params import SimulationParams
 
 # Strategy color mapping
 STRATEGY_COLORS = {
@@ -201,13 +202,20 @@ def plot_trajectory(
         sname = r["strategy"]
         log = r["monthly_log"]
         ages = [entry["age"] for entry in log]
-        balances = [entry["balance"] for entry in log]
+        balances = [
+            entry["balance"]
+            + entry.get("bond_balance", 0)
+            + entry.get("gold_balance", 0)
+            + entry.get("cash_bucket", 0)
+            + entry.get("emergency_fund", 0)
+            for entry in log
+        ]
         color = STRATEGY_COLORS.get(sname, DEFAULT_COLOR)
         ax.plot(ages, balances, label=sname, color=color, linewidth=2)
 
     ax.set_xlabel("年齢")
     ax.set_ylabel("運用資産残高（万円）")
-    ax.set_title("資産推移と一時イベント（確定論・標準シナリオ）")
+    ax.set_title("運用資産推移（確定論・標準シナリオ）")
 
     if initial_principal is not None and initial_principal > 0 and investment_return is not None:
         longest_log = max((r["monthly_log"] for r in results), key=len)
@@ -417,6 +425,138 @@ def plot_cashflow_stack(
     output_path.mkdir(parents=True, exist_ok=True)
     suffix = f"-{name}" if name else ""
     filepath = output_path / f"cashflow{suffix}.png"
+    fig.savefig(filepath, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return filepath
+
+
+# Asset class colors (shared across allocation charts)
+_ALLOC_COLORS = {
+    "株式": "#1f77b4",
+    "ゴールド": "#FFD700",
+    "債券": "#2ca02c",
+    "現金": "#aec7e8",
+}
+
+
+def _extract_allocation(log_entry: dict) -> dict[str, float]:
+    """Extract asset class amounts from a monthly_log entry."""
+    stocks = log_entry.get("balance", 0)  # NISA + taxable
+    bonds = log_entry.get("bond_balance", 0)
+    gold = log_entry.get("gold_balance", 0)
+    cash = log_entry.get("cash_bucket", 0) + log_entry.get("emergency_fund", 0)
+    return {"株式": stocks, "債券": bonds, "ゴールド": gold, "現金": cash}
+
+
+def _find_log_entry(log: list[dict], target_age: int) -> dict | None:
+    """Find the log entry closest to target_age."""
+    for entry in log:
+        if entry["age"] >= target_age:
+            return entry
+    return log[-1] if log else None
+
+
+def plot_allocation(
+    params: SimulationParams,
+    output_path: Path,
+    name: str = "",
+    det_results: list[dict] | None = None,
+    target_ages: tuple[int, ...] = (50, 75),
+) -> Path:
+    """Generate side-by-side pie charts of asset allocation at specified ages.
+
+    Uses actual simulation data (from the first available result) for realistic proportions.
+    Ages beyond the simulation period or before start_age are skipped.
+    """
+    _setup_japanese_font()
+
+    # Pick strategy: prefer 戦略的賃貸, then first available
+    log = None
+    start_age = None
+    strategy_name = ""
+    if det_results:
+        preferred = next(
+            (r for r in det_results if r.get("strategy") == "戦略的賃貸" and r.get("monthly_log")),
+            None,
+        )
+        chosen = preferred or next((r for r in det_results if r.get("monthly_log")), None)
+        if chosen:
+            log = chosen["monthly_log"]
+            start_age = log[0]["age"]
+            strategy_name = chosen.get("strategy", "")
+
+    def _to_pie_data(alloc: dict[str, float]) -> tuple[list[str], list[float]]:
+        labels, sizes = [], []
+        for label in ["株式", "債券", "現金", "ゴールド"]:
+            v = alloc.get(label, 0)
+            if v > 0:
+                labels.append(label)
+                sizes.append(v)
+        return labels, sizes
+
+    panels: list[tuple[int, list[str], list[float]]] = []
+    for age in target_ages:
+        if start_age is not None and age < start_age:
+            continue
+        if log:
+            entry = _find_log_entry(log, age)
+            if entry is None:
+                continue
+            alloc = _extract_allocation(entry)
+            actual_age = entry["age"]
+        else:
+            # Fallback: theoretical from params
+            gold_pct = params.bucket_gold_pct
+            dummy_total = 10000.0
+            cash_t, bond_t, gold_t, equity_t = params.bucket_targets(
+                age=age, annual_expenses=400.0, total_assets=dummy_total,
+            )
+            alloc = {"株式": equity_t, "債券": bond_t, "現金": cash_t, "ゴールド": gold_t}
+            if gold_pct > 0 and gold_t == 0:
+                alloc["ゴールド"] = gold_pct * dummy_total
+            actual_age = age
+        labels, sizes = _to_pie_data(alloc)
+        if sizes:
+            panels.append((actual_age, labels, sizes))
+
+    if not panels:
+        return output_path / "allocation.png"  # nothing to draw
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(6 * len(panels), 5))
+    if len(panels) == 1:
+        axes = [axes]
+
+    def _make_pie(ax, labels, sizes, title):
+        total = sum(sizes)
+        colors = [_ALLOC_COLORS.get(l, DEFAULT_COLOR) for l in labels]
+        wedges, texts, autotexts = ax.pie(
+            sizes, colors=colors,
+            autopct=lambda pct: f"{pct:.0f}%" if pct >= 3 else "",
+            startangle=90, textprops={"fontsize": 14, "fontweight": "bold"},
+            pctdistance=0.75,
+        )
+        # Build legend with label + percentage + amount
+        legend_labels = [
+            f"{l} {v / total * 100:.0f}%（{v:,.0f}万円）" for l, v in zip(labels, sizes)
+        ]
+        ax.legend(wedges, legend_labels, loc="lower center",
+                  bbox_to_anchor=(0.5, -0.15), fontsize=11, ncol=2)
+        ax.set_title(title, fontsize=14, pad=12)
+
+    for ax, (age, labels, sizes) in zip(axes, panels):
+        _make_pie(ax, labels, sizes, f"{age}歳時点")
+
+    fig.suptitle("資産配分（バケット戦略）", fontsize=16, y=1.02)
+    # Footnote: amounts are from one specific strategy
+    note = "※金額は確定論・標準シナリオの一例"
+    if strategy_name:
+        note += f"（{strategy_name}）"
+    fig.text(0.5, -0.02, note, ha="center", fontsize=10, color="#666666")
+    fig.tight_layout()
+
+    output_path.mkdir(parents=True, exist_ok=True)
+    suffix = f"-{name}" if name else ""
+    filepath = output_path / f"allocation{suffix}.png"
     fig.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return filepath

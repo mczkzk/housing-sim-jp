@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from housing_sim_jp.charts import plot_cashflow_stack, plot_mc_fan, plot_trajectory
+from housing_sim_jp.charts import plot_allocation, plot_cashflow_stack, plot_mc_fan, plot_trajectory
 from housing_sim_jp.config import (
     DEFAULTS,
     build_params,
@@ -82,7 +82,7 @@ def fmt_bankrupt(r: dict | None) -> str:
         return "---"
     if r.get("bankrupt_age") is not None:
         return f"⚠{r['bankrupt_age']}歳破綻"
-    return fmt_oku_short(r["after_tax_net_assets"])
+    return fmt_oku_short(r["final_net_assets"])
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +248,8 @@ def build_report_context(
             det_results, chart_dir, name=name,
             husband_start_age=husband_age, wife_start_age=wife_age,
         )
+        if params.bucket_safe_years > 0 or params.bucket_gold_pct > 0:
+            plot_allocation(params, chart_dir, name=name, det_results=det_results)
 
     # ---- 5 Scenarios ----
     print("5シナリオ×4戦略...", file=sys.stderr)
@@ -608,16 +610,49 @@ def _render_title(ctx: ReportContext) -> str:
     )
 
 
+def _render_overview(ctx: ReportContext) -> str:
+    """Executive summary before Chapter 1."""
+    std = ctx.scenario_results.get("標準", [])
+    valid = [r for r in std if r and r.get("bankrupt_age") is None]
+    lines = [
+        "\n## 概要\n",
+        f"本レポートは**{ctx.start_age}歳から80歳まで{ctx.sim_years}年間**の住宅戦略を比較する。"
+        "4つの戦略の税引前純資産（80歳時点）を確定論・モンテカルロ両面で評価し、"
+        "最適な住居選択を検討する。\n",
+        "| 戦略 | 概要 |",
+        "|------|------|",
+        "| 浦和マンション | 中古3LDK購入（築10年・フルローン35年） |",
+        "| 浦和一戸建て | 中古一戸建て購入（築7年・フルローン35年） |",
+        "| 戦略的賃貸 | 3LDK→2LDKダウンサイズ、差額を全額投資 |",
+        "| 通常賃貸 | 3LDK固定、標準的な貯蓄・投資 |",
+    ]
+    if valid:
+        valid.sort(key=lambda r: r["final_net_assets"], reverse=True)
+        lines.append(f"\n**確定論・標準シナリオの結果：**\n")
+        lines.append("| 順位 | 戦略 | 80歳時点の純資産 |")
+        lines.append("|:----:|------|----------------:|")
+        for i, r in enumerate(valid, 1):
+            v = fmt_oku_short(r["final_net_assets"])
+            name = r["strategy"]
+            mark = " 🏆" if i == 1 else ""
+            lines.append(f"| {i} | {name}{mark} | {v} |")
+        spread = (valid[0]["final_net_assets"] - valid[-1]["final_net_assets"]) / 10000
+        lines.append(f"\n1位と最下位の差は**{spread:.2f}億円**。"
+                     "詳細な前提条件は第1章、戦略の仕組みは第2章、"
+                     "シナリオ分析は第3章以降を参照。")
+    return "\n".join(lines)
+
+
 def _render_ch1(ctx: ReportContext) -> str:
     parts = [
         "\n## 第1章：前提条件\n",
         _render_ch1_1_macro(ctx),
         _render_ch1_2_profile(ctx),
-        _render_ch1_3_emergency(ctx),
-        _render_ch1_4_ideco(ctx),
-        _render_ch1_5_investment_accounts(ctx),
-        _render_ch1_6_bucket(ctx),
-        _render_ch1_7_strategies(ctx),
+        _render_ch1_3_strategies(ctx),
+        _render_ch1_4_emergency(ctx),
+        _render_ch1_5_ideco(ctx),
+        _render_ch1_6_investment_accounts(ctx),
+        _render_ch1_7_bucket(ctx),
     ]
     return "\n".join(parts)
 
@@ -835,9 +870,11 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             parts.append(f"夫{h_leave}ヶ月")
         lines.append(
             f"\n**産休・育休：** 出産ごとに{'・'.join(parts)}の休業を想定。"
-            "休業中の収入は育児休業給付金で補填（2025年4月改正: "
-            "産後28日は出生後休業支援給付金で額面80%、その後6ヶ月は67%、以降50%）。"
-            "社会保険料免除を加味し、手取りベースで産後1ヶ月は実質10割（上限100%）、6ヶ月まで約89%、以降約67%で計算。"
+            "妻は産前6週＋産後8週の産休（出産手当金: 額面2/3、手取り約89%）の後に育休へ移行。"
+            "育休中の収入は育児休業給付金で補填（2025年4月改正: "
+            "育休開始から28日は出生後休業支援給付金で額面80%・手取り実質10割、"
+            "6ヶ月まで67%・約89%、以降50%・約67%）。"
+            "夫は出産時に育休のみ取得（出生後休業支援給付金適用）。"
         )
 
     # Parameter plausibility warnings
@@ -882,6 +919,12 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             lines.append(f"| {age}歳 | {h:.1f} | {w:.1f} | {total:.1f} | {note} |")
         if ctx.child_birth_ages:
             lines.append("\n※世帯合計には児童手当（0-2歳:月1.5万/人、3-18歳:月1.0万/人）を含む")
+        if ctx.params.furusato_nozei:
+            lines.append(
+                "\n**ふるさと納税：** 夫婦それぞれ控除上限まで寄付し、返礼品（寄付額の30%相当）を"
+                "全額食費に充当する前提。自己負担は年2,000円/人。"
+                "就労期間中のみ適用（年金期は控除体系が異なるため除外）。"
+            )
 
     age_diff = _age_diff(ctx)
     if age_diff > 0:
@@ -909,12 +952,12 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     return "\n".join(lines)
 
 
-def _render_ch1_3_emergency(ctx: ReportContext) -> str:
+def _render_ch1_4_emergency(ctx: ReportContext) -> str:
     living = base_living_cost(ctx.start_age) + ctx.r["living_premium"]
     ef = living * ctx.params.emergency_fund_months
     ratio = ef / ctx.savings * 100 if ctx.savings > 0 else 0
     return (
-        f"\n### 1.3 生活防衛資金\n\n"
+        f"\n### 1.4 生活防衛資金\n\n"
         f"**生活費{ctx.params.emergency_fund_months:.0f}ヶ月分を現金確保（最終防衛ライン）。** "
         f"{ctx.start_age}歳時点で約{ef:.0f}万円（初期資産の約{ratio:.0f}%）。"
         f"世帯構成とインフレに連動。"
@@ -949,11 +992,11 @@ def _ideco_withdrawal_rationale(withdrawal_age: int) -> str:
     )
 
 
-def _render_ch1_4_ideco(ctx: ReportContext) -> str:
+def _render_ch1_5_ideco(ctx: ReportContext) -> str:
     h_ideco = ctx.r["husband_ideco"]
     w_ideco = ctx.r["wife_ideco"]
     if h_ideco == 0 and w_ideco == 0:
-        return "\n### 1.4 iDeCo\n\niDeCo拠出なし。"
+        return "\n### 1.5 iDeCo\n\niDeCo拠出なし。"
     contribution_end = ctx.r["ideco_contribution_end_age"]
     withdrawal_age = ctx.r["ideco_withdrawal_age"]
     h_years = max(0, contribution_end - ctx.husband_age)
@@ -974,7 +1017,7 @@ def _render_ch1_4_ideco(ctx: ReportContext) -> str:
         ra_tax = r0.get("retirement_allowance_tax_paid", 0)
 
     lines = [
-        f"\n### 1.4 iDeCo（個人型確定拠出年金）\n\n",
+        f"\n### 1.5 iDeCo（個人型確定拠出年金）\n\n",
         f"夫婦各月{h_ideco:.0f}万円（計{h_ideco + w_ideco:.0f}万）を**{contribution_end}歳まで拠出**（全額所得控除）し、"
         f"**{withdrawal_age}歳で一時金として受取**。"
         + _ideco_withdrawal_rationale(withdrawal_age)
@@ -1010,10 +1053,10 @@ def _render_ch1_4_ideco(ctx: ReportContext) -> str:
     return "".join(lines)
 
 
-def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
+def _render_ch1_6_investment_accounts(ctx: ReportContext) -> str:
     p = ctx.params
     lines = [
-        "\n### 1.5 投資口座\n\n",
+        "\n### 1.6 投資口座\n\n",
         "毎月の余剰資金は以下の優先順位で投資口座に振り分ける。\n\n",
     ]
 
@@ -1131,17 +1174,17 @@ def _render_ch1_5_investment_accounts(ctx: ReportContext) -> str:
             "\n**投資優先順位**: iDeCo → NISA → 特定口座"
         )
     lines.append(
-        f"（取り崩し順序は§1.6を参照）。\n"
+        f"（取り崩し順序は§1.7を参照）。\n"
     )
 
     return "".join(lines)
 
 
-def _render_ch1_6_bucket(ctx: ReportContext) -> str:
+def _render_ch1_7_bucket(ctx: ReportContext) -> str:
     p = ctx.params
     if p.bucket_safe_years <= 0 and p.bucket_gold_pct <= 0:
         return (
-            "\n### 1.6 資産配分\n\n"
+            "\n### 1.7 資産配分\n\n"
             "バケット戦略は無効（全期間100%株式運用＋生活防衛資金）。"
         )
     retirement = max(p.husband_work_end_age, p.wife_work_end_age)
@@ -1149,8 +1192,8 @@ def _render_ch1_6_bucket(ctx: ReportContext) -> str:
     bond_years = max(0, p.bucket_safe_years - p.bucket_cash_years)
     ef_months = p.emergency_fund_months
     lines = [
-        f"\n### 1.6 資産配分（バケット戦略）\n",
-        f"**生活防衛資金**（§1.3）と**現金ポジション**は独立した現金プール。\n",
+        f"\n### 1.7 資産配分（バケット戦略）\n",
+        f"**生活防衛資金**（§1.4）と**現金ポジション**は独立した現金プール。\n",
         f"- **生活防衛資金**: 生活費{ef_months:.0f}ヶ月分。最終防衛ライン（全資産枯渇時のみ取り崩し）\n",
         f"- **現金ポジション**: フェーズで変動する運用バッファ\n",
         f"  - 現役（教育費あり）: 年間教育費の半年分（1学期分）\n",
@@ -1185,10 +1228,14 @@ def _render_ch1_6_bucket(ctx: ReportContext) -> str:
         f"- **退職後(暴落)**: 現金ポジション → 債券 → ゴールド → 株式(特定) → 株式(NISA) → 生活防衛資金"
         f"（順序リスク対策: 暴落時に株式の安値売りを回避し、現金ポジションと安全資産で凌ぐ）"
     )
+    suffix = f"-{ctx.chart_suffix}" if ctx.chart_suffix else ""
+    lines.append(
+        f"\n![資産配分（バケット戦略）](charts/allocation{suffix}.png)\n"
+    )
     return "\n".join(lines)
 
 
-def _render_ch1_7_strategies(ctx: ReportContext) -> str:
+def _render_ch1_3_strategies(ctx: ReportContext) -> str:
     savings = ctx.savings
 
     # Classify purchase ages: None=feasible at start, INFEASIBLE=impossible, int=deferred
@@ -1204,7 +1251,7 @@ def _render_ch1_7_strategies(ctx: ReportContext) -> str:
     all_immediate = not has_deferred and not has_infeasible
 
     lines = [
-        "\n### 1.7 4戦略の定義と初期コスト\n",
+        "\n### 1.3 4戦略の定義と初期コスト\n",
         "築10年マンション3LDK（70㎡台）の相場は23区平均で約1.1億、"
         "港区1.8〜3.3億、文京区1.4〜2.2億。"
         "ボリュームゾーンの世帯年収1,000〜1,500万（フルローン上限7,000万〜1億）では射程外で、"
@@ -1280,7 +1327,7 @@ def _render_ch1_7_strategies(ctx: ReportContext) -> str:
             )
 
     lines.append(
-        "\n投資口座（§1.5）と資産配分（§1.6）の詳細は各節を参照。"
+        "\n投資口座（§1.6）と資産配分（§1.7）の詳細は各節を参照。"
     )
 
     return "\n".join(lines)
@@ -1414,10 +1461,10 @@ def _render_ch3_1_scenarios(ctx: ReportContext) -> str:
         results = ctx.scenario_results[sname]
         ordered = _scenario_row(results)
         vals = []
-        best_val = max((r["after_tax_net_assets"] for r in ordered if r and r.get("bankrupt_age") is None), default=0)
+        best_val = max((r["final_net_assets"] for r in ordered if r and r.get("bankrupt_age") is None), default=0)
         for r in ordered:
             s = fmt_bankrupt(r)
-            if r and r.get("bankrupt_age") is None and r["after_tax_net_assets"] == best_val:
+            if r and r.get("bankrupt_age") is None and r["final_net_assets"] == best_val:
                 s = f"**{s}**"
             vals.append(s)
         lines.append(f"| **{sname}** | {' | '.join(vals)} |")
@@ -1426,13 +1473,13 @@ def _render_ch3_1_scenarios(ctx: ReportContext) -> str:
     std_best = None
     std_results = ctx.scenario_results["標準"]
     for r in std_results:
-        if r and (std_best is None or r["after_tax_net_assets"] > std_best["after_tax_net_assets"]):
+        if r and (std_best is None or r["final_net_assets"] > std_best["final_net_assets"]):
             std_best = r
     if std_best:
-        real = std_best["after_tax_net_assets"] * ctx.deflator
+        real = std_best["final_net_assets"] * ctx.deflator
         lines.append(
             f"\n※80歳時点の税引後名目値。インフレ{ctx.sim_years}年で貨幣価値は約{ctx.deflator*100:.0f}%に縮小"
-            f"（標準・{std_best['strategy']}{fmt_oku_short(std_best['after_tax_net_assets'])}→"
+            f"（標準・{std_best['strategy']}{fmt_oku_short(std_best['final_net_assets'])}→"
             f"**実質約{fmt_oku_short(real)}**）。"
         )
 
@@ -1597,7 +1644,7 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
     # After-tax
     vals = []
     for r in top3:
-        v = r["after_tax_net_assets"]
+        v = r["final_net_assets"]
         vals.append(f"**{fmt_man(v)}（{fmt_oku(v)}）**")
     lines.append(f"| **税引後手取り純資産** | " + " | ".join(vals) + " |")
 
@@ -1605,7 +1652,7 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
         lines.append(
             f"\n**通常賃貸：** 運用資産{fmt_man(normal['investment_balance_80'])}、"
             f"金融所得税▲{fmt_man(normal['securities_tax'])}、"
-            f"税引後{fmt_man(normal['after_tax_net_assets'])}（{fmt_oku(normal['after_tax_net_assets'])}）。"
+            f"税引後{fmt_man(normal['final_net_assets'])}（{fmt_oku(normal['final_net_assets'])}）。"
         )
 
     # Footnotes for the detail table
@@ -1672,7 +1719,7 @@ def _render_ch3_4_discipline(ctx: ReportContext) -> str:
         for d, f in zip(disc_ordered, full_ordered):
             ds = fmt_bankrupt(d)
             if d and f and d.get("bankrupt_age") is None and f.get("bankrupt_age") is None:
-                diff = d["after_tax_net_assets"] - f["after_tax_net_assets"]
+                diff = d["final_net_assets"] - f["final_net_assets"]
                 ds += f"(▲{abs(diff)/10000:.2f})"
             elif d and f and d.get("bankrupt_age") is not None and f.get("bankrupt_age") is not None:
                 ds += "(+0.00)"
@@ -1776,7 +1823,7 @@ def _render_ch4_3_divergence(ctx: ReportContext) -> str:
         mc_r = _mc_by_name(mc, name)
         if not det or not mc_r:
             continue
-        det_v = det["after_tax_net_assets"]
+        det_v = det["final_net_assets"]
         mc_v = mc_r.percentiles[50]
         if det_v > 0:
             gap = (mc_v - det_v) / det_v * 100
@@ -1894,6 +1941,10 @@ def _render_ch5(ctx: ReportContext) -> str:
          "売却が唯一の手段。告知義務で値下げリスク（一戸建て）／"
          "管理組合の調停力次第（マンション）",
          "引越しで即解決"),
+        ("周辺環境の変化",
+         "近隣に高層建築が建ち眺望・日照が悪化しても対抗手段が限られる。"
+         "資産価値の下落を受け入れるか、不利な条件で売却するしかない",
+         "条件の良い物件に転居すれば回避可能"),
         ("病気・失業・収入減",
          "ローン返済は止められず、売却には数ヶ月〜半年。"
          "傷病手当金（最長18ヶ月）で凌ぐ間も返済額は固定",
@@ -2005,7 +2056,7 @@ def _render_ch5(ctx: ReportContext) -> str:
     has_bucket = ctx.params.bucket_enabled
     if has_bucket:
         lines.append(
-            "\n本シミュレーションではバケット戦略（§1.6）により、"
+            "\n本シミュレーションではバケット戦略（§1.7）により、"
             "退職前から安全資産を段階的に積み増し、"
             "通常時は株式から取り崩し（4%ルール）、"
             "暴落時には安全資産から優先的に取り崩すことで、"
@@ -2199,11 +2250,11 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
         vals = []
         items = [_val(results, n) for n in display_order]
         if bold_max:
-            valid_vals = [r["after_tax_net_assets"] for r in items if r and r.get("bankrupt_age") is None]
+            valid_vals = [r["final_net_assets"] for r in items if r and r.get("bankrupt_age") is None]
             max_v = max(valid_vals) if valid_vals else 0
         for r in items:
             s = fmt_bankrupt(r)
-            if bold_max and r and r.get("bankrupt_age") is None and r["after_tax_net_assets"] == max_v:
+            if bold_max and r and r.get("bankrupt_age") is None and r["final_net_assets"] == max_v:
                 s = f"**{s}**"
             vals.append(s)
         return f"| {label} | {' | '.join(vals)} |"
@@ -2270,19 +2321,31 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
         for name in display_order:
             r = _val(results, name)
             if r and r.get("bankrupt_age") is None:
-                vals.append(f"✅（{fmt_oku_short(r['after_tax_net_assets'])}）")
+                vals.append(f"✅（{fmt_oku_short(r['final_net_assets'])}）")
             elif r and r.get("bankrupt_age") is not None:
                 vals.append(f"⚠{r['bankrupt_age']}歳破綻")
             else:
                 vals.append("---")
         lines.append(f"| 確定論・{sname} | {' | '.join(vals)} |")
 
+    # Latent tax note: show securities tax as caveat, not deducted from headline
+    lines.append(
+        "\n※上記は**税引前**純資産。特定口座の含み益を現金化する際には"
+        "譲渡益税20.315%が発生する（NISA口座分は非課税）。各戦略の潜在税負担："
+    )
+    for name in display_order:
+        r = _val(ctx.det_results, name)
+        if r and r.get("bankrupt_age") is None:
+            tax = r.get("securities_tax", 0)
+            if tax > 0:
+                lines.append(f"  {name}: 約{tax/10000:.2f}億円")
+
     # Nominal vs real caveat (consolidated here; not repeated in §7.2)
     std = ctx.scenario_results.get("標準", [])
     valid_std = [r for r in std if r is not None]
     if valid_std:
-        best = max(valid_std, key=lambda r: r["after_tax_net_assets"])
-        best_val = best["after_tax_net_assets"]
+        best = max(valid_std, key=lambda r: r["final_net_assets"])
+        best_val = best["final_net_assets"]
         best_name = best["strategy"]
         real_best = best_val * ctx.deflator
         lines.append(
@@ -2302,16 +2365,16 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
     if not valid_std:
         return "\n### 7.2 構造的結論\n\n有効な戦略がありません。"
 
-    valid_std.sort(key=lambda r: r["after_tax_net_assets"], reverse=True)
+    valid_std.sort(key=lambda r: r["final_net_assets"], reverse=True)
     best_name = valid_std[0]["strategy"]
-    best_val = valid_std[0]["after_tax_net_assets"]
-    worst_val = valid_std[-1]["after_tax_net_assets"]
+    best_val = valid_std[0]["final_net_assets"]
+    worst_val = valid_std[-1]["final_net_assets"]
     gap_oku = (best_val - worst_val) / 10000
     gap_pct = (best_val - worst_val) / best_val * 100 if best_val > 0 else 0
 
     # Second best
     second_name = valid_std[1]["strategy"] if len(valid_std) > 1 else None
-    second_val = valid_std[1]["after_tax_net_assets"] if len(valid_std) > 1 else 0
+    second_val = valid_std[1]["final_net_assets"] if len(valid_std) > 1 else 0
     top_gap_oku = (best_val - second_val) / 10000
 
     mc = ctx.mc_results
@@ -2335,12 +2398,12 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
 
     # Discipline analysis
     disc_std = ctx.discipline_results["標準"]
-    disc_map = {r["strategy"]: r["after_tax_net_assets"] for r in disc_std if r is not None}
+    disc_map = {r["strategy"]: r["final_net_assets"] for r in disc_std if r is not None}
     max_disc_loss = 0
     max_disc_name = ""
     for r in valid_std:
-        d = disc_map.get(r["strategy"], r["after_tax_net_assets"])
-        loss = (r["after_tax_net_assets"] - d) / 10000
+        d = disc_map.get(r["strategy"], r["final_net_assets"])
+        loss = (r["final_net_assets"] - d) / 10000
         if loss > max_disc_loss:
             max_disc_loss = loss
             max_disc_name = r["strategy"]
@@ -2640,7 +2703,7 @@ def _render_ch7_3_risks(ctx: ReportContext) -> str:
                 unique_names.append(label)
         se_names = "・".join(unique_names)
         best_net = max(
-            r["after_tax_net_assets"] for r in ctx.det_results
+            r["final_net_assets"] for r in ctx.det_results
         )
         ratio = total_se_nominal / best_net * 100 if best_net > 0 else 0
         if ratio <= 10:
@@ -2675,6 +2738,7 @@ def render_report(ctx: ReportContext) -> str:
     """Render a complete Markdown report from a ReportContext."""
     sections = [
         _render_title(ctx),
+        _render_overview(ctx),
         _render_ch1(ctx),
         _render_ch2(ctx),
         _render_ch3(ctx),
