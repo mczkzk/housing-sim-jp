@@ -8,7 +8,7 @@ from housing_sim_jp.report import build_report_context, render_report
 
 
 ALL_CONFIGS = [
-    (Path("config.toml"), ""),
+    (Path("config.toml"), "personal"),
     (Path("config.example-25.toml"), "25"),
     (Path("config.example-30.toml"), "30"),
     (Path("config.example-35.toml"), "35"),
@@ -22,8 +22,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="TOML設定ファイル（--all と排他）",
     )
     parser.add_argument(
-        "--name", type=str, default="",
-        help="出力ファイル名のサフィックス（例: 30 → report-30.md）",
+        "--name", type=str, default="personal",
+        help="出力サブディレクトリ名（例: 30 → reports/30/report.md）",
     )
     parser.add_argument(
         "--all", action="store_true", dest="run_all",
@@ -43,11 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output", type=Path, default=Path("reports"),
-        help="レポート出力ディレクトリ (default: reports)",
-    )
-    parser.add_argument(
-        "--chart-dir", type=Path, default=Path("reports/charts"),
-        help="チャート出力ディレクトリ (default: reports/charts)",
+        help="レポートベースディレクトリ (default: reports)",
     )
     return parser
 
@@ -60,11 +56,11 @@ def _generate_one(
     mc_runs: int,
     seed: int,
     output_dir: Path,
-    chart_dir: Path,
 ) -> Path:
     """Generate a single report and return the output path."""
-    suffix = f"-{name}" if name else ""
-    out_path = output_dir / f"report{suffix}.md"
+    sub_dir = output_dir / name
+    out_path = sub_dir / "report.md"
+    chart_dir = sub_dir / "charts"
 
     print(f"\n{'='*60}", file=sys.stderr)
     print(f"レポート生成: {config_path} → {out_path}", file=sys.stderr)
@@ -72,7 +68,6 @@ def _generate_one(
 
     ctx = build_report_context(
         config_path=config_path,
-        name=name,
         no_mc=no_mc,
         mc_runs=mc_runs,
         seed=seed,
@@ -80,7 +75,7 @@ def _generate_one(
     )
     md = render_report(ctx)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    sub_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md, encoding="utf-8")
     print(f"  → {out_path}", file=sys.stderr)
     return out_path
@@ -102,7 +97,7 @@ def main():
             p = _generate_one(
                 config_path, name,
                 no_mc=args.no_mc, mc_runs=args.mc_runs, seed=args.seed,
-                output_dir=args.output, chart_dir=args.chart_dir,
+                output_dir=args.output,
             )
             paths.append(p)
         print(f"\n完了: {len(paths)}件のレポートを生成", file=sys.stderr)
@@ -115,7 +110,7 @@ def main():
         _generate_one(
             config_path, args.name,
             no_mc=args.no_mc, mc_runs=args.mc_runs, seed=args.seed,
-            output_dir=args.output, chart_dir=args.chart_dir,
+            output_dir=args.output,
         )
         print("完了", file=sys.stderr)
 

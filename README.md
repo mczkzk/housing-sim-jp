@@ -29,8 +29,9 @@ python -m housing_sim_jp.scenario_cli
 python -m housing_sim_jp.monte_carlo_cli
 python -m housing_sim_jp.monte_carlo_cli --stress-test                # ストレステスト追加出力
 
-# チャート生成（確定論+MC → reports/charts/）
+# チャート生成（確定論+MC → reports/<name>/charts/）
 python -m housing_sim_jp.chart_cli
+python -m housing_sim_jp.chart_cli --name 30 --config config.example-30.toml
 python -m housing_sim_jp.chart_cli --no-mc                            # 確定論のみ（高速）
 
 # レポート自動生成（7章構成Markdown: 確定論+シナリオ+MC+ストレステスト統合）
@@ -89,12 +90,12 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 
 | レポート | 条件 |
 |---------|------|
-| [report-25.pdf](reports/pdf/report-25.pdf) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
-| [report-30.pdf](reports/pdf/report-30.pdf) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
-| [report-35.pdf](reports/pdf/report-35.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
+| [report-25.pdf](reports/25/report.pdf) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
+| [report-30.pdf](reports/30/report.pdf) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
+| [report-35.pdf](reports/35/report.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
 
 ```bash
 # PDF生成（pandoc + Chrome headless）
 python -m housing_sim_jp.pdf_cli                              # 全レポート一括
-python -m housing_sim_jp.pdf_cli reports/report-35.md         # 個別指定
+python -m housing_sim_jp.pdf_cli reports/35/report.md         # 個別指定
 ```

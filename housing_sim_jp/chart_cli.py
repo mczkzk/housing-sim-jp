@@ -21,8 +21,8 @@ from housing_sim_jp.strategies import build_all_strategies
 
 def _add_chart_args(parser):
     parser.add_argument(
-        "--output", type=Path, default=Path("reports/charts"),
-        help="出力ディレクトリ (default: reports/charts)",
+        "--output", type=Path, default=Path("reports"),
+        help="ベースディレクトリ (default: reports)",
     )
     parser.add_argument(
         "--no-mc", action="store_true",
@@ -37,8 +37,8 @@ def _add_chart_args(parser):
         help="乱数シード (default: 42)",
     )
     parser.add_argument(
-        "--name", type=str, default="",
-        help="出力ファイル名のサフィックス（例: 30 → trajectory-30.png）",
+        "--name", type=str, default="personal",
+        help="出力サブディレクトリ名（例: 30 → reports/30/charts/）",
     )
 
 
@@ -51,8 +51,7 @@ def main():
     husband_age = r["husband_age"]
     wife_age = r["wife_age"]
     savings = r["savings"]
-    output_dir = args.output
-    chart_name = args.name
+    output_dir = args.output / args.name / "charts"
     params = build_params(r, pet_sim_ages)
 
     resolved_children = resolve_child_birth_ages(child_birth_ages, start_age)
@@ -118,7 +117,7 @@ def main():
         shared_markers.sort()
 
         path = plot_trajectory(
-            det_results, output_dir, name=chart_name, event_markers=shared_markers,
+            det_results, output_dir, name="", event_markers=shared_markers,
             initial_principal=savings,
             investment_return=params.investment_return,
             husband_start_age=husband_age, wife_start_age=wife_age,
@@ -126,13 +125,13 @@ def main():
         print(f"  → {path}", file=sys.stderr)
 
         path = plot_cashflow_stack(
-            det_results, output_dir, name=chart_name,
+            det_results, output_dir, name="",
             husband_start_age=husband_age, wife_start_age=wife_age,
         )
         print(f"  → {path}", file=sys.stderr)
 
         if params.bucket_safe_years > 0 or params.bucket_gold_pct > 0:
-            path = plot_allocation(params, output_dir, name=chart_name, det_results=det_results)
+            path = plot_allocation(params, output_dir, name="", det_results=det_results)
             print(f"  → {path}", file=sys.stderr)
 
     else:
@@ -161,7 +160,7 @@ def main():
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
             path = plot_mc_fan(
-                valid_mc, output_dir, name=chart_name,
+                valid_mc, output_dir, name="",
                 husband_start_age=husband_age, wife_start_age=wife_age,
             )
             print(f"  → {path}", file=sys.stderr)

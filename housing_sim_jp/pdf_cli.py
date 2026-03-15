@@ -72,9 +72,9 @@ def _html_to_pdf(html_path: Path, pdf_path: Path, chrome: str) -> None:
     subprocess.run(cmd, check=True, capture_output=True)
 
 
-def convert(md_path: Path, output_dir: Path, chrome: str) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = output_dir / md_path.with_suffix(".pdf").name
+def convert(md_path: Path, chrome: str) -> Path:
+    """Convert a markdown file to PDF, placing the PDF next to the source."""
+    pdf_path = md_path.with_suffix(".pdf")
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
         html_path = Path(f.name)
@@ -90,8 +90,7 @@ def convert(md_path: Path, output_dir: Path, chrome: str) -> Path:
 
 def main():
     parser = argparse.ArgumentParser(description="Convert Markdown reports to PDF")
-    parser.add_argument("files", nargs="*", help="Markdown files (default: all reports/*.md)")
-    parser.add_argument("--output", "-o", default="reports/pdf", help="Output directory")
+    parser.add_argument("files", nargs="*", help="Markdown files (default: all reports/*/report.md)")
     args = parser.parse_args()
 
     chrome = _find_chrome()
@@ -102,19 +101,18 @@ def main():
     if args.files:
         md_files = [Path(f) for f in args.files]
     else:
-        md_files = sorted(Path("reports").glob("report*.md"))
+        md_files = sorted(Path("reports").glob("*/report.md"))
 
     if not md_files:
         print("No markdown files found", file=sys.stderr)
         sys.exit(1)
 
-    output_dir = Path(args.output)
     for md in md_files:
-        print(f"  {md.name} → ", end="", file=sys.stderr)
-        pdf = convert(md, output_dir, chrome)
+        print(f"  {md} → ", end="", file=sys.stderr)
+        pdf = convert(md, chrome)
         print(f"{pdf}", file=sys.stderr)
 
-    print(f"\n完了: {len(md_files)}件 → {output_dir}/", file=sys.stderr)
+    print(f"\n完了: {len(md_files)}件", file=sys.stderr)
 
 
 if __name__ == "__main__":

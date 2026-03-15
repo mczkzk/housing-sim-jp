@@ -27,13 +27,10 @@ Thumbs.db
 # Config (personal settings)
 config.toml
 
-# Personal reports
-report.md
-reports/pdf/report.pdf
-allocation.png
-cashflow.png
-mc_fan.png
-trajectory.png
+# Generated reports (only PDFs for examples are committed)
+reports/personal/
+reports/*/report.md
+reports/*/charts/
 
 # Claude Code
 .claude/

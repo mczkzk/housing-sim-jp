@@ -153,11 +153,10 @@ def _build_stress_scenarios(base_config: MonteCarloConfig) -> list[tuple[str, Ev
 
 def build_report_context(
     config_path: Path | None,
-    name: str = "",
     no_mc: bool = False,
     mc_runs: int = 1000,
     seed: int = 42,
-    chart_dir: Path = Path("reports/charts"),
+    chart_dir: Path = Path("reports/personal/charts"),
 ) -> ReportContext:
     """Run all simulations and build a complete report context."""
     r, wife_birth_ages, independence_ages, pet_ages = _resolve_config(config_path)
@@ -240,16 +239,16 @@ def build_report_context(
         shared_markers.sort()
         print("  チャート生成...", file=sys.stderr)
         plot_trajectory(
-            det_results, chart_dir, name=name, event_markers=shared_markers,
+            det_results, chart_dir, event_markers=shared_markers,
             initial_principal=savings, investment_return=params.investment_return,
             husband_start_age=husband_age, wife_start_age=wife_age,
         )
         plot_cashflow_stack(
-            det_results, chart_dir, name=name,
+            det_results, chart_dir,
             husband_start_age=husband_age, wife_start_age=wife_age,
         )
         if params.bucket_safe_years > 0 or params.bucket_gold_pct > 0:
-            plot_allocation(params, chart_dir, name=name, det_results=det_results)
+            plot_allocation(params, chart_dir, det_results=det_results)
 
     # ---- 5 Scenarios ----
     print("5シナリオ×4戦略...", file=sys.stderr)
@@ -319,7 +318,7 @@ def build_report_context(
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
             plot_mc_fan(
-                valid_mc, chart_dir, name=name,
+                valid_mc, chart_dir,
                 husband_start_age=husband_age, wife_start_age=wife_age,
             )
 
@@ -370,7 +369,7 @@ def build_report_context(
         discipline_results=discipline_results,
         mc_results=mc_results,
         stress_results=stress_results,
-        chart_suffix=name,
+        chart_suffix="",
         no_mc=no_mc,
         deflator=deflator,
         pension_monthly=pension,
