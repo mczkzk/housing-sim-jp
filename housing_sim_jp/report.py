@@ -428,11 +428,6 @@ def _mc_by_key(results: list[MonteCarloResult] | None, key: str) -> MonteCarloRe
 
 
 
-def _mc_by_name(results: list[MonteCarloResult], name: str) -> MonteCarloResult | None:
-    for r in results:
-        if r.strategy_name == name:
-            return r
-    return None
 
 
 def _scenario_row(results: list[dict | None]) -> list[dict | None]:
@@ -689,7 +684,7 @@ def _render_overview(ctx: ReportContext) -> str:
     if valid:
         valid.sort(key=lambda r: r["final_net_assets"], reverse=True)
         lines.append(f"\n**確定論・標準シナリオの結果：**\n")
-        lines.append("| 順位 | 戦略 | 80歳時点の純資産 |")
+        lines.append("| 順位 | 戦略 | 80歳時点の税引前純資産 |")
         lines.append("|:----:|------|----------------:|")
         for i, r in enumerate(valid, 1):
             v = fmt_oku_short(r["final_net_assets"])
@@ -697,7 +692,7 @@ def _render_overview(ctx: ReportContext) -> str:
             mark = " 🏆" if i == 1 else ""
             lines.append(f"| {i} | {name}{mark} | {v} |")
         spread = (valid[0]["final_net_assets"] - valid[-1]["final_net_assets"]) / 10000
-        lines.append(f"\n1位と最下位の差は**{spread:.2f}億円**。"
+        lines.append(f"\n1位と最下位の差は**{spread:.1f}億円**。"
                      "詳細な前提条件は第1章、戦略の仕組みは第2章、"
                      "シナリオ分析は第3章以降を参照。")
     return "\n".join(lines)
@@ -778,7 +773,7 @@ def _render_ch1_1_macro(ctx: ReportContext) -> str:
 
     lines.append("")
     lines.append(
-        "**標準シナリオの根拠：** インフレ2.0%（日銀目標、CPI定着）、"
+        "**標準シナリオの根拠：** インフレ2.0%（日銀目標、CPI[消費者物価指数]定着）、"
         "賃金2.0%（**実質横ばい**、キャリアカーブとは別の底上げ）、"
         "ローン0.75%→2.50%（5年ごとに段階引き上げ、5段階）、"
         "運用6.0%（全世界株式の長期名目期待リターン上位、実質4.0%）、"
@@ -830,7 +825,8 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     ]
     if ctx.child_birth_ages:
         pf = _EDUCATION_STAGE_MAP.get(r["education_private_from"], r["education_private_from"])
-        lines[-1] += f"。教育方針は{pf}・{r['education_field']}"
+        sep = "。" if not lines[-1].endswith("。") else ""
+        lines[-1] += f"{sep}教育方針は{pf}・{r['education_field']}"
         if r["education_boost"] != 1.0:
             lines[-1] += f"（受験年倍率{r['education_boost']:.1f}）"
         lines[-1] += "。"
@@ -1069,12 +1065,10 @@ def _render_ch1_5_ideco(ctx: ReportContext) -> str:
     # Get actual values from det_results if available
     tax_benefit = 0.0
     tax_paid = 0.0
-    ra_tax = 0.0
     if ctx.det_results:
         r0 = ctx.det_results[0]
         tax_benefit = r0.get("ideco_tax_benefit_total", 0)
         tax_paid = r0.get("ideco_tax_paid", 0)
-        ra_tax = r0.get("retirement_allowance_tax_paid", 0)
 
     lines = [
         f"\n### 1.5 iDeCo（個人型確定拠出年金）\n\n",
@@ -1201,7 +1195,8 @@ def _render_ch1_6_investment_accounts(ctx: ReportContext) -> str:
         ])
         if contributed > 0:
             lines.append(
-                f"\n| 項目 | 金額 |\n|------|------|\n"
+                f"\n※以下は全戦略中の最大値（戦略別の詳細は§3.3参照）。\n\n"
+                f"| 項目 | 金額 |\n|------|------|\n"
                 f"| 拠出累計 | {contributed:,.0f}万円（上限{max_possible:,.0f}万） |\n"
                 f"| 子供への贈与（独立時） | {gifted:,.0f}万円 |\n"
             )
@@ -1284,7 +1279,7 @@ def _render_ch1_7_bucket(ctx: ReportContext) -> str:
         f"- **現役**: 現金ポジション → 株式(特定) → 株式(NISA) → 生活防衛資金"
         f"（毎月の収入があるため通常/暴落を区別しない。現金ポジションは教育費ピーク等の月次赤字バッファ）\n"
         f"- **退職後(通常)**: 株式(特定) → 株式(NISA) → 債券 → ゴールド → 生活防衛資金"
-        f"（4%ルール的に株式を定期売却し、安全資産は暴落時の防御壁として温存）\n"
+        f"（4%ルール[年間生活費の25倍の資産から年4%ずつ取り崩す退職資金戦略]的に株式を定期売却し、安全資産は暴落時の防御壁として温存）\n"
         f"- **退職後(暴落)**: 現金ポジション → 債券 → ゴールド → 株式(特定) → 株式(NISA) → 生活防衛資金"
         f"（順序リスク対策: 暴落時に株式の安値売りを回避し、現金ポジションと安全資産で凌ぐ）"
     )
@@ -1510,7 +1505,7 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 - **離婚リスク：** 共有名義で財産分与が複雑（賃貸は契約解除のみ）
 - **片働きリスク：** 片方の収入停止で住宅費を単独負担→破綻リスク
-- **団信：** 片方死亡でその債務のみ免除、もう片方は残存""")
+- **団信（団体信用生命保険）：** 片方死亡でその債務のみ免除、もう片方は残存""")
     else:
         higher = max(ctx.params.husband_income, ctx.params.wife_income)
         label = "夫" if ctx.params.husband_income >= ctx.params.wife_income else "妻"
@@ -1522,7 +1517,7 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 - **離婚リスク軽減：** 名義人が単独のため財産分与がシンプル
 - **片働き耐性：** 配偶者の収入停止が直接のローン破綻リスクにならない
-- **団信：** 名義人死亡時にローン全額免除（ペアローンは片方のみ）
+- **団信（団体信用生命保険）：** 名義人死亡時にローン全額免除（ペアローンは片方のみ）
 
 ただし投資余力の最大化を重視するなら、ペアローンで借入枠を拡大し差額を運用に回す戦略もある。""")
 
@@ -1801,7 +1796,7 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
 
 def _render_ch3_4_discipline(ctx: ReportContext) -> str:
     lines = [
-        "\n### 3.4 感度分析：投資規律（ライフスタイル・クリープ）\n",
+        "\n### 3.4 感度分析：投資規律（ライフスタイル・クリープ＝収入増に伴い生活水準が際限なく上昇する現象）\n",
         "100%投資は非現実的。ローンの「強制貯蓄」効果の有無で規律が分かれる。\n",
         "- **購入派：余剰資金の90%を投資**（ローンの強制貯蓄効果）",
         "- **賃貸派：余剰資金の80%を投資**（クリープ発生しやすい）\n",
@@ -1852,11 +1847,11 @@ def _render_ch4_1_conditions() -> str:
 
 | 変動要因 | 分布 | サンプリング | パラメータ |
 |---------|------|------------|----------|
-| 投資リターン | 対数正規分布 | **年次**（sequence risk 捕捉） | 期待値6.0%、標準偏差15% |
+| 投資リターン | 対数正規分布 | **年次**（順序リスク捕捉） | 期待値6.0%、標準偏差15% |
 | インフレ率 | 正規分布 | ラン単位 | 平均2.0%、標準偏差0.5% |
 | 賃金上昇率 | 正規分布 | ラン単位 | 平均2.0%、標準偏差0.5%、インフレとの相関0.8 |
 | 土地上昇率 | 正規分布 | ラン単位 | 平均0.75%、標準偏差3% |
-| インフレ-土地相関 | コレスキー分解 | ラン単位 | 相関係数0.6 |
+| インフレ-土地相関 | 相関付き正規分布 | ラン単位 | 相関係数0.6 |
 
 **生活イベントリスク：**
 
@@ -1867,8 +1862,8 @@ def _render_ch4_1_conditions() -> str:
 | 介護 | 75歳以降年5% | 月15万円追加 | 全戦略 |
 | 入居拒否 | 70歳以降年10% | 月5万円プレミアム | 賃貸のみ |
 | 転勤 | 年3%（最大1回） | 購入派：物件売却＋再購入（二重負担）、賃貸派：引越し費用のみ | 全戦略（60歳未満） |
-| 離婚 | 年1% | 資産50%分割＋物件売却＋2LDK賃貸化 | 全戦略 |
-| 配偶者死亡 | 年0.1% | 団信ローン消滅＋保険金3,000万＋遺族年金 | 全戦略 |"""
+| 離婚 | 年1% | 共有財産50%分割＋物件売却＋2LDK賃貸化（特有財産は分与対象外） | 全戦略 |
+| 配偶者死亡 | 年0.1% | 団信（団体信用生命保険）ローン消滅＋保険金3,000万＋遺族年金 | 全戦略 |"""
 
 
 def _render_ch4_2_distribution(ctx: ReportContext) -> str:
@@ -2159,7 +2154,7 @@ def _render_ch5(ctx: ReportContext) -> str:
         lines.append(
             "\n本シミュレーションではバケット戦略（§1.7）により、"
             "退職前から安全資産を段階的に積み増し、"
-            "通常時は株式から取り崩し（4%ルール）、"
+            "通常時は株式から取り崩し、"
             "暴落時には安全資産から優先的に取り崩すことで、"
             "株式を安値で売却するリスクを軽減している。"
         )
