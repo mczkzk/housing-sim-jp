@@ -2248,17 +2248,13 @@ def simulate_strategy(
         child_allowance = _calc_child_allowance(age, child_birth_ages)
 
         # ふるさと納税（返礼品の食費充当分）
-        if params.furusato_nozei and not is_divorced and not is_spouse_dead:
+        if params.furusato_nozei:
+            solo = is_divorced or is_spouse_dead
             furusato_benefit = _calc_furusato_benefit_monthly(
-                h_income, w_income,
+                h_income,
+                0.0 if solo else w_income,
                 h_working=h_age < params.husband_work_end_age,
-                w_working=w_age < params.wife_work_end_age,
-            )
-        elif params.furusato_nozei and (is_divorced or is_spouse_dead):
-            furusato_benefit = _calc_furusato_benefit_monthly(
-                h_income, 0.0,
-                h_working=h_age < params.husband_work_end_age,
-                w_working=False,
+                w_working=False if solo else w_age < params.wife_work_end_age,
             )
         else:
             furusato_benefit = 0.0

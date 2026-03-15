@@ -436,11 +436,16 @@ _ALLOC_COLORS = {
 
 
 def _extract_allocation(log_entry: dict) -> dict[str, float]:
-    """Extract asset class amounts from a monthly_log entry."""
-    stocks = log_entry.get("balance", 0)  # NISA + taxable
+    """Extract asset class amounts from a monthly_log entry.
+
+    monthly_log["balance"] = NISA + taxable + bond + gold + cash_bucket,
+    so subtract the separate fields to isolate equities.
+    """
     bonds = log_entry.get("bond_balance", 0)
     gold = log_entry.get("gold_balance", 0)
-    cash = log_entry.get("cash_bucket", 0) + log_entry.get("emergency_fund", 0)
+    cb = log_entry.get("cash_bucket", 0)
+    stocks = log_entry.get("balance", 0) - bonds - gold - cb
+    cash = cb + log_entry.get("emergency_fund", 0)
     return {"株式": stocks, "債券": bonds, "ゴールド": gold, "現金": cash}
 
 
