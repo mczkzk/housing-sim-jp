@@ -43,8 +43,6 @@ DEFAULTS = {
     "retirement_allowance": 300.0,
     "retirement_service_years": 20,
     "emergency_fund": 6.0,
-    "husband_pension_start_age": 60,
-    "wife_pension_start_age": 60,
     "husband_work_end_age": 70,
     "wife_work_end_age": 70,
     "special_expenses": "",
@@ -58,6 +56,7 @@ DEFAULTS = {
     "husband_parental_leave_months": 1,
     "kodomo_nisa": True,
     "kodomo_nisa_monthly": 1.0,
+    "area": "浦和",
 }
 
 
@@ -111,13 +110,10 @@ def load_config(path: Path | None = None) -> dict:
             raw.setdefault("education_boost", 1.0)
     elif "education" in raw and "education_private_from" in raw:
         raw.pop("education")  # new params take precedence
-    # Migrate legacy pension_start_age / work_end_age → husband_*/wife_*
-    if "pension_start_age" in raw and "husband_pension_start_age" not in raw:
-        v = raw.pop("pension_start_age")
-        raw.setdefault("husband_pension_start_age", v)
-        raw.setdefault("wife_pension_start_age", v)
-    elif "pension_start_age" in raw:
-        raw.pop("pension_start_age")
+    # Migrate legacy pension_start_age → ignored (pension now starts at work_end_age)
+    raw.pop("pension_start_age", None)
+    raw.pop("husband_pension_start_age", None)
+    raw.pop("wife_pension_start_age", None)
     if "work_end_age" in raw and "husband_work_end_age" not in raw:
         v = raw.pop("work_end_age")
         raw.setdefault("husband_work_end_age", v)
@@ -178,9 +174,7 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--retirement-allowance", type=float, default=None, help=f"退職金（万円、60歳退職時, default: {d['retirement_allowance']}）")
     parser.add_argument("--retirement-service-years", type=int, default=None, help=f"退職金の勤続年数（退職所得控除計算用, default: {d['retirement_service_years']}）")
     parser.add_argument("--emergency-fund", type=float, default=None, help=f"生活防衛資金（生活費の何ヶ月分）(default: {d['emergency_fund']})")
-    parser.add_argument("--husband-pension-start-age", type=int, default=None, help=f"夫の年金受給開始年齢（60-75, default: {d['husband_pension_start_age']}）")
-    parser.add_argument("--wife-pension-start-age", type=int, default=None, help=f"妻の年金受給開始年齢（60-75, default: {d['wife_pension_start_age']}）")
-    parser.add_argument("--husband-work-end-age", type=int, default=None, help=f"夫の再雇用終了年齢（60-75, default: {d['husband_work_end_age']}）")
+    parser.add_argument("--husband-work-end-age", type=int, default=None, help=f"夫の再雇用終了年齢=年金受給開始年齢（60-75, default: {d['husband_work_end_age']}）")
     parser.add_argument("--wife-work-end-age", type=int, default=None, help=f"妻の再雇用終了年齢（60-75, default: {d['wife_work_end_age']}）")
     parser.add_argument("--special-expenses", type=str, default=None, help="特別支出（年齢:金額[:ラベル]のカンマ区切り、例: 55:500:リフォーム,65:300）")
     parser.add_argument("--bucket-safe-years", type=float, default=None, help="バケット戦略: 安全資産=生活費N年分（0=無効, default: 5）")
@@ -193,6 +187,8 @@ def create_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--husband-parental-leave-months", type=int, default=None, help="夫の育休月数（default: 1）")
     parser.add_argument("--no-kodomo-nisa", dest="kodomo_nisa", action="store_false", default=None, help="こどもNISAを無効化")
     parser.add_argument("--kodomo-nisa-monthly", type=float, default=None, help="こどもNISA拠出額（万円/月/子、制度上限5万、default: 1.0）")
+    from housing_sim_jp.areas import AREA_PRESETS
+    parser.add_argument("--area", type=str, default=None, choices=list(AREA_PRESETS.keys()), help=f"エリアプリセット (default: {d['area']})")
     return parser
 
 
@@ -266,8 +262,6 @@ def build_params(r: dict, pet_sim_ages: tuple[int, ...] = ()) -> SimulationParam
     return SimulationParams(
         husband_income=r["husband_income"],
         wife_income=r["wife_income"],
-        husband_pension_start_age=r["husband_pension_start_age"],
-        wife_pension_start_age=r["wife_pension_start_age"],
         husband_work_end_age=r["husband_work_end_age"],
         wife_work_end_age=r["wife_work_end_age"],
         living_premium=r["living_premium"],

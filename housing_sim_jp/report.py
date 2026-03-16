@@ -45,13 +45,9 @@ from housing_sim_jp.simulation import (
     resolve_purchase_age,
     simulate_strategy,
 )
-from housing_sim_jp.strategies import (
-    NormalRental,
-    StrategicRental,
-    UrawaHouse,
-    UrawaMansion,
-    build_all_strategies,
-)
+from housing_sim_jp.areas import AreaPreset, get_area
+from housing_sim_jp.params import _calc_equal_payment
+from housing_sim_jp.strategies import STRATEGY_KEYS, build_all_strategies
 
 # ---------------------------------------------------------------------------
 # Format helpers
@@ -99,6 +95,7 @@ class ReportContext:
     wife_age: int
     savings: float
     params: SimulationParams
+    area: AreaPreset
     child_birth_ages: list[int]      # wife's real age
     independence_ages: list[int]
     pet_ages: list[int]              # husband's real age
@@ -166,6 +163,7 @@ def build_report_context(
     savings = r["savings"]
     sim_years = 80 - start_age
     params = build_params(r, pet_sim_ages)
+    area = get_area(r["area"])
 
     resolved_children = resolve_child_birth_ages(child_sim_ages, start_age)
     resolved_indep = resolve_independence_ages(independence_ages, resolved_children)
@@ -177,6 +175,7 @@ def build_report_context(
     print(f"確定論シミュレーション（{start_age}歳→80歳）...", file=sys.stderr)
     strategies = build_all_strategies(
         savings, resolved_children, resolved_indep, start_age,
+        area=area,
     )
 
     det_results: list[dict] = []
@@ -185,6 +184,9 @@ def build_report_context(
         purchase_age = resolve_purchase_age(
             strategy, params, husband_age, wife_age,
             resolved_children, resolved_indep,
+            pre_purchase_rent=area.rent_2ldk,
+            pre_purchase_initial_cost=area.rental_initial_cost,
+            area=area,
         )
         if purchase_age == INFEASIBLE:
             purchase_ages[strategy.name] = INFEASIBLE
@@ -203,6 +205,7 @@ def build_report_context(
             wife_nisa_used=r["wife_nisa_used"],
             husband_nisa_balance=r["husband_nisa_balance"],
             wife_nisa_balance=r["wife_nisa_balance"],
+            area=area,
         )
         det_results.append(result)
 
@@ -272,8 +275,6 @@ def build_report_context(
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=parse_special_expenses(r["special_expenses"]),
-        husband_pension_start_age=r["husband_pension_start_age"],
-        wife_pension_start_age=r["wife_pension_start_age"],
         husband_work_end_age=r["husband_work_end_age"],
         wife_work_end_age=r["wife_work_end_age"],
         bucket_safe_years=r["bucket_safe_years"],
@@ -289,9 +290,9 @@ def build_report_context(
         husband_nisa_balance=r["husband_nisa_balance"],
         wife_nisa_balance=r["wife_nisa_balance"],
     )
-    scenario_results = run_scenarios(**scenario_kwargs)
+    scenario_results = run_scenarios(area=area, **scenario_kwargs)
     print("  投資規律感度分析...", file=sys.stderr)
-    discipline_results = run_scenarios(discipline_factors=DISCIPLINE_FACTORS, **scenario_kwargs)
+    discipline_results = run_scenarios(discipline_factors=DISCIPLINE_FACTORS, area=area, **scenario_kwargs)
 
     # ---- Monte Carlo ----
     mc_results: list[MonteCarloResult] | None = None
@@ -314,6 +315,7 @@ def build_report_context(
             wife_nisa_used=r["wife_nisa_used"],
             husband_nisa_balance=r["husband_nisa_balance"],
             wife_nisa_balance=r["wife_nisa_balance"],
+            area=area,
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:
@@ -345,6 +347,7 @@ def build_report_context(
                 wife_nisa_used=r["wife_nisa_used"],
                 husband_nisa_balance=r["husband_nisa_balance"],
                 wife_nisa_balance=r["wife_nisa_balance"],
+                area=area,
             )
             stress_results.append((label, results))
         print(file=sys.stderr)
@@ -360,6 +363,7 @@ def build_report_context(
         wife_age=wife_age,
         savings=savings,
         params=params,
+        area=area,
         child_birth_ages=wife_birth_ages,
         independence_ages=independence_ages,
         pet_ages=pet_ages,
@@ -387,30 +391,74 @@ def build_report_context(
 # Render helpers
 # ---------------------------------------------------------------------------
 
-STRATEGY_ORDER = ["浦和マンション", "浦和一戸建て", "戦略的賃貸", "通常賃貸"]
 SCENARIO_ORDER = ["低成長", "標準", "高成長", "慢性スタグフレーション", "サイクル型"]
 
 
+def _sname(ctx: ReportContext, key: str) -> str:
+    """Display name: prepend area name for purchase strategies."""
+    if key in ("マンション", "一戸建て"):
+        return f"{ctx.area.name}{key}"
+    return key
 
-def _mc_by_name(results: list[MonteCarloResult], name: str) -> MonteCarloResult | None:
+
+def _find_by_key(results: list[dict | None] | None, key: str) -> dict | None:
+    """Find result dict matching strategy key."""
+    if results is None:
+        return None
     for r in results:
-        if r.strategy_name == name:
+        if r is not None and r.get("strategy_key") == key:
             return r
     return None
 
 
-def _scenario_row(results: list[dict | None]) -> list[dict | None]:
-    """Reorder scenario results to STRATEGY_ORDER."""
-    name_map = {}
+def _purchase_age(ctx: ReportContext, key: str) -> int | None:
+    """Get purchase age from ctx.purchase_ages by partial key match."""
+    for name, pa in ctx.purchase_ages.items():
+        if key in name:
+            return pa
+    return None
+
+
+def _mc_by_key(results: list[MonteCarloResult] | None, key: str) -> MonteCarloResult | None:
+    """Find MC result by strategy key."""
+    if results is None:
+        return None
     for r in results:
-        if r is not None:
-            name_map[r["strategy"]] = r
-    return [name_map.get(n) for n in STRATEGY_ORDER]
+        if r.strategy_name.endswith(key) or r.strategy_name == key:
+            return r
+    return None
+
+
+
+
+
+def _scenario_row(results: list[dict | None]) -> list[dict | None]:
+    """Reorder scenario results to STRATEGY_KEYS order."""
+    return [_find_by_key(results, key) for key in STRATEGY_KEYS]
 
 
 
 def _age_diff(ctx: ReportContext) -> int:
     return abs(ctx.husband_age - ctx.wife_age)
+
+
+def _needs_pair_loan(ctx: ReportContext) -> bool:
+    """片方の年収だけでローン審査を通過できない場合True（ペアローン必須）。"""
+    from housing_sim_jp.simulation import MAX_INCOME_MULTIPLIER, SCREENING_RATE, MAX_REPAYMENT_RATIO, takehome_to_gross
+    area = ctx.area
+    max_price = max(area.mansion_price, area.house_price)
+    for solo_income in [ctx.params.husband_income, ctx.params.wife_income]:
+        gross_annual = takehome_to_gross(solo_income)
+        if gross_annual <= 0:
+            continue
+        if max_price / gross_annual > MAX_INCOME_MULTIPLIER:
+            continue
+        monthly_rate = SCREENING_RATE / 12
+        payment = _calc_equal_payment(max_price, monthly_rate, 420)
+        if payment * 12 / gross_annual > MAX_REPAYMENT_RATIO:
+            continue
+        return False  # solo income passes screening
+    return True
 
 
 def _savings_level(savings: float) -> str:
@@ -425,17 +473,17 @@ def _savings_level(savings: float) -> str:
 # Parameter plausibility checks
 # ---------------------------------------------------------------------------
 
-# Simulation design target: 浦和エリア物件前提
+# Simulation design target: エリア物件前提
 # - 個人年収2,000万以下（手取り≒110万/月）
 # - 世帯年収1,000〜2,000万が主要対象帯
-# - 世帯年収3,000万超→ローン7倍で2億超→都内文教区が射程、浦和前提から逸脱
-# - 初期資産5億超→都内高額物件が現金購入可能、浦和前提が希薄化
+# - 世帯年収3,000万超→ローン7倍で2億超→高額エリアが射程、前提から逸脱
+# - 初期資産5億超→高額物件が現金購入可能、前提が希薄化
 # - 初期資産10億超→FIRE可能、就労前提のキャリアモデル自体が不適切
 
 _PERSON_INCOME_HARD_CAP = 110.0  # 手取り万円/月（≒年収2,000万）
 _HOUSEHOLD_TARGET_FLOOR = 60.0   # 手取り万円/月（≒世帯年収1,000万）
 _HOUSEHOLD_TARGET_CEIL = 170.0   # 手取り万円/月（≒世帯年収3,000万）
-_SAVINGS_PREMISE_CAP = 30000     # 3億: 浦和最高級物件（2億）が現金購入可能、中古7,580万前提が的外れ
+_SAVINGS_PREMISE_RATIO = 4.0     # 物件価格の4倍: 現金購入可能、物件前提が的外れ
 _SAVINGS_FIRE = 100000           # 10億: FIRE水準、就労不要
 
 # Age-based notable savings thresholds (家計の金融行動に関する世論調査の中央値×5〜10倍)
@@ -457,7 +505,7 @@ _AGE_VERY_LATE = 43  # ローン完済70歳まで27年、複利効果が限定�
 
 def _notable_savings_for_age(age: int) -> float:
     for threshold, amount in _NOTABLE_SAVINGS:
-        if age < threshold:
+        if age <= threshold:
             return amount
     return 15000
 
@@ -499,7 +547,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         if inc > _PERSON_INCOME_HARD_CAP:
             annual = inc * 12
             warnings.append(
-                f"**{label}の手取り月{inc:.0f}万円（年{annual:.0f}万）は"
+                f"**{label}の手取り月{inc:.0f}万円（年{annual:,.0f}万）は"
                 f"本シミュレーションの前提（個人年収2,000万円以下）を超過。**"
                 f"税制・社会保険の構造が異なり、モデルの精度が低下する。"
             )
@@ -510,18 +558,25 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         annual_total = total * 12
         loan_7x = annual_total * 7
         warnings.append(
-            f"**世帯手取り月{total:.0f}万円（年{annual_total:.0f}万）は"
+            f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
             f"ローン年収倍率7倍で{loan_7x/10000:.1f}億円が借入可能。**"
-            f"都内文教区・港区等の高額物件が射程に入り、"
-            f"浦和エリア（7,580万〜6,547万）を前提とした本シミュレーションのターゲットから外れる。"
+            f"港区等の超高額物件（2〜3億）が射程に入る水準であり、"
+            f"本シミュレーションの主要対象帯（世帯年収1,000〜2,000万）を大きく超過する。"
+        )
+    elif total >= 90:
+        annual_total = total * 12
+        warnings.append(
+            f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は主要対象帯の上位。**"
+            f"高い投資余力により資産形成が加速し、戦略間の差は絶対額で拡大するが、"
+            f"どの戦略でも余裕のある結果になりやすい。"
         )
     elif total < _HOUSEHOLD_TARGET_FLOOR:
         annual_total = total * 12
         if start_age <= 30:
             # Young household: low income now but long compounding + career growth
             warnings.append(
-                f"**現時点の世帯手取り月{total:.0f}万円（年{annual_total:.0f}万）は"
-                f"主要対象帯（浦和エリア物件を前提とした世帯年収1,000〜2,000万）を下回るが、"
+                f"**現時点の世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
+                f"主要対象帯（{ctx.area.name}エリア物件を前提とした世帯年収1,000〜2,000万）を下回るが、"
                 f"キャリアカーブで中年期には大幅に上昇する。**"
                 f"一方で{remaining}年間の投資期間は最大の武器であり、"
                 f"初期の低収入を複利効果が長期で補う構造。"
@@ -529,31 +584,32 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
             )
         else:
             warnings.append(
-                f"**世帯手取り月{total:.0f}万円（年{annual_total:.0f}万）は"
-                f"主要対象帯（浦和エリア物件を前提とした世帯年収1,000〜2,000万）を下回る。**"
+                f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
+                f"主要対象帯（{ctx.area.name}エリア物件を前提とした世帯年収1,000〜2,000万）を下回る。**"
                 f"ローン審査が厳しく、購入戦略で待機期間が長期化する可能性が高い。"
             )
 
     # --- Savings checks ---
+    savings_premise_cap = ctx.area.mansion_price * _SAVINGS_PREMISE_RATIO
     if savings >= _SAVINGS_FIRE:
         warnings.append(
             f"**初期資産{fmt_man(savings)}（{savings/10000:.0f}億円）は"
             f"FIRE（経済的自立・早期退職）が十分可能な水準。**"
             f"就労を前提としたキャリアカーブモデルの意味が薄く、"
-            f"浦和エリアの物件比較よりも資産運用戦略が主要な課題。"
-            f"港区・文京区等の都心高額物件が現金購入可能であり、"
+            f"{ctx.area.name}エリアの物件比較よりも資産運用戦略が主要な課題。"
+            f"都心高額物件が現金購入可能であり、"
             f"本シミュレーションのターゲットから大きく外れる。"
         )
-    elif savings >= _SAVINGS_PREMISE_CAP:
+    elif savings >= savings_premise_cap:
         warnings.append(
             f"**初期資産{fmt_man(savings)}（{savings/10000:.1f}億円）は"
             f"都内高額物件が現金購入可能な水準。**"
-            f"浦和の物件（7,580万〜6,547万）は資産のごく一部であり、"
+            f"{ctx.area.name}の物件（{ctx.area.mansion_price:,.0f}万〜{ctx.area.house_price:,.0f}万）は資産のごく一部であり、"
             f"本シミュレーションのターゲットから外れる可能性がある。"
         )
     else:
         notable = _notable_savings_for_age(start_age)
-        if savings > notable:
+        if savings >= notable:
             ratio = savings / notable
             if ratio >= 5:
                 warnings.append(
@@ -603,10 +659,45 @@ _GRAD_LABEL = {
 # ---------------------------------------------------------------------------
 
 def _render_title(ctx: ReportContext) -> str:
-    return (
-        f"## {ctx.start_age}歳始動・80歳完結：確率分布に基づく住宅戦略の"
-        f"{ctx.sim_years}年間総合分析\n\n---"
-    )
+    r = ctx.r
+    area = ctx.area
+    h_age, w_age = ctx.husband_age, ctx.wife_age
+    h_inc, w_inc = r["husband_income"], r["wife_income"]
+    savings = ctx.savings
+
+    lines = [
+        f"## 住宅戦略シミュレーション — {ctx.start_age}歳から80歳"
+        f"（{ctx.sim_years}年間）\n",
+    ]
+
+    profile = [
+        f"**エリア:** {area.name}",
+        f"**世帯:** 夫{h_age}歳・妻{w_age}歳",
+        f"**手取り:** 月{h_inc + w_inc:.0f}万円（夫{h_inc:.0f}万＋妻{w_inc:.0f}万）",
+        f"**金融資産:** {fmt_man(savings)}",
+    ]
+    if ctx.child_birth_ages:
+        kids = "・".join(f"妻{a}歳" for a in ctx.child_birth_ages)
+        pf = _EDUCATION_STAGE_MAP.get(r["education_private_from"], r["education_private_from"]) or "全国公立"
+        profile.append(f"**子供:** {len(ctx.child_birth_ages)}人（{kids}出産）→ {pf}・{r['education_field']}・{r['education_grad']}")
+    else:
+        profile.append("**子供:** なし")
+    extras = []
+    if r["living_premium"] > 0:
+        extras.append(f"生活費P+{r['living_premium']:g}万")
+    if r["car"]:
+        extras.append("車")
+    if ctx.pet_ages:
+        extras.append(f"ペット{len(ctx.pet_ages)}匹")
+    if ctx.special_labels:
+        for _, amount, label in ctx.special_labels:
+            extras.append(f"{label}({amount:,.0f}万)")
+    if extras:
+        profile.append(f"**その他:** {'・'.join(extras)}")
+
+    lines.append(" | ".join(profile))
+    lines.append("\n---")
+    return "\n".join(lines)
 
 
 def _render_overview(ctx: ReportContext) -> str:
@@ -620,15 +711,15 @@ def _render_overview(ctx: ReportContext) -> str:
         "最適な住居選択を検討する。\n",
         "| 戦略 | 概要 |",
         "|------|------|",
-        "| 浦和マンション | 中古3LDK購入（築10年・フルローン35年） |",
-        "| 浦和一戸建て | 中古一戸建て購入（築7年・フルローン35年） |",
+        f"| {_sname(ctx, 'マンション')} | 中古3LDK購入（築{ctx.area.mansion_building_age}年・フルローン35年） |",
+        f"| {_sname(ctx, '一戸建て')} | 中古一戸建て購入（築{ctx.area.house_building_age}年・フルローン35年） |",
         "| 戦略的賃貸 | 3LDK→2LDKダウンサイズ、差額を全額投資 |",
         "| 通常賃貸 | 3LDK固定、標準的な貯蓄・投資 |",
     ]
     if valid:
         valid.sort(key=lambda r: r["final_net_assets"], reverse=True)
         lines.append(f"\n**確定論・標準シナリオの結果：**\n")
-        lines.append("| 順位 | 戦略 | 80歳時点の純資産 |")
+        lines.append("| 順位 | 戦略 | 80歳時点の税引前純資産 |")
         lines.append("|:----:|------|----------------:|")
         for i, r in enumerate(valid, 1):
             v = fmt_oku_short(r["final_net_assets"])
@@ -636,7 +727,7 @@ def _render_overview(ctx: ReportContext) -> str:
             mark = " 🏆" if i == 1 else ""
             lines.append(f"| {i} | {name}{mark} | {v} |")
         spread = (valid[0]["final_net_assets"] - valid[-1]["final_net_assets"]) / 10000
-        lines.append(f"\n1位と最下位の差は**{spread:.2f}億円**。"
+        lines.append(f"\n1位と最下位の差は**{spread:.1f}億円**。"
                      "詳細な前提条件は第1章、戦略の仕組みは第2章、"
                      "シナリオ分析は第3章以降を参照。")
     return "\n".join(lines)
@@ -717,7 +808,7 @@ def _render_ch1_1_macro(ctx: ReportContext) -> str:
 
     lines.append("")
     lines.append(
-        "**標準シナリオの根拠：** インフレ2.0%（日銀目標、CPI定着）、"
+        "**標準シナリオの根拠：** インフレ2.0%（日銀目標、CPI[消費者物価指数]定着）、"
         "賃金2.0%（**実質横ばい**、キャリアカーブとは別の底上げ）、"
         "ローン0.75%→2.50%（5年ごとに段階引き上げ、5段階）、"
         "運用6.0%（全世界株式の長期名目期待リターン上位、実質4.0%）、"
@@ -759,7 +850,7 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     # Special expenses summary
     se_parts = []
     for age, amount, label in ctx.special_labels:
-        se_parts.append(f"{label}（{age}歳・{amount:.0f}万円）")
+        se_parts.append(f"{label}（{age}歳・{amount:,.0f}万円）")
 
     lines = [
         "\n### 1.2 世帯プロファイル\n",
@@ -769,7 +860,8 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     ]
     if ctx.child_birth_ages:
         pf = _EDUCATION_STAGE_MAP.get(r["education_private_from"], r["education_private_from"])
-        lines[-1] += f"。教育方針は{pf}・{r['education_field']}"
+        sep = "。" if not lines[-1].endswith("。") else ""
+        lines[-1] += f"{sep}教育方針は{pf}・{r['education_field']}"
         if r["education_boost"] != 1.0:
             lines[-1] += f"（受験年倍率{r['education_boost']:.1f}）"
         lines[-1] += "。"
@@ -783,53 +875,48 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
         parts = [f"夫{a}歳" for a in ctx.pet_ages]
         lines[-1] += f"ペット{len(ctx.pet_ages)}匹（{'、'.join(parts)}迎え入れ）。"
 
-    # Pension/work-end parameters
+    # Pension/work-end parameters (pension starts at work_end_age)
     from housing_sim_jp.simulation import STANDARD_PENSION_AGE, _pension_adjustment_factor
 
-    def _pension_label(psa: int) -> str:
-        """繰上げ/標準/繰下げのラベルと解説を生成。"""
-        adj = _pension_adjustment_factor(psa)
+    def _pension_label(wea: int) -> str:
+        """退職年齢に基づく年金繰上げ/標準/繰下げのラベルと解説を生成。"""
+        adj = _pension_adjustment_factor(wea)
         diff_pct = (adj - 1) * 100
-        if psa < STANDARD_PENSION_AGE:
-            gap = STANDARD_PENSION_AGE - psa
+        if wea < STANDARD_PENSION_AGE:
+            gap = STANDARD_PENSION_AGE - wea
             return (
-                f"年金受給開始{psa}歳（{gap}年繰上げ、"
+                f"年金受給開始{wea}歳（{gap}年繰上げ、"
                 f"受給額{diff_pct:+.1f}%・月0.4%×{gap*12}ヶ月）"
             )
-        elif psa > STANDARD_PENSION_AGE:
-            gap = psa - STANDARD_PENSION_AGE
+        elif wea > STANDARD_PENSION_AGE:
+            gap = wea - STANDARD_PENSION_AGE
             return (
-                f"年金受給開始{psa}歳（{gap}年繰下げ、"
+                f"年金受給開始{wea}歳（{gap}年繰下げ、"
                 f"受給額{diff_pct:+.1f}%・月0.7%×{gap*12}ヶ月）"
             )
-        return f"年金受給開始{psa}歳（標準）"
+        return f"年金受給開始{wea}歳（標準）"
 
-    def _work_pension_desc(label: str, wea: int, psa: int) -> str:
+    def _work_pension_desc(label: str, wea: int) -> str:
         prefix = f"{label}: " if label else ""
-        overlap = ""
-        if psa < wea:
-            overlap = f"。{psa}〜{wea}歳は就労と年金が併給（在職老齢年金の対象）"
-        return f"{prefix}再雇用終了{wea}歳・{_pension_label(psa)}{overlap}"
+        return f"{prefix}退職{wea}歳・{_pension_label(wea)}"
 
-    h_psa = ctx.params.husband_pension_start_age
-    w_psa = ctx.params.wife_pension_start_age
     h_wea = ctx.params.husband_work_end_age
     w_wea = ctx.params.wife_work_end_age
-    if h_psa == w_psa and h_wea == w_wea:
-        pension_desc = _work_pension_desc("", h_wea, h_psa)
+    if h_wea == w_wea:
+        pension_desc = _work_pension_desc("", h_wea)
     else:
         parts = [
-            _work_pension_desc("夫", h_wea, h_psa),
-            _work_pension_desc("妻", w_wea, w_psa),
+            _work_pension_desc("夫", h_wea),
+            _work_pension_desc("妻", w_wea),
         ]
         pension_desc = "／".join(parts)
     lines.append(f"\n**就労・年金：** {pension_desc}。")
 
     # Pension strategy rationale (early/standard/late)
-    representative_psa = h_psa  # use husband's as representative
+    representative_wea = h_wea  # use husband's as representative
     ret_pct = ctx.params.investment_return * 100
-    if representative_psa < STANDARD_PENSION_AGE:
-        adj = _pension_adjustment_factor(representative_psa)
+    if representative_wea < STANDARD_PENSION_AGE:
+        adj = _pension_adjustment_factor(representative_wea)
         lines.append(
             f"繰上げにより受給額は{(adj-1)*100:+.1f}%だが、"
             f"早期に受け取った年金を年{ret_pct:.0f}%で運用することで"
@@ -838,16 +925,16 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             f"繰下げ待機より有利になる"
             f"（ただし投資しない場合は繰下げの方が得）。"
         )
-        if representative_psa > 60:
-            gap_years = representative_psa - 60
+        if representative_wea > 60:
+            gap_years = representative_wea - 60
             lines.append(
                 f"なお、繰上げは早いほど複利運用期間が長くなり有利。"
                 f"60歳開始と比べて{gap_years}年分の運用機会を逃しており、"
                 f"60歳受給開始が最も資産最大化に寄与する。"
             )
     else:
-        if representative_psa > STANDARD_PENSION_AGE:
-            adj = _pension_adjustment_factor(representative_psa)
+        if representative_wea > STANDARD_PENSION_AGE:
+            adj = _pension_adjustment_factor(representative_wea)
             lines.append(
                 f"繰下げにより受給額が{(adj-1)*100:+.1f}%増加。"
                 f"年金を長寿リスクへの保険として重視する設計。"
@@ -881,8 +968,10 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     if param_warnings:
         lines.append("")
         lines.append("> **⚠ パラメータに関する注記：**")
+        lines.append(">")
         for w in param_warnings:
             lines.append(f"> - {w}")
+            lines.append(">")
         lines.append("")
 
     # Income table from monthly_log
@@ -902,15 +991,12 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             total = entry["income"]
             note = ""
             h_offset = ctx.start_age - ctx.husband_age
-            pension_sim = ctx.params.husband_pension_start_age + h_offset
             work_end_sim = ctx.params.husband_work_end_age + h_offset
             reemploy_sim = 60 + h_offset
             if age == ctx.start_age:
                 note = "開始"
             elif age == 55 + h_offset:
                 note = "夫ピーク近辺"
-            elif age >= pension_sim and age < work_end_sim:
-                note = "年金+再雇用"
             elif age >= work_end_sim:
                 note = "年金期"
             elif age >= reemploy_sim:
@@ -1008,12 +1094,10 @@ def _render_ch1_5_ideco(ctx: ReportContext) -> str:
     # Get actual values from det_results if available
     tax_benefit = 0.0
     tax_paid = 0.0
-    ra_tax = 0.0
     if ctx.det_results:
         r0 = ctx.det_results[0]
         tax_benefit = r0.get("ideco_tax_benefit_total", 0)
         tax_paid = r0.get("ideco_tax_paid", 0)
-        ra_tax = r0.get("retirement_allowance_tax_paid", 0)
 
     lines = [
         f"\n### 1.5 iDeCo（個人型確定拠出年金）\n\n",
@@ -1022,22 +1106,22 @@ def _render_ch1_5_ideco(ctx: ReportContext) -> str:
         + _ideco_withdrawal_rationale(withdrawal_age)
         + "\n\n",
         f"| | 拠出期間 | 拠出額 |\n|---|---|---|\n",
-        f"| 夫 | {ctx.husband_age}→{contribution_end}歳（{h_years}年） | {h_total:.0f}万円 |\n",
-        f"| 妻 | {ctx.wife_age}→{contribution_end}歳（{w_years}年） | {w_total:.0f}万円 |\n",
-        f"| **合計** | | **{total:.0f}万円** |\n",
+        f"| 夫 | {ctx.husband_age}→{contribution_end}歳（{h_years}年） | {h_total:,.0f}万円 |\n",
+        f"| 妻 | {ctx.wife_age}→{contribution_end}歳（{w_years}年） | {w_total:,.0f}万円 |\n",
+        f"| **合計** | | **{total:,.0f}万円** |\n",
     ]
     if tax_benefit > 0:
         lines.append(
-            f"\n拠出中の税軽減（所得控除）累計約**{tax_benefit:.0f}万円**。"
-            f"{withdrawal_age}歳の一時金受取時に退職所得税約**{tax_paid:.0f}万円**。"
+            f"\n拠出中の税軽減（所得控除）累計約**{tax_benefit:,.0f}万円**。"
+            f"{withdrawal_age}歳の一時金受取時に退職所得税約**{tax_paid:,.0f}万円**。"
         )
 
     if retirement_allowance > 0:
         gap = withdrawal_age - 60
         overlap = max(0, service_years - gap)
         lines.append(
-            f"\n\n**退職金**: {retirement_allowance:.0f}万円（60歳退職時、勤続{service_years}年）。"
-            f"退職所得控除{40 * min(service_years, 20):.0f}万円以内のため非課税。"
+            f"\n\n**退職金**: {retirement_allowance:,.0f}万円（60歳退職時、勤続{service_years}年）。"
+            f"退職所得控除{40 * min(service_years, 20):,.0f}万円以内のため非課税。"
         )
         if overlap > 0:
             lines.append(
@@ -1078,18 +1162,18 @@ def _render_ch1_6_investment_accounts(ctx: ReportContext) -> str:
         w_bal = ctx.r.get("wife_nisa_balance", w_nisa_used)
         parts = []
         if h_nisa_used > 0:
-            s = f"夫{h_nisa_used:.0f}万"
+            s = f"夫{h_nisa_used:,.0f}万"
             if h_bal > h_nisa_used:
-                s += f"（評価額{h_bal:.0f}万）"
+                s += f"（評価額{h_bal:,.0f}万）"
             parts.append(s)
         if w_nisa_used > 0:
-            s = f"妻{w_nisa_used:.0f}万"
+            s = f"妻{w_nisa_used:,.0f}万"
             if w_bal > w_nisa_used:
-                s += f"（評価額{w_bal:.0f}万）"
+                s += f"（評価額{w_bal:,.0f}万）"
             parts.append(s)
         lines.append(
             f"- **開始時の新NISA投資済み元本**: {' / '.join(parts)}"
-            f"（残枠: 夫{NISA_LIMIT_PP - h_nisa_used:.0f}万・妻{NISA_LIMIT_PP - w_nisa_used:.0f}万）\n"
+            f"（残枠: 夫{NISA_LIMIT_PP - h_nisa_used:,.0f}万・妻{NISA_LIMIT_PP - w_nisa_used:,.0f}万）\n"
         )
 
     # Show actual fill timing from simulation results
@@ -1140,13 +1224,14 @@ def _render_ch1_6_investment_accounts(ctx: ReportContext) -> str:
         ])
         if contributed > 0:
             lines.append(
-                f"\n| 項目 | 金額 |\n|------|------|\n"
-                f"| 拠出累計 | {contributed:.0f}万円（上限{max_possible:.0f}万） |\n"
-                f"| 子供への贈与（独立時） | {gifted:.0f}万円 |\n"
+                f"\n※以下は全戦略中の最大値（戦略別の詳細は§3.3参照）。\n\n"
+                f"| 項目 | 金額 |\n|------|------|\n"
+                f"| 拠出累計 | {contributed:,.0f}万円（上限{max_possible:,.0f}万） |\n"
+                f"| 子供への贈与（独立時） | {gifted:,.0f}万円 |\n"
             )
             if gifted > 0:
                 lines.append(
-                    f"\n※贈与額は運用益を含む（拠出元本{contributed:.0f}万が非課税運用で成長した結果）。\n\n"
+                    f"\n※贈与額は運用益を含む（拠出元本{contributed:,.0f}万が非課税運用で成長した結果）。\n\n"
                 )
             else:
                 lines.append("\n")
@@ -1219,11 +1304,11 @@ def _render_ch1_7_bucket(ctx: ReportContext) -> str:
         f"| 株式（{p.investment_return:.0%}） | 残り全額 | ● | ● | ● |",
     ])
     lines.append(
-        f"\n**取り崩し順序：**\n"
+        f"\n**取り崩し順序：**\n\n"
         f"- **現役**: 現金ポジション → 株式(特定) → 株式(NISA) → 生活防衛資金"
         f"（毎月の収入があるため通常/暴落を区別しない。現金ポジションは教育費ピーク等の月次赤字バッファ）\n"
         f"- **退職後(通常)**: 株式(特定) → 株式(NISA) → 債券 → ゴールド → 生活防衛資金"
-        f"（4%ルール的に株式を定期売却し、安全資産は暴落時の防御壁として温存）\n"
+        f"（4%ルール[年間生活費の25倍の資産から年4%ずつ取り崩す退職資金戦略]的に株式を定期売却し、安全資産は暴落時の防御壁として温存）\n"
         f"- **退職後(暴落)**: 現金ポジション → 債券 → ゴールド → 株式(特定) → 株式(NISA) → 生活防衛資金"
         f"（順序リスク対策: 暴落時に株式の安値売りを回避し、現金ポジションと安全資産で凌ぐ）"
     )
@@ -1238,48 +1323,48 @@ def _render_ch1_3_strategies(ctx: ReportContext) -> str:
     savings = ctx.savings
 
     # Classify purchase ages: None=feasible at start, INFEASIBLE=impossible, int=deferred
-    purchase_names = ["浦和マンション", "浦和一戸建て"]
+    purchase_keys = ["マンション", "一戸建て"]
     has_deferred = any(
-        isinstance(ctx.purchase_ages.get(n), int) and ctx.purchase_ages[n] > ctx.start_age
-        for n in purchase_names
+        isinstance(_purchase_age(ctx, k), int) and _purchase_age(ctx, k) > ctx.start_age
+        for k in purchase_keys
     )
     has_infeasible = any(
-        ctx.purchase_ages.get(n) == INFEASIBLE
-        for n in purchase_names
+        _purchase_age(ctx, k) == INFEASIBLE
+        for k in purchase_keys
     )
     all_immediate = not has_deferred and not has_infeasible
 
+    area = ctx.area
     lines = [
         "\n### 1.3 4戦略の定義と初期コスト\n",
-        "築10年マンション3LDK（70㎡台）の相場は23区平均で約1.1億、"
-        "港区1.8〜3.3億、文京区1.4〜2.2億。"
-        "ボリュームゾーンの世帯年収1,000〜1,500万（フルローン上限7,000万〜1億）では射程外で、"
-        "郊外すぎると東京30分圏の職住近接が崩れる。"
-        "**浦和区は東京駅30分・池袋20分の通勤圏で、"
-        "ローン審査に収まるバランスポイント。**\n",
-        "浦和常盤・北浦和エリアの中古物件（マンション7,580万・築10年、一戸建て6,547万・築7年）。",
+        f"{area.description}の中古物件"
+        f"（マンション{area.mansion_price:,.0f}万・築{area.mansion_building_age}年、"
+        f"一戸建て{area.house_price:,.0f}万・築{area.house_building_age}年）。",
     ]
     if all_immediate:
         lines[-1] += f"**審査基準（年収倍率7倍・返済比率35%）をクリアし、全戦略が{ctx.start_age}歳で即時スタート可能。**"
     else:
         deferred = []
-        for name in purchase_names:
-            pa = ctx.purchase_ages.get(name)
+        for key in purchase_keys:
+            pa = _purchase_age(ctx, key)
+            dname = _sname(ctx, key)
             if pa == INFEASIBLE:
-                deferred.append(f"**{name}は購入不可**")
+                deferred.append(f"**{dname}は購入不可**")
             elif isinstance(pa, int) and pa > ctx.start_age:
-                deferred.append(f"**{name}は{pa}歳で購入可能**")
+                deferred.append(f"**{dname}は{pa}歳で購入可能**")
         if deferred:
             lines[-1] += "、".join(deferred) + "。"
 
+    m_name = _sname(ctx, "マンション")
+    h_name = _sname(ctx, "一戸建て")
     lines.append("")
-    lines.append("| 項目 | **浦和マンション** | **浦和一戸建て** | **戦略的賃貸** | **通常賃貸** |")
+    lines.append(f"| 項目 | **{m_name}** | **{h_name}** | **戦略的賃貸** | **通常賃貸** |")
     lines.append("| :--- | :--- | :--- | :--- | :--- |")
-    lines.append("| 物件価格 | 7,580万円（築10年） | 6,547万円（築7年） | - | - |")
-    lines.append(f"| 住宅ローン（フルローン） | 7,580万円 | 6,547万円 | - | - |")
+    lines.append(f"| 物件価格 | {area.mansion_price:,.0f}万円（築{area.mansion_building_age}年） | {area.house_price:,.0f}万円（築{area.house_building_age}年） | - | - |")
+    lines.append(f"| 住宅ローン（フルローン） | {area.mansion_price:,.0f}万円 | {area.house_price:,.0f}万円 | - | - |")
 
-    m_pa = ctx.purchase_ages.get("浦和マンション")
-    h_pa = ctx.purchase_ages.get("浦和一戸建て")
+    m_pa = _purchase_age(ctx, "マンション")
+    h_pa = _purchase_age(ctx, "一戸建て")
     # Show purchase timing row if any strategy is deferred (not infeasible, not immediate)
     show_row = any(
         isinstance(pa, int) and pa > ctx.start_age
@@ -1297,13 +1382,13 @@ def _render_ch1_3_strategies(ctx: ReportContext) -> str:
 
     ef = base_living_cost(ctx.start_age) + ctx.r["living_premium"]
     ef_amount = ef * ctx.params.emergency_fund_months
-    m_init = savings - UrawaMansion.INITIAL_COST - ef_amount
-    h_init = savings - UrawaHouse.INITIAL_COST - ef_amount
-    r_init = savings - StrategicRental.INITIAL_COST - ef_amount
+    m_init = savings - area.mansion_initial_cost - ef_amount
+    h_init = savings - area.house_initial_cost - ef_amount
+    r_init = savings - area.rental_initial_cost - ef_amount
 
-    lines.append(f"| 諸費用（物件価格の8%） | **{UrawaMansion.INITIAL_COST}万円** | **{UrawaHouse.INITIAL_COST}万円** | **{StrategicRental.INITIAL_COST}万円**（敷金等） | **{NormalRental.INITIAL_COST}万円**（敷金等） |")
-    lines.append(f"| 生活防衛資金 | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** | **{ef_amount:.0f}万円** |")
-    lines.append(f"| **{ctx.start_age}歳時の運用開始元本** | **{max(0, m_init):.0f}万円** | **{max(0, h_init):.0f}万円** | **{max(0, r_init):.0f}万円** | **{max(0, r_init):.0f}万円** |")
+    lines.append(f"| 諸費用（物件価格の8%） | **{area.mansion_initial_cost:,.0f}万円** | **{area.house_initial_cost:,.0f}万円** | **{area.rental_initial_cost:,.0f}万円**（敷金等） | **{area.rental_initial_cost:,.0f}万円**（敷金等） |")
+    lines.append(f"| 生活防衛資金 | **{ef_amount:,.0f}万円** | **{ef_amount:,.0f}万円** | **{ef_amount:,.0f}万円** | **{ef_amount:,.0f}万円** |")
+    lines.append(f"| **{ctx.start_age}歳時の運用開始元本** | **{max(0, m_init):,.0f}万円** | **{max(0, h_init):,.0f}万円** | **{max(0, r_init):,.0f}万円** | **{max(0, r_init):,.0f}万円** |")
 
     # Startup cost sharing note
     h_ratio_pct = ctx.params.husband_income / (ctx.params.husband_income + ctx.params.wife_income) * 100 if (ctx.params.husband_income + ctx.params.wife_income) > 0 else 50
@@ -1333,10 +1418,11 @@ def _render_ch1_3_strategies(ctx: ReportContext) -> str:
 
 
 def _render_ch2(ctx: ReportContext) -> str:
-    m_age = UrawaMansion.PURCHASE_AGE_OF_BUILDING
-    h_age = UrawaHouse.PURCHASE_AGE_OF_BUILDING
-    m_pa = ctx.purchase_ages.get("浦和マンション") or ctx.start_age
-    h_pa = ctx.purchase_ages.get("浦和一戸建て") or ctx.start_age
+    area = ctx.area
+    m_age = area.mansion_building_age
+    h_age = area.house_building_age
+    m_pa = _purchase_age(ctx, "マンション") or ctx.start_age
+    h_pa = _purchase_age(ctx, "一戸建て") or ctx.start_age
     m_80 = m_age + (END_AGE - m_pa)
     h_80 = h_age + (END_AGE - h_pa)
     h_payoff = h_pa + ctx.params.loan_years
@@ -1357,64 +1443,81 @@ def _render_ch2(ctx: ReportContext) -> str:
         phase2_start_sim = phase2_start + h_diff
         phase2_end_sim = phase2_end + h_diff
         phase2_years = phase2_end_sim - phase2_start_sim + 1
-        rent_2ldk = StrategicRental.RENT_PHASE1
-        rent_3ldk = StrategicRental.RENT_PHASE2_BASE
+        rent_2ldk = area.rent_2ldk
+        rent_3ldk = area.rent_3ldk
         if ctx.num_children > 1:
-            rent_3ldk += StrategicRental.RENT_PHASE2_EXTRA
+            rent_3ldk += area.rent_extra_child
         phase_desc = (
-            f"- **Phase I：2LDK（家賃{rent_2ldk:.0f}万）** — {ctx.start_age}〜{phase2_start_sim - 1}歳。\n"
-            f"- **Phase II：3LDK（{rent_3ldk:.0f}万）** — {phase2_start_sim}〜{phase2_end_sim}歳。教育費との二重負担が**{phase2_years}年間**。\n"
+            f"- **Phase I：2LDK（家賃{rent_2ldk:g}万）** — {ctx.start_age}〜{phase2_start_sim - 1}歳。\n"
+            f"- **Phase II：3LDK（{rent_3ldk:g}万）** — {phase2_start_sim}〜{phase2_end_sim}歳。教育費との二重負担が**{phase2_years}年間**。\n"
             f"- **Phase III：2LDK** — {phase2_end_sim + 1}〜80歳。入居時の名目家賃で固定。"
         )
     else:
-        phase_desc = f"- **全期間2LDK（家賃{StrategicRental.RENT_PHASE1:.0f}万）** — 子なしのためダウンサイズ不要。"
+        phase_desc = f"- **全期間2LDK（家賃{area.rent_2ldk:g}万）** — 子なしのためダウンサイズ不要。"
 
-    normal_rent = NormalRental.BASE_RENT
+    normal_rent = area.rent_3ldk
     if ctx.num_children > 1:
-        normal_rent += NormalRental.RENT_EXTRA
+        normal_rent += area.rent_extra_child
 
+    m_name = _sname(ctx, "マンション")
+    h_name = _sname(ctx, "一戸建て")
     lines = [
         "\n---\n",
         "## 第2章：戦略の仕組み\n",
-        "### 2.1 浦和マンション：駅近の利便性と高齢期のQOL\n",
-        f"7,580万円（築{m_age}年、駅徒歩5-8分）。",
+        f"### 2.1 {m_name}：駅近の利便性と高齢期のQOL\n",
+        f"{area.mansion_price:,.0f}万円（築{m_age}年）。",
     ]
-    m_pa = ctx.purchase_ages.get("浦和マンション")
+    m_pa = _purchase_age(ctx, "マンション")
     if m_pa and m_pa > ctx.start_age:
         lines[-1] += f"**{m_pa}歳で購入**（{ctx.start_age}〜{m_pa-1}歳は2LDK賃貸）。"
-    lines[-1] += f"一戸建てとの価格差1,033万に加え、管理費・修繕積立金の段階増額で総コスト差はさらに拡大。"
+    price_diff = area.mansion_price - area.house_price
+    lines[-1] += f"一戸建てとの価格差{price_diff:,.0f}万に加え、管理費・修繕積立金の段階増額で総コスト差はさらに拡大。"
 
-    lines.append("""
+    mgmt = area.mansion_management_fee
+    rep = area.mansion_repair_reserve
+    ptax = area.mansion_property_tax
+    ins = area.mansion_insurance
+    def _m_total(mult: float) -> str:
+        return f"{mgmt + rep * mult + ptax + ins:.1f}"
+    lines.append(f"""
 **月次コスト構造（管理費＋修繕積立金＋税＋保険）：**
 
 | 築年数 | 管理費 | 修繕積立金 | 固定資産税 | 保険 | **月額合計** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 築10-19年（購入時） | 1.55万 | 1.1万（×1.0） | 1.8万 | 0.15万 | **4.6万** |
-| 築20-29年 | 1.55万 | 2.2万（×2.0） | 1.8万 | 0.15万 | **5.7万** |
-| 築30-39年 | 1.55万 | 3.3万（×3.0） | 1.8万 | 0.15万 | **6.8万** |
-| 築40-49年 | 1.55万 | 3.9万（×3.5） | 1.8万 | 0.15万 | **7.4万** |
-| 築50年超 | 1.55万 | 4.0万（×3.6） | 1.8万 | 0.15万 | **7.5万** |
+| 築{m_age}-19年（購入時） | {mgmt:g}万 | {rep:g}万（×1.0） | {ptax:g}万 | {ins:g}万 | **{_m_total(1.0)}万** |
+| 築20-29年 | {mgmt:g}万 | {rep * 2:g}万（×2.0） | {ptax:g}万 | {ins:g}万 | **{_m_total(2.0)}万** |
+| 築30-39年 | {mgmt:g}万 | {rep * 3:g}万（×3.0） | {ptax:g}万 | {ins:g}万 | **{_m_total(3.0)}万** |
+| 築40-49年 | {mgmt:g}万 | {rep * 3.5:g}万（×3.5） | {ptax:g}万 | {ins:g}万 | **{_m_total(3.5)}万** |
+| 築50年超 | {mgmt:g}万 | {rep * 3.6:g}万（×3.6） | {ptax:g}万 | {ins:g}万 | **{_m_total(3.6)}万** |
 
 ※管理費等にインフレ2.0%累積。修繕積立金は長期修繕計画の名目値（追加調整なし）。""")
 
     lines.append(f"\n**高齢期のQOL：** ワンフロア・オートロック・共用部管理が利点。ただし80歳時点で築{m_80}年、建替え問題が顕在化。")
 
+    h_ptax = area.house_property_tax
+    h_ins = area.house_insurance
+    h_maint = area.house_maintenance_base
+    h_other = area.house_other_monthly
+    def _h_total(maint_mult: float) -> str:
+        return f"{h_maint * maint_mult + h_ptax + h_ins + h_other:.1f}"
+    def _h_total_payoff() -> str:
+        return f"{h_maint + h_ptax + h_ins + h_other:.1f}"
     lines.append(f"""
-### 2.2 浦和一戸建て：支出固定化と実物資産の保持
+### 2.2 {h_name}：支出固定化と実物資産の保持
 
-完済後（{h_payoff}歳）の月次コスト4.4万/月はマンションより低い。
+完済後（{h_payoff}歳）の月次コスト{_h_total_payoff()}万/月はマンションより低い。
 
 | 築年数 | 小修繕 | 固定資産税 | 保険 | その他(※) | **月額合計** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 築7-9年（購入時） | 1.0万 | 1.8万 | 0.4万 | 0.7万 | **3.9万** |
-| 築10-19年 | 1.3万 | 1.8万 | 0.4万 | 0.7万 | **4.2万** |
-| 築20-29年 | 1.6万 | 1.8万 | 0.4万 | 0.7万 | **4.5万** |
-| 築30年超 | 1.8万 | 1.8万 | 0.4万 | 0.7万 | **4.7万** |
-| 完済後 | 1.5万 | 1.8万 | 0.4万 | 0.7万 | **4.4万** |
+| 築{h_age}-9年（購入時） | {h_maint * 1.0:.1f}万 | {h_ptax:.1f}万 | {h_ins:.1f}万 | {h_other:.1f}万 | **{_h_total(1.0)}万** |
+| 築10-19年 | {h_maint * 1.3:.1f}万 | {h_ptax:.1f}万 | {h_ins:.1f}万 | {h_other:.1f}万 | **{_h_total(1.3)}万** |
+| 築20-29年 | {h_maint * 1.6:.1f}万 | {h_ptax:.1f}万 | {h_ins:.1f}万 | {h_other:.1f}万 | **{_h_total(1.6)}万** |
+| 築30年超 | {h_maint * 1.8:.1f}万 | {h_ptax:.1f}万 | {h_ins:.1f}万 | {h_other:.1f}万 | **{_h_total(1.8)}万** |
+| 完済後 | {h_maint:.1f}万 | {h_ptax:.1f}万 | {h_ins:.1f}万 | {h_other:.1f}万 | **{_h_total_payoff()}万** |
 
-※その他：セキュリティ0.5万＋雑費0.2万。全額インフレ2.0%累積。
+※その他：セキュリティ＋雑費。全額インフレ2.0%累積。
 
-80歳時点で**築{h_80}年**。水道光熱費は月0.3万追加（インフレ連動）。""")
+80歳時点で**築{h_80}年**。水道光熱費は月{area.house_utility_premium:.1f}万追加（インフレ連動）。""")
 
     lines.append(f"""
 ### 2.3 戦略的賃貸：ノマド・ダウンサイジング
@@ -1423,14 +1526,29 @@ def _render_ch2(ctx: ReportContext) -> str:
 
 **75歳以降の入居審査リスク：** 高齢者の入居拒否率（約30%）×追加家賃を期待値換算し、月3万円の確率加重プレミアムとして加算（インフレ連動）。
 
-**通常賃貸（3LDK固定）：** 全期間3LDK（月{normal_rent:.0f}万）。家賃はインフレ上昇し続ける。""")
+**通常賃貸（3LDK固定）：** 全期間3LDK（月{normal_rent:g}万）。家賃はインフレ上昇し続ける。""")
 
-    lines.append("""
+    if _needs_pair_loan(ctx):
+        lines.append("""
 ### 2.4 ペアローン必須の構造的制約
 
 - **離婚リスク：** 共有名義で財産分与が複雑（賃貸は契約解除のみ）
 - **片働きリスク：** 片方の収入停止で住宅費を単独負担→破綻リスク
-- **団信：** 片方死亡でその債務のみ免除、もう片方は残存""")
+- **団信（団体信用生命保険）：** 片方死亡でその債務のみ免除、もう片方は残存""")
+    else:
+        higher = max(ctx.params.husband_income, ctx.params.wife_income)
+        label = "夫" if ctx.params.husband_income >= ctx.params.wife_income else "妻"
+        lines.append(f"""
+### 2.4 単独ローンの選択肢
+
+{label}の単独年収（手取り月{higher:g}万）で審査基準をクリアできるため、**ペアローンは必須ではない**。
+単独名義ローンを選択した場合:
+
+- **離婚リスク軽減：** 名義人が単独のため財産分与がシンプル
+- **片働き耐性：** 配偶者の収入停止が直接のローン破綻リスクにならない
+- **団信（団体信用生命保険）：** 名義人死亡時にローン全額免除（ペアローンは片方のみ）
+
+ただし投資余力の最大化を重視するなら、ペアローンで借入枠を拡大し差額を運用に回す戦略もある。""")
 
     return "\n".join(lines)
 
@@ -1550,8 +1668,8 @@ def _render_ch3_2_transitions(ctx: ReportContext) -> str:
         )
 
     # [5] Loan payoff
-    m_pa = ctx.purchase_ages.get("浦和マンション")
-    h_pa = ctx.purchase_ages.get("浦和一戸建て")
+    m_pa = _purchase_age(ctx, "マンション")
+    h_pa = _purchase_age(ctx, "一戸建て")
     payoff_ages = {}
     for name, pa in [("マンション", m_pa), ("一戸建て", h_pa)]:
         if pa == INFEASIBLE:
@@ -1568,35 +1686,32 @@ def _render_ch3_2_transitions(ctx: ReportContext) -> str:
             min_payoff = min(payoff_ages.values())
             lines.append(f"- **ローン完済（{'・'.join(parts)}）：** 住居費が激減。残り{80 - min_payoff}〜{80 - max(payoff_ages.values())}年で序列確定。")
 
-    # [6] Pension
+    # [6] Pension (pension starts at work_end_age)
     from housing_sim_jp.simulation import _pension_adjustment_factor as _paf
-    h_psa = ctx.params.husband_pension_start_age
-    w_psa = ctx.params.wife_pension_start_age
     h_wea = ctx.params.husband_work_end_age
     w_wea = ctx.params.wife_work_end_age
 
-    def _pension_type_note(psa):
-        if psa < 65:
-            adj = _paf(psa)
-            return f"{65-psa}年繰上げ・受給額{(adj-1)*100:+.0f}%"
-        elif psa > 65:
-            adj = _paf(psa)
-            return f"{psa-65}年繰下げ・受給額{(adj-1)*100:+.0f}%"
+    def _pension_type_note(wea):
+        if wea < 65:
+            adj = _paf(wea)
+            return f"{65-wea}年繰上げ・受給額{(adj-1)*100:+.0f}%"
+        elif wea > 65:
+            adj = _paf(wea)
+            return f"{wea-65}年繰下げ・受給額{(adj-1)*100:+.0f}%"
         return "標準"
 
-    if h_psa == w_psa and h_wea == w_wea:
-        note = _pension_type_note(h_psa)
-        overlap = f"（{h_psa}〜{h_wea}歳は就労+年金併給）" if h_psa < h_wea else ""
+    if h_wea == w_wea:
+        note = _pension_type_note(h_wea)
         lines.append(
-            f"- **年金期（{h_psa}歳〜80歳、{note}）：** "
-            f"{h_wea}歳で就労終了{overlap}。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
+            f"- **年金期（{h_wea}歳〜80歳、{note}）：** "
+            f"{h_wea}歳で退職・年金受給開始。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
         )
     else:
-        h_note = _pension_type_note(h_psa)
-        w_note = _pension_type_note(w_psa)
+        h_note = _pension_type_note(h_wea)
+        w_note = _pension_type_note(w_wea)
         lines.append(
-            f"- **年金期（夫{h_psa}歳[{h_note}]/妻{w_psa}歳[{w_note}]〜80歳）：** "
-            f"夫{h_wea}歳・妻{w_wea}歳で就労終了。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
+            f"- **年金期（夫{h_wea}歳[{h_note}]/妻{w_wea}歳[{w_note}]〜80歳）：** "
+            f"夫{h_wea}歳・妻{w_wea}歳で退職・年金受給開始。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
         )
 
     return "\n".join(lines)
@@ -1707,7 +1822,7 @@ def _render_ch3_3_breakdown(ctx: ReportContext) -> str:
 
 def _render_ch3_4_discipline(ctx: ReportContext) -> str:
     lines = [
-        "\n### 3.4 感度分析：投資規律（ライフスタイル・クリープ）\n",
+        "\n### 3.4 感度分析：投資規律（ライフスタイル・クリープ＝収入増に伴い生活水準が際限なく上昇する現象）\n",
         "100%投資は非現実的。ローンの「強制貯蓄」効果の有無で規律が分かれる。\n",
         "- **購入派：余剰資金の90%を投資**（ローンの強制貯蓄効果）",
         "- **賃貸派：余剰資金の80%を投資**（クリープ発生しやすい）\n",
@@ -1758,11 +1873,11 @@ def _render_ch4_1_conditions() -> str:
 
 | 変動要因 | 分布 | サンプリング | パラメータ |
 |---------|------|------------|----------|
-| 投資リターン | 対数正規分布 | **年次**（sequence risk 捕捉） | 期待値6.0%、標準偏差15% |
+| 投資リターン | 対数正規分布 | **年次**（順序リスク捕捉） | 期待値6.0%、標準偏差15% |
 | インフレ率 | 正規分布 | ラン単位 | 平均2.0%、標準偏差0.5% |
 | 賃金上昇率 | 正規分布 | ラン単位 | 平均2.0%、標準偏差0.5%、インフレとの相関0.8 |
 | 土地上昇率 | 正規分布 | ラン単位 | 平均0.75%、標準偏差3% |
-| インフレ-土地相関 | コレスキー分解 | ラン単位 | 相関係数0.6 |
+| インフレ-土地相関 | 相関付き正規分布 | ラン単位 | 相関係数0.6 |
 
 **生活イベントリスク：**
 
@@ -1773,8 +1888,8 @@ def _render_ch4_1_conditions() -> str:
 | 介護 | 75歳以降年5% | 月15万円追加 | 全戦略 |
 | 入居拒否 | 70歳以降年10% | 月5万円プレミアム | 賃貸のみ |
 | 転勤 | 年3%（最大1回） | 購入派：物件売却＋再購入（二重負担）、賃貸派：引越し費用のみ | 全戦略（60歳未満） |
-| 離婚 | 年1% | 資産50%分割＋物件売却＋2LDK賃貸化 | 全戦略 |
-| 配偶者死亡 | 年0.1% | 団信ローン消滅＋保険金3,000万＋遺族年金 | 全戦略 |"""
+| 離婚 | 年1% | 共有財産50%分割＋物件売却＋2LDK賃貸化（特有財産は分与対象外） | 全戦略 |
+| 配偶者死亡 | 年0.1% | 団信（団体信用生命保険）ローン消滅＋保険金3,000万＋遺族年金 | 全戦略 |"""
 
 
 def _render_ch4_2_distribution(ctx: ReportContext) -> str:
@@ -1788,13 +1903,13 @@ def _render_ch4_2_distribution(ctx: ReportContext) -> str:
         "| 戦略 | P5(悲観) | P25 | P50(中央値) | P75 | P95(楽観) | 破綻確率 |",
         "|------|---------|-----|------------|-----|---------|---------|",
     ]
-    for name in STRATEGY_ORDER:
-        r = _mc_by_name(mc, name)
+    for key in STRATEGY_KEYS:
+        r = _mc_by_key(mc, key)
         if not r:
             continue
         p = r.percentiles
         lines.append(
-            f"| {name} | {fmt_oku_short(p[5])} | {fmt_oku_short(p[25])} | "
+            f"| {r.strategy_name} | {fmt_oku_short(p[5])} | {fmt_oku_short(p[25])} | "
             f"**{fmt_oku_short(p[50])}** | {fmt_oku_short(p[75])} | "
             f"{fmt_oku_short(p[95])} | {r.bankruptcy_probability:.1%} |"
         )
@@ -1802,11 +1917,11 @@ def _render_ch4_2_distribution(ctx: ReportContext) -> str:
     lines.append("")
     lines.append("| 戦略 | 平均 | 標準偏差 |")
     lines.append("|------|------|---------|")
-    for name in STRATEGY_ORDER:
-        r = _mc_by_name(mc, name)
+    for key in STRATEGY_KEYS:
+        r = _mc_by_key(mc, key)
         if not r:
             continue
-        lines.append(f"| {name} | {fmt_oku_short(r.mean)} | {fmt_oku_short(r.std)} |")
+        lines.append(f"| {r.strategy_name} | {fmt_oku_short(r.mean)} | {fmt_oku_short(r.std)} |")
 
     return "\n".join(lines)
 
@@ -1822,12 +1937,12 @@ def _render_ch4_3_divergence(ctx: ReportContext) -> str:
         "| 戦略 | 確定論(税引後) | MC P50(税引後) | 乖離率 |",
         "|------|--------------|--------------|-------|",
     ]
-    std_map = {r["strategy"]: r for r in std if r is not None}
-    for name in STRATEGY_ORDER:
-        det = std_map.get(name)
-        mc_r = _mc_by_name(mc, name)
+    for key in STRATEGY_KEYS:
+        det = _find_by_key(std, key)
+        mc_r = _mc_by_key(mc, key)
         if not det or not mc_r:
             continue
+        name = det["strategy"]
         det_v = det["after_tax_net_assets"]
         mc_v = mc_r.percentiles[50]
         if det_v > 0:
@@ -1844,17 +1959,19 @@ def _render_ch4_3_divergence(ctx: ReportContext) -> str:
 def _render_ch4_4_stress(ctx: ReportContext) -> str:
     if not ctx.stress_results:
         return ""
+    m_name = _sname(ctx, "マンション")
+    h_name = _sname(ctx, "一戸建て")
     lines = [
         "\n### 4.4 ストレステスト：イベントリスクの影響\n",
-        "| イベント | 浦和マンション | 浦和一戸建て | 戦略的賃貸 | 通常賃貸 |",
+        f"| イベント | {m_name} | {h_name} | 戦略的賃貸 | 通常賃貸 |",
         "|---------|-------------|------------|----------|--------|",
     ]
     parsed: list[tuple[str, list[float]]] = []
     for label, results in ctx.stress_results:
         vals: list[str] = []
         probs: list[float] = []
-        for name in STRATEGY_ORDER:
-            r = _mc_by_name(results, name)
+        for key in STRATEGY_KEYS:
+            r = _mc_by_key(results, key)
             if r:
                 vals.append(f"{r.bankruptcy_probability:.1%}")
                 probs.append(r.bankruptcy_probability)
@@ -1912,10 +2029,10 @@ def _render_ch5(ctx: ReportContext) -> str:
     lines.append(purchase_cost)
 
     # Check if any purchase strategy has deferred purchase
-    purchase_names = ["浦和マンション", "浦和一戸建て"]
+    purchase_keys = ["マンション", "一戸建て"]
     has_deferred = any(
-        isinstance(ctx.purchase_ages.get(n), int) and ctx.purchase_ages[n] > ctx.start_age
-        for n in purchase_names
+        isinstance(_purchase_age(ctx, k), int) and _purchase_age(ctx, k) > ctx.start_age
+        for k in purchase_keys
     )
 
     rental_cost = (
@@ -2063,7 +2180,7 @@ def _render_ch5(ctx: ReportContext) -> str:
         lines.append(
             "\n本シミュレーションではバケット戦略（§1.7）により、"
             "退職前から安全資産を段階的に積み増し、"
-            "通常時は株式から取り崩し（4%ルール）、"
+            "通常時は株式から取り崩し、"
             "暴落時には安全資産から優先的に取り崩すことで、"
             "株式を安値で売却するリスクを軽減している。"
         )
@@ -2077,10 +2194,10 @@ def _render_ch5(ctx: ReportContext) -> str:
 
 
 def _render_ch6(ctx: ReportContext) -> str:
-    m_pa = ctx.purchase_ages.get("浦和マンション") or ctx.start_age
-    h_pa = ctx.purchase_ages.get("浦和一戸建て") or ctx.start_age
-    m_80 = UrawaMansion.PURCHASE_AGE_OF_BUILDING + (END_AGE - m_pa)
-    h_80 = UrawaHouse.PURCHASE_AGE_OF_BUILDING + (END_AGE - h_pa)
+    m_pa = _purchase_age(ctx, "マンション") or ctx.start_age
+    h_pa = _purchase_age(ctx, "一戸建て") or ctx.start_age
+    m_80 = ctx.area.mansion_building_age + (END_AGE - m_pa)
+    h_80 = ctx.area.house_building_age + (END_AGE - h_pa)
 
     lines = [
         "\n---\n",
@@ -2110,6 +2227,7 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
     th = {g: t for g, _, t in thresholds}
     lines.append(
         f"""**前提条件：**
+
 - 80歳で夫婦2人入居（2LDK・約65〜75㎡）、110歳まで生存（20年本体＋10年長寿バッファ）
 - 入居審査ベース：運用利回り0%（施設側はキャッシュカバレッジで審査、暴落リスク考慮）
 - **年金収入{pension:.1f}万円/月**を月額費用から控除（実態の入居審査に準拠）
@@ -2144,21 +2262,18 @@ def _render_ch6_4_facility(ctx: ReportContext) -> str:
         lines.append("| 戦略 | 確定論（実質） | グレード |")
         lines.append("|------|-------------|---------|")
 
-    for name in STRATEGY_ORDER:
-        det_r = None
-        for r in std:
-            if r and r["strategy"] == name:
-                det_r = r
-                break
+    for key in STRATEGY_KEYS:
+        det_r = _find_by_key(std, key)
         if det_r is None:
             continue
+        name = det_r["strategy"]
         nominal = det_r["after_tax_net_assets"]
         real = nominal * ctx.deflator
         g, _ = grade_label(real, ctx.pension_monthly)
         row = f"| {name} | {real/10000:.2f}億 | **{g}** |"
 
         if has_mc:
-            mc_r = _mc_by_name(mc, name)
+            mc_r = _mc_by_key(mc, key)
             if mc_r:
                 for pct in [50, 25]:
                     mc_nom = mc_r.percentiles[pct]
@@ -2236,24 +2351,23 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
     disc_std = ctx.discipline_results["標準"]
     mc = ctx.mc_results
 
+    h_name = _sname(ctx, "一戸建て")
+    m_name = _sname(ctx, "マンション")
     lines = [
         "### 7.1 総合比較表\n",
-        "| 評価軸 | 一戸建て | マンション | 戦略的賃貸 | 通常賃貸 |",
+        f"| 評価軸 | {h_name} | {m_name} | 戦略的賃貸 | 通常賃貸 |",
         "|--------|---------|-----------|-----------|---------|",
     ]
 
     # Order for table: house, mansion, strategic, normal
-    display_order = ["浦和一戸建て", "浦和マンション", "戦略的賃貸", "通常賃貸"]
+    display_keys = ["一戸建て", "マンション", "戦略的賃貸", "通常賃貸"]
 
-    def _val(results, name):
-        for r in results:
-            if r and r["strategy"] == name:
-                return r
-        return None
+    def _val(results, key):
+        return _find_by_key(results, key)
 
     def _row(label, results, bold_max=True):
         vals = []
-        items = [_val(results, n) for n in display_order]
+        items = [_val(results, k) for k in display_keys]
         if bold_max:
             valid_vals = [r["final_net_assets"] for r in items if r and r.get("bankrupt_age") is None]
             max_v = max(valid_vals) if valid_vals else 0
@@ -2271,14 +2385,14 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
         # MC P50
         vals = []
         mc_vals = []
-        for name in display_order:
-            r = _mc_by_name(mc, name)
+        for key in display_keys:
+            r = _mc_by_key(mc, key)
             if r:
-                mc_vals.append((name, r.percentiles[50]))
+                mc_vals.append((key, r.percentiles[50]))
             else:
-                mc_vals.append((name, 0))
+                mc_vals.append((key, 0))
         max_p50 = max(v for _, v in mc_vals)
-        for name, v in mc_vals:
+        for key, v in mc_vals:
             s = fmt_oku_short(v)
             if v == max_p50:
                 s = f"**{s}**"
@@ -2288,14 +2402,14 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
         # MC P5
         vals = []
         mc_p5 = []
-        for name in display_order:
-            r = _mc_by_name(mc, name)
+        for key in display_keys:
+            r = _mc_by_key(mc, key)
             if r:
-                mc_p5.append((name, r.percentiles[5]))
+                mc_p5.append((key, r.percentiles[5]))
             else:
-                mc_p5.append((name, 0))
+                mc_p5.append((key, 0))
         max_p5 = max(v for _, v in mc_p5)
-        for name, v in mc_p5:
+        for key, v in mc_p5:
             s = fmt_oku_short(v)
             if v == max_p5 and v > 0:
                 s = f"**{s}**"
@@ -2305,14 +2419,14 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
         # MC bankruptcy
         vals = []
         mc_bp = []
-        for name in display_order:
-            r = _mc_by_name(mc, name)
+        for key in display_keys:
+            r = _mc_by_key(mc, key)
             if r:
-                mc_bp.append((name, r.bankruptcy_probability))
+                mc_bp.append((key, r.bankruptcy_probability))
             else:
-                mc_bp.append((name, 1.0))
+                mc_bp.append((key, 1.0))
         min_bp = min(v for _, v in mc_bp)
-        for name, v in mc_bp:
+        for key, v in mc_bp:
             s = f"{v:.1%}"
             if v == min_bp:
                 s = f"**{s}**"
@@ -2323,8 +2437,8 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
     for sname in ["低成長", "高成長", "慢性スタグフレーション", "サイクル型"]:
         results = ctx.scenario_results[sname]
         vals = []
-        for name in display_order:
-            r = _val(results, name)
+        for key in display_keys:
+            r = _val(results, key)
             if r and r.get("bankrupt_age") is None:
                 vals.append(f"✅（{fmt_oku_short(r['final_net_assets'])}）")
             elif r and r.get("bankrupt_age") is not None:
@@ -2338,12 +2452,12 @@ def _render_ch7_1_summary(ctx: ReportContext) -> str:
         "\n※上記は**税引前**純資産。特定口座の含み益を現金化する際には"
         "譲渡益税20.315%が発生する（NISA口座分は非課税）。各戦略の潜在税負担："
     )
-    for name in display_order:
-        r = _val(ctx.det_results, name)
+    for key in display_keys:
+        r = _val(ctx.det_results, key)
         if r and r.get("bankrupt_age") is None:
             tax = r.get("securities_tax", 0)
             if tax > 0:
-                lines.append(f"  {name}: 約{tax/10000:.2f}億円")
+                lines.append(f"  {r['strategy']}: 約{tax/10000:.2f}億円")
 
     # Nominal vs real caveat (consolidated here; not repeated in §7.2)
     std = ctx.scenario_results.get("標準", [])
@@ -2558,7 +2672,7 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
             per_child = f"（{n}人合計）" if n >= 2 else ""
             kodomo_nisa_summary = (
                 f"こどもNISA{per_child}: "
-                f"拠出{avg_contrib:.0f}万→独立時{avg_gift:.0f}万贈与（戦略平均）"
+                f"拠出{avg_contrib:,.0f}万→独立時{avg_gift:,.0f}万贈与（戦略平均）"
             )
             kodomo_nisa_summary += "。"
 
@@ -2588,10 +2702,10 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
 
     # Purchase deferral
     deferred = []
-    for name in ["浦和マンション", "浦和一戸建て"]:
-        pa = ctx.purchase_ages.get(name)
+    for key in ["マンション", "一戸建て"]:
+        pa = _purchase_age(ctx, key)
         if pa is not None and pa > ctx.start_age:
-            deferred.append((name, pa))
+            deferred.append((_sname(ctx, key), pa))
     if deferred:
         parts = [f"{n}は{a}歳" for n, a in deferred]
         advice_parts.append(
@@ -2640,14 +2754,18 @@ def _render_ch7_2_conclusion(ctx: ReportContext) -> str:
     if has_bankruptcies:
         # Find which strategies survive all scenarios
         survivors = []
-        for name in STRATEGY_ORDER:
+        for key in STRATEGY_KEYS:
             all_ok = True
             for sname in SCENARIO_ORDER:
                 for r in ctx.scenario_results[sname]:
-                    if r and r["strategy"] == name and r.get("bankrupt_age") is not None:
+                    if r and key in r.get("strategy", "") and r.get("bankrupt_age") is not None:
                         all_ok = False
-            if all_ok and name in [s["strategy"] for s in valid_std]:
-                survivors.append(name)
+            # Check this strategy exists in valid_std
+            valid_names = [s["strategy"] for s in valid_std]
+            if all_ok and any(key in n for n in valid_names):
+                matched = _find_by_key(valid_std, key)
+                if matched:
+                    survivors.append(matched["strategy"])
         if survivors:
             lines.append(
                 f"\n**全5シナリオ生存：** {'、'.join(survivors)}。"
@@ -2728,9 +2846,14 @@ def _render_ch7_3_risks(ctx: ReportContext) -> str:
                 msg += "ただし破綻確率が高い状況では、特別支出の優先度を再検討する余地がある。"
         lines.append(msg)
 
-    lines.append(
-        "\n**ペアローン：** 夫婦共働き継続が前提。離婚リスクはストレステスト定量化済み。"
-    )
+    if _needs_pair_loan(ctx):
+        lines.append(
+            "\n**ペアローン：** 夫婦共働き継続が前提。離婚リスクはストレステスト定量化済み。"
+        )
+    else:
+        lines.append(
+            "\n**ローン：** 単独名義ローンが可能な収入水準。ペアローンの離婚・片働きリスクを回避できる。"
+        )
 
     return "\n".join(lines)
 

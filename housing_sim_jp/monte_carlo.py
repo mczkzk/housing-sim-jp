@@ -17,10 +17,11 @@ from housing_sim_jp.simulation import (
     resolve_independence_ages,
     INFEASIBLE,
 )
+from housing_sim_jp.areas import AreaPreset
 from housing_sim_jp.strategies import (
     Strategy,
-    UrawaMansion,
-    UrawaHouse,
+    Mansion,
+    House,
     StrategicRental,
     NormalRental,
 )
@@ -134,6 +135,7 @@ def run_monte_carlo(
     wife_nisa_used: float = 0.0,
     husband_nisa_balance: float = -1.0,
     wife_nisa_balance: float = -1.0,
+    area: AreaPreset | None = None,
 ) -> MonteCarloResult:
     """Run N Monte Carlo simulations for a single strategy.
 
@@ -217,6 +219,9 @@ def run_monte_carlo(
             run_purchase_age = resolve_purchase_age(
                 strategy, params, husband_start_age, wife_start_age,
                 child_birth_ages, child_independence_ages,
+                pre_purchase_rent=area.rent_2ldk if area else None,
+                pre_purchase_initial_cost=area.rental_initial_cost if area else None,
+                area=area,
             )
             if run_purchase_age == INFEASIBLE:
                 infeasible = True
@@ -238,6 +243,7 @@ def run_monte_carlo(
                     wife_nisa_used=wife_nisa_used,
                     husband_nisa_balance=husband_nisa_balance,
                     wife_nisa_balance=wife_nisa_balance,
+                    area=area,
                 )
             except ValueError:
                 infeasible = True
@@ -313,6 +319,7 @@ def run_monte_carlo_all_strategies(
     wife_nisa_used: float = 0.0,
     husband_nisa_balance: float = -1.0,
     wife_nisa_balance: float = -1.0,
+    area: AreaPreset | None = None,
 ) -> list[MonteCarloResult]:
     """Run Monte Carlo simulation for all 4 strategies."""
     start_age = max(husband_start_age, wife_start_age)
@@ -323,13 +330,14 @@ def run_monte_carlo_all_strategies(
     num_children = len(child_birth_ages)
 
     factories: list[Callable[[], Strategy]] = [
-        lambda: UrawaMansion(initial_savings),
-        lambda: UrawaHouse(initial_savings),
+        lambda: Mansion(initial_savings, area=area),
+        lambda: House(initial_savings, area=area),
         lambda: StrategicRental(
             initial_savings, child_birth_ages=child_birth_ages,
             child_independence_ages=child_independence_ages, start_age=start_age,
+            area=area,
         ),
-        lambda: NormalRental(initial_savings, num_children=num_children),
+        lambda: NormalRental(initial_savings, num_children=num_children, area=area),
     ]
 
     results = []
@@ -351,6 +359,7 @@ def run_monte_carlo_all_strategies(
             wife_nisa_used=wife_nisa_used,
             husband_nisa_balance=husband_nisa_balance,
             wife_nisa_balance=wife_nisa_balance,
+            area=area,
         )
         results.append(mc_result)
 

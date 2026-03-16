@@ -11,15 +11,26 @@ import matplotlib.ticker as ticker
 from housing_sim_jp.monte_carlo import MonteCarloResult
 from housing_sim_jp.params import SimulationParams
 
-# Strategy color mapping
-STRATEGY_COLORS = {
-    "浦和マンション": "#1f77b4",   # blue
-    "浦和一戸建て": "#2ca02c",     # green
-    "戦略的賃貸": "#ff7f0e",       # orange
-    "通常賃貸": "#d62728",         # red
+# Strategy color mapping by strategy key (partial match)
+_STRATEGY_KEY_COLORS = {
+    "マンション": "#1f77b4",   # blue
+    "一戸建て": "#2ca02c",     # green
+    "戦略的賃貸": "#ff7f0e",   # orange
+    "通常賃貸": "#d62728",     # red
 }
 
 DEFAULT_COLOR = "#7f7f7f"
+
+# Keep STRATEGY_COLORS as a module-level name for backward compatibility
+STRATEGY_COLORS = _STRATEGY_KEY_COLORS
+
+
+def _get_color(name: str) -> str:
+    """Get color for strategy by partial key match."""
+    for key, color in _STRATEGY_KEY_COLORS.items():
+        if key in name:
+            return color
+    return DEFAULT_COLOR
 
 
 def _setup_japanese_font():
@@ -206,7 +217,7 @@ def plot_trajectory(
             entry["balance"] + entry.get("emergency_fund", 0)
             for entry in log
         ]
-        color = STRATEGY_COLORS.get(sname, DEFAULT_COLOR)
+        color = _get_color(sname)
         ax.plot(ages, balances, label=sname, color=color, linewidth=2)
 
     ax.set_xlabel("年齢")
@@ -274,7 +285,7 @@ def plot_mc_fan(
     for idx, result in enumerate(valid):
         row, col = divmod(idx, cols)
         ax = axes[row][col]
-        color = STRATEGY_COLORS.get(result.strategy_name, DEFAULT_COLOR)
+        color = _get_color(result.strategy_name)
 
         pdata = result.yearly_balance_percentiles
         ages = sorted(pdata.keys())

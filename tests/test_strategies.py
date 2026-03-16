@@ -3,6 +3,8 @@
 import pytest
 from housing_sim_jp import (
     SimulationParams,
+    Mansion,
+    House,
     UrawaMansion,
     UrawaHouse,
     StrategicRental,
@@ -52,28 +54,36 @@ class TestHouseMaintenanceMultiplier:
         assert _stepped_multiplier(age, _HOUSE_MAINTENANCE_STEPS, _HOUSE_MAINTENANCE_FINAL) == expected
 
 
-class TestUrawaMansionInit:
+class TestMansionInit:
     def test_initial_investment(self):
-        s = UrawaMansion(800)
-        assert s.initial_investment == 800 - 606
-        assert s.property_price == 7580
-        assert s.loan_amount == 7580
+        s = Mansion(800)
+        assert s.initial_investment == 800 - 680
+        assert s.property_price == 8500
+        assert s.loan_amount == 8500
         assert s.land_value_ratio == 0.25
 
     def test_custom_savings(self):
-        s = UrawaMansion(1000)
-        assert s.initial_investment == 1000 - 606
+        s = Mansion(1000)
+        assert s.initial_investment == 1000 - 680
+
+    def test_backward_compat_alias(self):
+        s = UrawaMansion(800)
+        assert s.property_price == 8500
 
 
-class TestUrawaHouseInit:
+class TestHouseInit:
     def test_initial_investment(self):
-        s = UrawaHouse(800)
-        assert s.initial_investment == 800 - 524
-        assert s.property_price == 6547
-        assert s.loan_amount == 6547
+        s = House(800)
+        assert s.initial_investment == 800 - 590
+        assert s.property_price == 7372
+        assert s.loan_amount == 7372
         assert s.land_value_ratio == 0.55
         assert s.liquidity_discount == 0.15
         assert s.utility_premium == 0.3
+
+    def test_backward_compat_alias(self):
+        s = UrawaHouse(800)
+        assert s.property_price == 7372
 
 
 class TestStrategicRentalInit:
@@ -84,38 +94,38 @@ class TestStrategicRentalInit:
         assert s.loan_amount == 0
 
     def test_phase_boundaries_one_child(self):
-        """子1人(39歳出産, start=37) → Phase2: 46〜61歳"""
+        """子1人(39歳出産, start=37) -> Phase2: 46~61歳"""
         s = StrategicRental(800, child_birth_ages=[39], start_age=37)
         assert s.age_phase2_start == 46  # 39 + 7
         assert s.age_phase2_end == 62    # 39 + 22 + 1
 
     def test_phase_boundaries_two_children(self):
-        """子2人(39,41歳出産) → Phase2: 46〜63歳"""
+        """子2人(39,41歳出産) -> Phase2: 46~63歳"""
         s = StrategicRental(800, child_birth_ages=[39, 41], start_age=37)
         assert s.age_phase2_start == 46   # min(39+7, 41+7) = 46
         assert s.age_phase2_end == 64     # max(39+22, 41+22) + 1 = 64
 
     def test_phase_boundaries_no_child(self):
-        """子なし → Phase1のみ（Phase2/3なし）"""
+        """子なし -> Phase1のみ（Phase2/3なし）"""
         s = StrategicRental(800, child_birth_ages=[], start_age=37)
         assert s.age_phase2_start == 80
         assert s.age_phase2_end == 80
 
     def test_phase_boundaries_existing_child(self):
-        """既存子(28歳出産, start=37) → Phase2は37歳から"""
+        """既存子(28歳出産, start=37) -> Phase2は37歳から"""
         s = StrategicRental(800, child_birth_ages=[28], start_age=37)
-        # 28+7=35 < start_age=37 → clamped to 37
+        # 28+7=35 < start_age=37 -> clamped to 37
         assert s.age_phase2_start == 37
         assert s.age_phase2_end == 51  # 28 + 22 + 1
 
     def test_phase_boundaries_phd_child(self):
-        """博士の子(39歳出産, independence=27) → Phase2: 46〜67歳（22→27で+5年）"""
+        """博士の子(39歳出産, independence=27) -> Phase2: 46~67歳（22->27で+5年）"""
         s = StrategicRental(800, child_birth_ages=[39], child_independence_ages=[27], start_age=37)
         assert s.age_phase2_start == 46  # 39 + 7
         assert s.age_phase2_end == 67    # 39 + 27 + 1
 
     def test_phase_boundaries_mixed_grad(self):
-        """1人目学部(39歳出産), 2人目博士(41歳出産) → Phase2 end は 41+27+1=69"""
+        """1人目学部(39歳出産), 2人目博士(41歳出産) -> Phase2 end は 41+27+1=69"""
         s = StrategicRental(800, child_birth_ages=[39, 41], child_independence_ages=[22, 27], start_age=37)
         assert s.age_phase2_start == 46   # min(39+7, 41+7) = 46
         assert s.age_phase2_end == 69     # max(39+22, 41+27) + 1 = 69
@@ -134,7 +144,7 @@ class TestMansionHousingCost:
         self.params = SimulationParams()
 
     def test_month_0(self):
-        s = UrawaMansion(800)
+        s = Mansion(800)
         cost = s.housing_cost(37, 0, self.params)
         assert cost > 0
         # At month 0: loan payment + repair reserve(1.0x at building age 10) + mgmt + tax + insurance
@@ -142,7 +152,7 @@ class TestMansionHousingCost:
 
     def test_month_60_rate_change(self):
         """At month 60, loan rate changes. Cost should reflect new rate."""
-        s = UrawaMansion(800)
+        s = Mansion(800)
         # Run up to month 59 to set up state
         for m in range(60):
             s.housing_cost(37 + m // 12, m, self.params)
@@ -153,7 +163,7 @@ class TestMansionHousingCost:
 
     def test_after_loan_payoff(self):
         """After 420 months (35 years), no more loan payment."""
-        s = UrawaMansion(800)
+        s = Mansion(800)
         for m in range(420):
             s.housing_cost(37 + m // 12, m, self.params)
         cost = s.housing_cost(37 + 35, 420, self.params)
@@ -167,12 +177,12 @@ class TestHouseHousingCost:
         self.params = SimulationParams()
 
     def test_month_0(self):
-        s = UrawaHouse(800)
+        s = House(800)
         cost = s.housing_cost(37, 0, self.params)
         assert cost > 0
 
     def test_after_loan_payoff(self):
-        s = UrawaHouse(800)
+        s = House(800)
         for m in range(420):
             s.housing_cost(37 + m // 12, m, self.params)
         cost = s.housing_cost(37 + 35, 420, self.params)
@@ -192,12 +202,12 @@ class TestStrategicRentalHousingCost:
         assert cost == pytest.approx(expected, rel=1e-4)
 
     def test_phase2(self):
-        """Age 46-61 (child_birth=39): rent_phase2 (23万, 1 child) + renewal fee with inflation"""
+        """Age 46-61 (child_birth=39): rent_phase2 (25万, 1 child) + renewal fee with inflation"""
         s = StrategicRental(800, child_birth_ages=[39], start_age=37)
         months = (46 - 37) * 12
         years = months / 12
         cost = s.housing_cost(46, months, self.params)
-        inflated = 23.0 * (1.02 ** years)
+        inflated = 25.0 * (1.02 ** years)
         expected = inflated + inflated / 24
         assert cost == pytest.approx(expected, rel=1e-4)
 
@@ -219,18 +229,18 @@ class TestStrategicRentalHousingCost:
         assert cost_75 > cost_74
 
     def test_phase2_two_children_higher_rent(self):
-        """2 children → phase2 rent is 25万 (23+2) instead of 23万"""
+        """2 children -> phase2 rent is 27万 (25+2) instead of 25万"""
         s1 = StrategicRental(800, child_birth_ages=[39], start_age=37)
         s2 = StrategicRental(800, child_birth_ages=[39, 41], start_age=37)
-        assert s1.rent_phase2 == pytest.approx(23.0)
-        assert s2.rent_phase2 == pytest.approx(25.0)
+        assert s1.rent_phase2 == pytest.approx(25.0)
+        assert s2.rent_phase2 == pytest.approx(27.0)
         months = (46 - 37) * 12
         cost1 = s1.housing_cost(46, months, self.params)
         cost2 = s2.housing_cost(46, months, self.params)
         assert cost2 > cost1
 
     def test_no_child_always_phase1(self):
-        """子なし → 全期間Phase1（2LDK 18万ベース）"""
+        """子なし -> 全期間Phase1（2LDK 18万ベース）"""
         s = StrategicRental(800, child_birth_ages=[], start_age=37)
         cost_50 = s.housing_cost(50, (50 - 37) * 12, self.params)
         inflated = 18.0 * (1.02 ** 13)
@@ -238,7 +248,7 @@ class TestStrategicRentalHousingCost:
         assert cost_50 == pytest.approx(expected, rel=1e-4)
 
     def test_no_child_elderly_premium(self):
-        """子なし+75歳 → Phase1のままだが高齢者プレミアムは適用"""
+        """子なし+75歳 -> Phase1のままだが高齢者プレミアムは適用"""
         s = StrategicRental(800, child_birth_ages=[], start_age=37)
         cost_74 = s.housing_cost(74, (74 - 37) * 12, self.params)
         cost_75 = s.housing_cost(75, (75 - 37) * 12, self.params)
@@ -250,16 +260,16 @@ class TestNormalRentalHousingCost:
         params = SimulationParams()
         s = NormalRental(800)
         cost = s.housing_cost(37, 0, params)
-        expected = 23.0 + 23.0 / 24
+        expected = 25.0 + 25.0 / 24
         assert cost == pytest.approx(expected, rel=1e-4)
 
     def test_two_children_higher_rent(self):
-        """2 children → base rent is 25万 (23+2)"""
+        """2 children -> base rent is 27万 (25+2)"""
         params = SimulationParams()
         s1 = NormalRental(800, num_children=1)
         s2 = NormalRental(800, num_children=2)
-        assert s1.base_rent == pytest.approx(23.0)
-        assert s2.base_rent == pytest.approx(25.0)
+        assert s1.base_rent == pytest.approx(25.0)
+        assert s2.base_rent == pytest.approx(27.0)
         cost1 = s1.housing_cost(37, 0, params)
         cost2 = s2.housing_cost(37, 0, params)
         assert cost2 > cost1

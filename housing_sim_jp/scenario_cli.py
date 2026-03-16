@@ -1,5 +1,6 @@
 """CLI entry point for scenario comparison."""
 
+from housing_sim_jp.areas import get_area
 from housing_sim_jp.config import parse_args, parse_special_expenses, resolve_sim_ages
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.scenarios import run_scenarios, DISCIPLINE_FACTORS, SCENARIOS
@@ -180,6 +181,7 @@ def main():
 
     start_age, child_birth_ages, pet_sim_ages = resolve_sim_ages(r, child_birth_ages, pet_ages)
 
+    area = get_area(r["area"])
     common_kwargs = dict(
         husband_start_age=r["husband_age"],
         wife_start_age=r["wife_age"],
@@ -200,8 +202,6 @@ def main():
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=special_expenses,
-        husband_pension_start_age=r["husband_pension_start_age"],
-        wife_pension_start_age=r["wife_pension_start_age"],
         husband_work_end_age=r["husband_work_end_age"],
         wife_work_end_age=r["wife_work_end_age"],
         bucket_safe_years=r["bucket_safe_years"],
@@ -216,6 +216,7 @@ def main():
         wife_nisa_used=r["wife_nisa_used"],
         husband_nisa_balance=r["husband_nisa_balance"],
         wife_nisa_balance=r["wife_nisa_balance"],
+        area=area,
     )
 
     print_parameters()

@@ -2,6 +2,7 @@
 
 import dataclasses
 
+from housing_sim_jp.areas import AreaPreset
 from housing_sim_jp.params import SimulationParams
 from housing_sim_jp.strategies import (
     build_all_strategies,
@@ -72,11 +73,21 @@ SCENARIOS = {
 
 
 DISCIPLINE_FACTORS = {
-    "浦和マンション": 0.9,
-    "浦和一戸建て": 0.9,
+    "マンション": 0.9,
+    "一戸建て": 0.9,
     "戦略的賃貸": 0.8,
     "通常賃貸": 0.8,
 }
+
+
+def _resolve_discipline_factor(strategy_name: str, factors: dict[str, float] | None) -> float:
+    """Resolve discipline factor by strategy key match."""
+    if not factors:
+        return 1.0
+    for key, factor in factors.items():
+        if key in strategy_name:
+            return factor
+    return 1.0
 
 
 def run_scenarios(
@@ -106,8 +117,6 @@ def run_scenarios(
     wife_ideco: float = 2.0,
     emergency_fund_months: float = 6.0,
     special_expenses: dict[int, float] | None = None,
-    husband_pension_start_age: int = 60,
-    wife_pension_start_age: int = 60,
     husband_work_end_age: int = 70,
     wife_work_end_age: int = 70,
     bucket_safe_years: float = 5.0,
@@ -116,6 +125,7 @@ def run_scenarios(
     bucket_ramp_years: int = 5,
     bucket_bond_return: float = 0.005,
     bucket_gold_return: float = 0.04,
+    area: AreaPreset | None = None,
 ):
     """Execute simulations for all scenarios.
     discipline_factors: dict of strategy_name -> factor (1.0=perfect, 0.8=80% invested)
@@ -146,8 +156,6 @@ def run_scenarios(
             wife_ideco=wife_ideco,
             emergency_fund_months=emergency_fund_months,
             special_expenses=special_expenses or {},
-            husband_pension_start_age=husband_pension_start_age,
-            wife_pension_start_age=wife_pension_start_age,
             husband_work_end_age=husband_work_end_age,
             wife_work_end_age=wife_work_end_age,
             bucket_safe_years=bucket_safe_years,
@@ -161,19 +169,21 @@ def run_scenarios(
 
         strategies = build_all_strategies(
             initial_savings, child_birth_ages, child_independence_ages, start_age,
+            area=area,
         )
         results = []
         for strategy in strategies:
             purchase_age = resolve_purchase_age(
                 strategy, params, husband_start_age, wife_start_age,
                 child_birth_ages, child_independence_ages,
+                pre_purchase_rent=area.rent_2ldk if area else None,
+                pre_purchase_initial_cost=area.rental_initial_cost if area else None,
+                area=area,
             )
             if purchase_age == INFEASIBLE:
                 results.append(None)
                 continue
-            factor = 1.0
-            if discipline_factors:
-                factor = discipline_factors.get(strategy.name, 1.0)
+            factor = _resolve_discipline_factor(strategy.name, discipline_factors)
             results.append(
                 simulate_strategy(
                     strategy,
@@ -190,6 +200,7 @@ def run_scenarios(
                     wife_nisa_used=wife_nisa_used,
                     husband_nisa_balance=husband_nisa_balance,
                     wife_nisa_balance=wife_nisa_balance,
+                    area=area,
                 )
             )
         all_results[scenario_name] = results

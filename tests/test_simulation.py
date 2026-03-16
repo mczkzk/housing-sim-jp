@@ -3,6 +3,8 @@
 import pytest
 from housing_sim_jp import (
     SimulationParams,
+    Mansion,
+    House,
     UrawaMansion,
     UrawaHouse,
     StrategicRental,
@@ -13,6 +15,11 @@ from housing_sim_jp import (
     find_earliest_purchase_age,
 )
 from housing_sim_jp.events import EventRiskConfig, EventTimeline, sample_events
+
+# Default test income: 52+28=80万/月 hand-take (gross annual 1280万)
+# Sufficient for 8500万 mansion loan screening (limit: 8960万)
+H_INCOME = 52.0
+W_INCOME = 28.0
 
 
 class TestValidateAge:
@@ -37,28 +44,28 @@ class TestValidateAge:
 class TestValidateStrategy:
     def test_insufficient_savings(self):
         """Savings less than initial cost should produce error."""
-        s = UrawaMansion(100)  # INITIAL_COST = 606
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        s = Mansion(100)  # INITIAL_COST = 680
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         errors = validate_strategy(s, params)
         assert len(errors) >= 1
         assert "不足" in errors[0]
 
     def test_income_multiplier_exceeded(self):
         """Very low income with large loan should fail income multiplier check."""
-        s = UrawaMansion(800)
+        s = Mansion(800)
         params = SimulationParams(husband_income=13.0, wife_income=7.0)
         errors = validate_strategy(s, params)
         assert any("年収倍率" in e for e in errors)
 
     def test_valid_strategy(self):
-        s = UrawaMansion(800)
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        s = Mansion(800)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         errors = validate_strategy(s, params)
         assert errors == []
 
     def test_rental_always_valid(self):
         s = StrategicRental(800, child_birth_ages=[39], start_age=37)
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         errors = validate_strategy(s, params)
         assert errors == []
 
@@ -67,37 +74,37 @@ class TestSnapshotAge37:
     """Snapshot tests: fix after_tax_net_assets for age=37 default params."""
 
     def setup_method(self):
-        self.params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        self.params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
 
     def test_mansion(self):
-        r = simulate_strategy(UrawaMansion(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(54298.642281, abs=0.01)
+        r = simulate_strategy(Mansion(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r["after_tax_net_assets"] == pytest.approx(60651.153616, abs=0.01)
 
     def test_house(self):
-        r = simulate_strategy(UrawaHouse(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(60849.642977, abs=0.01)
+        r = simulate_strategy(House(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        assert r["after_tax_net_assets"] == pytest.approx(67807.921909, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(59133.298048, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(67784.919450, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(49109.341286, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(54853.562709, abs=0.01)
 
 
 class TestSnapshotDetails:
     """Verify detailed fields for mansion at age 37."""
 
     def setup_method(self):
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
-        self.r = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
+        self.r = simulate_strategy(Mansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
 
     def test_nisa_balance(self):
-        assert self.r["nisa_balance"] == pytest.approx(31442.300977, abs=0.01)
+        assert self.r["nisa_balance"] == pytest.approx(33852.747158, abs=0.01)
 
     def test_land_value(self):
-        assert self.r["land_value_80"] == pytest.approx(2613.043089, abs=0.01)
+        assert self.r["land_value_80"] == pytest.approx(2930.193437, abs=0.01)
 
     def test_liquidation_cost(self):
         assert self.r["liquidation_cost"] == 200
@@ -119,19 +126,17 @@ class TestEdgeAges:
     """Simulation should complete without error at boundary ages."""
 
     def test_age_25(self):
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, husband_start_age=25, wife_start_age=25, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(247829.740359, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(286461.696655, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
-        """child_birth_ages=[39] for start_age=45 (child age 6-16 during sim).
-        50代の収入成長率が低い(0.5%)ため資産は薄いが、破綻はしない。
-        """
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        """child_birth_ages=[39] for start_age=45 (child age 6-16 during sim)."""
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, husband_start_age=45, wife_start_age=45, child_birth_ages=[39])
         assert r["bankrupt_age"] is None
-        assert r["after_tax_net_assets"] == pytest.approx(20435.468844, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(22041.450552, abs=0.01)
 
 
 class TestBankruptcy:
@@ -152,78 +157,78 @@ class TestBankruptcy:
 class TestPrincipalInvasion:
     def test_high_income_no_invasion(self):
         """High income should never trigger principal invasion."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert r["principal_invaded_age"] is None
 
     def test_initial_principal_present(self):
         """All results should include initial_principal field."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
-        r = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
+        r = simulate_strategy(Mansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert "initial_principal" in r
         assert r["initial_principal"] > 0
 
 
 class TestDisciplineFactor:
     def test_lower_factor_reduces_assets(self):
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, discipline_factor=1.0, child_birth_ages=[39])
         r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(48208.036774, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(55677.896922, abs=0.01)
 
 
 class TestChildBirthAges:
     def test_birth_age_38_matches_snapshot(self):
         """child_birth_ages=[38] should produce known snapshot."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[38])
-        assert r["after_tax_net_assets"] == pytest.approx(58656.341237, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(67217.655903, abs=0.01)
 
     def test_no_child_increases_assets(self):
-        """No education costs → more investable → higher assets."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        """No education costs -> more investable -> higher assets."""
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_with = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[38])
         r_without = simulate_strategy(StrategicRental(800, child_birth_ages=[], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[])
         assert r_without["after_tax_net_assets"] > r_with["after_tax_net_assets"]
 
     def test_earlier_birth_shifts_education(self):
-        """Earlier birth → education costs hit earlier, different asset outcome."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        """Earlier birth -> education costs hit earlier, different asset outcome."""
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_early = simulate_strategy(StrategicRental(800, child_birth_ages=[28], start_age=25), params, husband_start_age=25, wife_start_age=25, child_birth_ages=[28])
         r_late = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=25), params, husband_start_age=25, wife_start_age=25, child_birth_ages=[38])
         assert r_early["after_tax_net_assets"] != pytest.approx(r_late["after_tax_net_assets"], abs=1.0)
 
     def test_two_children_more_expensive(self):
-        """Two children cost more than one → lower final assets."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        """Two children cost more than one -> lower final assets."""
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_one = simulate_strategy(StrategicRental(800, child_birth_ages=[32], start_age=30), params, husband_start_age=30, wife_start_age=30, child_birth_ages=[32])
         r_two = simulate_strategy(StrategicRental(800, child_birth_ages=[32, 35], start_age=30), params, husband_start_age=30, wife_start_age=30, child_birth_ages=[32, 35])
         assert r_one["after_tax_net_assets"] > r_two["after_tax_net_assets"]
 
     def test_none_uses_default(self):
         """child_birth_ages=None should use DEFAULT_CHILD_BIRTH_AGES=[32, 35]."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_none = simulate_strategy(StrategicRental(800, child_birth_ages=[32, 35], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=None)
         r_explicit = simulate_strategy(StrategicRental(800, child_birth_ages=[32, 35], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[32, 35])
         assert r_none["after_tax_net_assets"] == pytest.approx(r_explicit["after_tax_net_assets"], abs=0.001)
 
     def test_existing_child_works(self):
         """Child born before start_age is valid (existing child with ongoing education)."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[28], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[28])
         r_default = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[38])
         assert r["after_tax_net_assets"] != pytest.approx(r_default["after_tax_net_assets"], abs=1.0)
 
     def test_graduated_child_raises(self):
         """Child already graduated (birth_age + independence_age < start_age) should raise."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         with pytest.raises(ValueError, match="卒業済み"):
             simulate_strategy(StrategicRental(800, child_birth_ages=[20], start_age=45), params, husband_start_age=45, wife_start_age=45, child_birth_ages=[20])
 
     def test_max_children_exceeded(self):
         """More than MAX_CHILDREN should raise ValueError."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         with pytest.raises(ValueError, match="上限"):
             simulate_strategy(
                 StrategicRental(800, child_birth_ages=[39, 41], start_age=37),
@@ -236,35 +241,35 @@ class TestFindEarliestPurchaseAge:
 
     def test_already_feasible_returns_none(self):
         """When strategy is already feasible at start_age, returns None."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
-        result = find_earliest_purchase_age(UrawaMansion(800), params, 37, 37)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
+        result = find_earliest_purchase_age(Mansion(800), params, 37, 37)
         assert result is None
 
     def test_low_savings_house_finds_purchase_age(self):
         """Age 30 / savings 500 / income 60: house (cheaper) should find a purchase age."""
         params = SimulationParams(husband_income=39.0, wife_income=21.0)
-        result = find_earliest_purchase_age(UrawaHouse(500), params, 30, 30)
+        result = find_earliest_purchase_age(House(500), params, 30, 30)
         assert result is not None
         assert 31 <= result <= 45
 
     def test_low_savings_mansion_deferred_with_price_inflation(self):
-        """Age 30 / savings 500 / income 55: wage inflation helps income catch up to mansion price."""
-        params = SimulationParams(husband_income=35.75, wife_income=19.25)
-        result = find_earliest_purchase_age(UrawaMansion(500), params, 30, 30)
+        """Age 30 / savings 500: wage inflation helps income catch up to mansion price."""
+        params = SimulationParams(husband_income=42.0, wife_income=22.62)
+        result = find_earliest_purchase_age(Mansion(500), params, 30, 30)
         assert result is not None
         assert 31 <= result <= 45
 
     def test_higher_income_mansion_feasible(self):
         """Higher income can overcome price inflation for mansion."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
-        result = find_earliest_purchase_age(UrawaMansion(500), params, 30, 30)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
+        result = find_earliest_purchase_age(Mansion(500), params, 30, 30)
         assert result is not None
         assert 31 <= result <= 45
 
     def test_very_low_income_returns_none(self):
         """Extremely low income should make purchase infeasible at any age."""
         params = SimulationParams(husband_income=13.0, wife_income=7.0)
-        result = find_earliest_purchase_age(UrawaMansion(100), params, 30, 30)
+        result = find_earliest_purchase_age(Mansion(100), params, 30, 30)
         assert result is None
 
 
@@ -273,26 +278,26 @@ class TestDeferredPurchase:
 
     def test_purchase_age_none_is_normal_flow(self):
         """purchase_age=None should produce identical results to default."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
-        r1 = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37)
-        r2 = simulate_strategy(UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, purchase_age=None)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
+        r1 = simulate_strategy(Mansion(800), params, husband_start_age=37, wife_start_age=37)
+        r2 = simulate_strategy(Mansion(800), params, husband_start_age=37, wife_start_age=37, purchase_age=None)
         assert r1["after_tax_net_assets"] == pytest.approx(r2["after_tax_net_assets"], abs=0.001)
 
     def test_deferred_purchase_returns_purchase_age(self):
         """Result should include the effective purchase_age."""
         params = SimulationParams(husband_income=45.5, wife_income=24.5)
-        purchase_age = find_earliest_purchase_age(UrawaHouse(500), params, 30, 30, child_birth_ages=[39])
+        purchase_age = find_earliest_purchase_age(House(500), params, 30, 30, child_birth_ages=[39])
         assert purchase_age is not None
-        r = simulate_strategy(UrawaHouse(500), params, husband_start_age=30, wife_start_age=30, purchase_age=purchase_age, child_birth_ages=[39])
+        r = simulate_strategy(House(500), params, husband_start_age=30, wife_start_age=30, purchase_age=purchase_age, child_birth_ages=[39])
         assert r["purchase_age"] == purchase_age
         assert r["after_tax_net_assets"] > 0
 
     def test_deferred_purchase_no_bankruptcy(self):
         """Deferred purchase at detected age should not cause bankruptcy."""
         params = SimulationParams(husband_income=45.5, wife_income=24.5)
-        purchase_age = find_earliest_purchase_age(UrawaHouse(500), params, 30, 30, child_birth_ages=[39])
+        purchase_age = find_earliest_purchase_age(House(500), params, 30, 30, child_birth_ages=[39])
         assert purchase_age is not None
-        r = simulate_strategy(UrawaHouse(500), params, husband_start_age=30, wife_start_age=30, purchase_age=purchase_age, child_birth_ages=[39])
+        r = simulate_strategy(House(500), params, husband_start_age=30, wife_start_age=30, purchase_age=purchase_age, child_birth_ages=[39])
         assert r["bankrupt_age"] is None
 
 
@@ -301,8 +306,8 @@ class TestIDeCo:
 
     def test_ideco_zero_vs_nonzero(self):
         """iDeCo拠出ありの方が資産が多い（税軽減効果）."""
-        params_with = SimulationParams(husband_income=47.125, wife_income=25.375, husband_ideco=2.0, wife_ideco=2.0)
-        params_without = SimulationParams(husband_income=47.125, wife_income=25.375, husband_ideco=0, wife_ideco=0)
+        params_with = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, husband_ideco=2.0, wife_ideco=2.0)
+        params_without = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, husband_ideco=0, wife_ideco=0)
         r_with = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params_with, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -315,7 +320,7 @@ class TestIDeCo:
 
     def test_ideco_withdrawal_at_default_age(self):
         """iDeCo balance should be zero after withdrawal age (withdrawn as lump sum)."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, husband_ideco=2.0, wife_ideco=2.0)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, husband_ideco=2.0, wife_ideco=2.0)
         r = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -326,12 +331,12 @@ class TestIDeCo:
 
     def test_ideco_no_contribution_after_end_age(self):
         """Starting at 45 with 20 years to 65 (default end), iDeCo should contribute for 20 years."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, husband_ideco=2.0, wife_ideco=2.0)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, husband_ideco=2.0, wife_ideco=2.0)
         r = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=45),
             params, husband_start_age=45, wife_start_age=45, child_birth_ages=[39],
         )
-        expected_contribution = (2.0 + 2.0) * 12 * 20  # 20 years × 12 months × (夫2万+妻2万)
+        expected_contribution = (2.0 + 2.0) * 12 * 20  # 20 years x 12 months x (夫2万+妻2万)
         assert r["ideco_total_contribution"] == pytest.approx(expected_contribution, abs=0.01)
 
 
@@ -340,7 +345,7 @@ class TestDivorceEvent:
 
     def test_divorce_splits_assets(self):
         """Divorce should reduce assets (50% split)."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         # Force divorce at month 12 (age 38)
         timeline = EventTimeline(divorce_month=12)
         r = simulate_strategy(
@@ -356,13 +361,13 @@ class TestDivorceEvent:
 
     def test_divorce_forces_sale(self):
         """Divorce with purchase strategy should sell property."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         timeline = EventTimeline(divorce_month=60)  # Age 42
         r = simulate_strategy(
-            UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
+            Mansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
             event_timeline=timeline,
         )
-        # After divorce, property_price is 0 → land_value should be 0
+        # After divorce, property_price is 0 -> land_value should be 0
         assert r["land_value_80"] == 0
         assert r["effective_land_value"] == 0
 
@@ -372,13 +377,13 @@ class TestSpouseDeathEvent:
 
     def test_death_pays_mortgage(self):
         """Death should clear mortgage (団信) and add insurance payout."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         timeline = EventTimeline(
             spouse_death_month=60,  # Age 42
             life_insurance_payout=3000,
         )
         r = simulate_strategy(
-            UrawaMansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
+            Mansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
             event_timeline=timeline,
         )
         # Property value should still exist (not sold)
@@ -386,7 +391,7 @@ class TestSpouseDeathEvent:
 
     def test_death_adds_insurance(self):
         """Death should increase assets from insurance payout."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         timeline = EventTimeline(
             spouse_death_month=60,
             life_insurance_payout=3000,
@@ -405,13 +410,13 @@ class TestEmergencyFund:
 
     def test_emergency_fund_in_initial_allocation(self):
         """Emergency fund should be allocated from initial savings, reducing investment."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
-        # With emergency fund, initial investment is lower → final assets should be lower
-        params_no_ef = SimulationParams(husband_income=47.125, wife_income=25.375, emergency_fund_months=0)
+        # With emergency fund, initial investment is lower -> final assets should be lower
+        params_no_ef = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, emergency_fund_months=0)
         r_no_ef = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params_no_ef, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -424,12 +429,12 @@ class TestEmergencyFund:
 
     def test_emergency_fund_blocks_car(self):
         """Car purchase should be deferred when balance < cost + required_ef."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, has_car=True, emergency_fund_months=6.0)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, has_car=True, emergency_fund_months=6.0)
         r = simulate_strategy(
             StrategicRental(500, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
-        params_no_ef = SimulationParams(husband_income=47.125, wife_income=25.375, has_car=True, emergency_fund_months=0)
+        params_no_ef = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, has_car=True, emergency_fund_months=0)
         r_no_ef = simulate_strategy(
             StrategicRental(500, child_birth_ages=[39], start_age=37),
             params_no_ef, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -440,8 +445,8 @@ class TestEmergencyFund:
 
     def test_emergency_fund_reduces_after_children_leave(self):
         """Required emergency fund decreases after children leave home at 22."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
-        # Child born at 32 → leaves at 54
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
+        # Child born at 32 -> leaves at 54
         r = simulate_strategy(
             StrategicRental(800, child_birth_ages=[32], start_age=30),
             params, husband_start_age=30, wife_start_age=30, child_birth_ages=[32],
@@ -458,8 +463,8 @@ class TestPet:
 
     def test_pet_reduces_assets(self):
         """ペットあり < なし."""
-        params_pet = SimulationParams(husband_income=47.125, wife_income=25.375, pet_adoption_ages=(37,))
-        params_none = SimulationParams(husband_income=47.125, wife_income=25.375, pet_adoption_ages=())
+        params_pet = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, pet_adoption_ages=(37,))
+        params_none = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, pet_adoption_ages=())
         r_pet = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params_pet, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -472,7 +477,7 @@ class TestPet:
 
     def test_pet_deferred_when_poor(self):
         """残高不足で先送り（pet_first_adoption_age > start_age）."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, pet_adoption_ages=(37,))
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, pet_adoption_ages=(37,))
         r = simulate_strategy(
             StrategicRental(200, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -482,22 +487,22 @@ class TestPet:
 
     def test_pet_rental_premium(self):
         """賃貸のコスト差が購入より大きい（pet_rental_premium分）."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, pet_adoption_ages=(37,))
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, pet_adoption_ages=(37,))
         r_rental = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         r_purchase = simulate_strategy(
-            UrawaHouse(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
+            House(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         # Compare pet impact: run without pet too
-        params_no = SimulationParams(husband_income=47.125, wife_income=25.375, pet_adoption_ages=())
+        params_no = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, pet_adoption_ages=())
         r_rental_no = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params_no, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         r_purchase_no = simulate_strategy(
-            UrawaHouse(800), params_no, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
+            House(800), params_no, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
         )
         rental_cost = r_rental_no["after_tax_net_assets"] - r_rental["after_tax_net_assets"]
         purchase_cost = r_purchase_no["after_tax_net_assets"] - r_purchase["after_tax_net_assets"]
@@ -505,7 +510,7 @@ class TestPet:
 
     def test_pet_zero_no_effect(self):
         """pets=0 はコストゼロ."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, pet_adoption_ages=())
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, pet_adoption_ages=())
         r = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -514,7 +519,7 @@ class TestPet:
 
     def test_pet_priority_after_car(self):
         """車+ペット同時: 車が先に購入."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375, has_car=True, pet_adoption_ages=(37,))
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, has_car=True, pet_adoption_ages=(37,))
         r = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39],
@@ -533,8 +538,8 @@ class TestSpecialExpenses:
             husband_income=48.75, wife_income=26.25,
             special_expenses={55: 500, 65: 300},
         )
-        s1 = UrawaHouse(1500)
-        s2 = UrawaHouse(1500)
+        s1 = House(1500)
+        s2 = House(1500)
         r_base = simulate_strategy(s1, params_base, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         r_special = simulate_strategy(s2, params_special, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert r_special["after_tax_net_assets"] < r_base["after_tax_net_assets"]
@@ -543,8 +548,8 @@ class TestSpecialExpenses:
         """Empty special_expenses dict should not change results."""
         params1 = SimulationParams(husband_income=48.75, wife_income=26.25)
         params2 = SimulationParams(husband_income=48.75, wife_income=26.25, special_expenses={})
-        s1 = UrawaHouse(1500)
-        s2 = UrawaHouse(1500)
+        s1 = House(1500)
+        s2 = House(1500)
         r1 = simulate_strategy(s1, params1, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         r2 = simulate_strategy(s2, params2, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert r1["after_tax_net_assets"] == pytest.approx(r2["after_tax_net_assets"], abs=0.01)
@@ -555,7 +560,7 @@ class TestSpecialExpenses:
             husband_income=48.75, wife_income=26.25,
             special_expenses={55: 100},
         )
-        s = UrawaHouse(1500)
+        s = House(1500)
         r = simulate_strategy(s, params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert r["after_tax_net_assets"] > 0  # should complete without error
 
@@ -565,7 +570,7 @@ class TestGradSchool:
 
     def test_phd_child_extends_education(self):
         """博士指定（independence_age=27）で教育費が27歳まで発生し、資産が減少."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_undergrad = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37,
@@ -580,7 +585,7 @@ class TestGradSchool:
 
     def test_master_child_extends_home(self):
         """修士指定（independence_age=24）で同居期間が24歳まで延長."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_undergrad = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37,
@@ -591,12 +596,12 @@ class TestGradSchool:
             params, husband_start_age=37, wife_start_age=37,
             child_birth_ages=[39], child_independence_ages=[24],
         )
-        # 修士は教育費+生活費の延長 → 資産減
+        # 修士は教育費+生活費の延長 -> 資産減
         assert r_master["after_tax_net_assets"] < r_undergrad["after_tax_net_assets"]
 
     def test_default_independence_ages_unchanged(self):
         """child_independence_ages=None は全員22歳（学部卒）と同等."""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375)
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r_none = simulate_strategy(
             StrategicRental(800, child_birth_ages=[39], start_age=37),
             params, husband_start_age=37, wife_start_age=37,
@@ -677,7 +682,7 @@ class TestEducationSchedule:
         assert priv19 > pub19
 
     def test_private_from_higher_cost(self):
-        """Earlier private switch → higher total cost."""
+        """Earlier private switch -> higher total cost."""
         from housing_sim_jp.simulation import _get_education_annual_cost
         totals = {}
         for pf in ["", "大学", "高校", "中学"]:
@@ -686,8 +691,8 @@ class TestEducationSchedule:
 
     def test_new_model_in_simulation(self):
         """Simulation should use new education params (not old education_cost_monthly)."""
-        params_pub = SimulationParams(husband_income=47.125, wife_income=25.375, education_private_from="")
-        params_priv = SimulationParams(husband_income=47.125, wife_income=25.375, education_private_from="中学")
+        params_pub = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, education_private_from="")
+        params_priv = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME, education_private_from="中学")
         r_pub = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params_pub, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         r_priv = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params_priv, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         assert r_pub["after_tax_net_assets"] > r_priv["after_tax_net_assets"]
@@ -698,9 +703,9 @@ class TestParentalLeave:
 
     def test_leave_reduces_income(self):
         """育休ありは育休なしより資産が減少する"""
-        params_with = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_with = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                        wife_parental_leave_months=12, husband_parental_leave_months=1)
-        params_without = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_without = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                           wife_parental_leave_months=0, husband_parental_leave_months=0)
         r_with = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params_with,
                                    husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
@@ -710,9 +715,9 @@ class TestParentalLeave:
 
     def test_no_children_no_effect(self):
         """子なしなら育休の影響なし"""
-        params_leave = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_leave = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                         wife_parental_leave_months=12, husband_parental_leave_months=1)
-        params_no_leave = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_no_leave = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                            wife_parental_leave_months=0, husband_parental_leave_months=0)
         r_leave = simulate_strategy(StrategicRental(800, child_birth_ages=[], start_age=37), params_leave,
                                     husband_start_age=37, wife_start_age=37, child_birth_ages=[])
@@ -722,11 +727,11 @@ class TestParentalLeave:
 
     def test_husband_leave_small_impact(self):
         """夫1ヶ月の育休は妻12ヶ月より影響が小さい"""
-        params_base = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_base = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                        wife_parental_leave_months=0, husband_parental_leave_months=0)
-        params_wife = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_wife = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                        wife_parental_leave_months=12, husband_parental_leave_months=0)
-        params_husband = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_husband = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                           wife_parental_leave_months=0, husband_parental_leave_months=1)
         r_base = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params_base,
                                    husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
@@ -740,18 +745,18 @@ class TestParentalLeave:
 
     def test_zero_months_disables(self):
         """leave_months=0 で無効化"""
-        params = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                   wife_parental_leave_months=0, husband_parental_leave_months=0)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params,
                               husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         # Should match old snapshot (before parental leave was added)
-        assert r["after_tax_net_assets"] == pytest.approx(59740.924745, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(68436.758375, abs=0.01)
 
     def test_peak_unaffected(self):
         """育休中もpeak追跡は正常（年金計算に影響しない）"""
-        params_leave = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_leave = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                         wife_parental_leave_months=12, husband_parental_leave_months=1)
-        params_no_leave = SimulationParams(husband_income=47.125, wife_income=25.375,
+        params_no_leave = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME,
                                            wife_parental_leave_months=0, husband_parental_leave_months=0)
         # Use age 30 so birth at 32 is during peak-tracking period
         r_leave = simulate_strategy(StrategicRental(800, child_birth_ages=[32], start_age=30), params_leave,

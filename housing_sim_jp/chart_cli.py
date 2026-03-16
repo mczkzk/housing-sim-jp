@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from housing_sim_jp.areas import get_area
 from housing_sim_jp.charts import plot_allocation, plot_cashflow_stack, plot_mc_fan, plot_trajectory
 from housing_sim_jp.config import parse_args, build_params, resolve_sim_ages, parse_special_expense_labels
 from housing_sim_jp.events import EventRiskConfig
@@ -53,6 +54,7 @@ def main():
     savings = r["savings"]
     output_dir = args.output / args.name / "charts"
     params = build_params(r, pet_sim_ages)
+    area = get_area(r["area"])
 
     resolved_children = resolve_child_birth_ages(child_birth_ages, start_age)
 
@@ -61,6 +63,7 @@ def main():
     resolved_indep = independence_ages or None
     strategies = build_all_strategies(
         savings, resolved_children, resolved_indep, start_age,
+        area=area,
     )
 
     det_results = []
@@ -68,6 +71,9 @@ def main():
         purchase_age = resolve_purchase_age(
             strategy, params, husband_age, wife_age,
             resolved_children, resolved_indep,
+            pre_purchase_rent=area.rent_2ldk,
+            pre_purchase_initial_cost=area.rental_initial_cost,
+            area=area,
         )
         if purchase_age == INFEASIBLE:
             print(f"  {strategy.name}: 購入不可（スキップ）", file=sys.stderr)
@@ -86,6 +92,7 @@ def main():
                 wife_nisa_used=r["wife_nisa_used"],
                 husband_nisa_balance=r["husband_nisa_balance"],
                 wife_nisa_balance=r["wife_nisa_balance"],
+                area=area,
             )
             det_results.append(result)
         except ValueError as e:
@@ -156,6 +163,7 @@ def main():
             wife_nisa_used=r["wife_nisa_used"],
             husband_nisa_balance=r["husband_nisa_balance"],
             wife_nisa_balance=r["wife_nisa_balance"],
+            area=area,
         )
         valid_mc = [r for r in mc_results if r.yearly_balance_percentiles]
         if valid_mc:

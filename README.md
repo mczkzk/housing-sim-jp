@@ -2,45 +2,86 @@
 
 **20〜40代・世帯年収1,000〜2,000万の共働きカップル**向けに、マンション購入・一戸建て購入・賃貸のどれが最も資産形成に有利かを、80歳までの月次シミュレーションで比較するツール。確定論（固定リターン）とMonte Carlo（確率分布+生活イベントリスク）の2モードを持つ。
 
-物件価格・家賃は**さいたま市浦和区の実勢価格**（2026年）をハードコード。築10年マンション3LDK（70㎡台）の相場は23区平均で約1.1億、港区1.8〜3.3億、文京区1.4〜2.2億と、ボリュームゾーンの世帯年収1,000〜1,500万（フルローン上限7,000万〜1億）では射程外。郊外すぎると東京30分圏から外れるため、通勤圏・教育環境・ローン審査のバランスで浦和を選定した。都心タワマンや地方物件には対応していない。初期資産3億超や世帯年収600万以下の世帯は想定外。
+## エリアプリセット
+
+物件価格・家賃・管理費等を**5エリアのプリセット**として用意。TOML設定の `area = "浦和"` で切り替え可能。
+
+| エリア | マンション | 一戸建て | 賃貸3LDK | 想定層 |
+|--------|-----------|---------|----------|--------|
+| **浦和美園** | 4,750万 | 4,500万 | 17.0万 | 郊外志向・車前提 |
+| **小岩** | 7,000万 | 6,215万 | 21.5万 | 下町・再開発エリア |
+| **浦和** | 8,500万 | 7,372万 | 25.0万 | 文教エリア・通勤圏バランス |
+| **中野** | 10,500万 | 9,250万 | 31.5万 | 都心近接・利便性重視 |
+| **文京区** | 13,500万 | 10,941万 | 40.0万 | 最高峰の文教エリア |
+
+## 分析レポート
+
+| レポート | エリア | 条件 |
+|---------|--------|------|
+| [25-koiwa](reports/25-koiwa/report.pdf) | 小岩 | 夫25/妻24・資産250万・手取57万・子2人・高校〜私立理系・世界一周 |
+| [30-urawa](reports/30-urawa/report.pdf) | 浦和 | 夫30/妻28・資産600万・手取67万・子1人・高校〜私立理系修士・ペット・P+5万・世界一周 |
+| [30-misono](reports/30-misono/report.pdf) | 浦和美園 | 夫30/妻28・資産600万・手取67万・子2人・高校〜私立理系・車・世界一周 |
+| [35-nakano](reports/35-nakano/report.pdf) | 中野 | 夫35/妻32・資産1,800万・手取94万・子1人・中学〜私立理系修士・ペット・P+10万・世界一周 |
+| [35-bunkyo](reports/35-bunkyo/report.pdf) | 文京区 | 夫35/妻32・資産3,000万・手取121万・子2人・中学〜私立理系修士・P+15万・世界一周 |
 
 ## 比較戦略
 
 | 戦略 | 概要 |
 |------|------|
-| **浦和マンション** | 築10年中古マンション購入（7,580万円）。管理費+修繕積立金が築年数で段階増額 |
-| **浦和一戸建て** | 築7年中古一戸建て購入（6,547万円）。大規模修繕を一時費用で計上 |
+| **マンション** | 中古3LDK購入（フルローン35年）。管理費+修繕積立金が築年数で段階増額 |
+| **一戸建て** | 中古一戸建て購入（フルローン35年）。大規模修繕を一時費用で計上 |
 | **戦略的賃貸** | ライフステージに応じて3フェーズで家賃ダウンサイジング（2LDK→3LDK→2LDK） |
 | **通常賃貸** | 3LDK固定で全期間賃貸 |
 
-## 使い方
+## セットアップ
 
 ```bash
-# 確定論シミュレーション（3戦略比較: マンション/一戸建て/戦略的賃貸）
-python -m housing_sim_jp.cli
-python -m housing_sim_jp.cli --husband-age 37 --wife-age 35 --shared-savings 1000 --husband-savings 300 --wife-savings 200 --husband-income 45 --wife-income 30
-python -m housing_sim_jp.cli --pets 38,40 --car                       # ペット2匹+車
-python -m housing_sim_jp.cli --children none --education-grad 修士     # 子なし / 大学院進学
+# 必須
+pip install -e .                    # Python 3.11+, matplotlib
 
-# 5シナリオ×4戦略比較（低成長/標準/高成長/慢性スタグフレーション/サイクル型 + 投資規律の感度分析）
+# PDF生成に必要（任意）
+brew install pandoc                 # Markdown → HTML 変換
+# Google Chrome がインストール済みであること（headless モードで HTML → PDF 変換に使用）
+```
+
+## 使い方
+
+### シミュレーション（CLI出力）
+
+```bash
+# 確定論（3戦略比較）— デフォルトは浦和エリア
+python -m housing_sim_jp.cli
+python -m housing_sim_jp.cli --area 文京区 --husband-income 60 --wife-income 40
+python -m housing_sim_jp.cli --area 浦和美園 --car
+python -m housing_sim_jp.cli --children none --education-grad 修士
+
+# 5シナリオ×4戦略（低成長/標準/高成長/慢性スタグフレーション/サイクル型 + 投資規律の感度分析）
 python -m housing_sim_jp.scenario_cli
+python -m housing_sim_jp.scenario_cli --area 中野
 
 # Monte Carlo（N=1,000試行 + イベントリスク）
 python -m housing_sim_jp.monte_carlo_cli
-python -m housing_sim_jp.monte_carlo_cli --stress-test                # ストレステスト追加出力
+python -m housing_sim_jp.monte_carlo_cli --stress-test
+```
 
-# チャート生成（確定論+MC → reports/<name>/charts/）
-python -m housing_sim_jp.chart_cli
-python -m housing_sim_jp.chart_cli --name 30 --config config.example-30.toml
-python -m housing_sim_jp.chart_cli --no-mc                            # 確定論のみ（高速）
+### レポート生成（Markdown + チャート + PDF）
 
-# レポート自動生成（7章構成Markdown: 確定論+シナリオ+MC+ストレステスト統合）
-python -m housing_sim_jp.report_cli --config config.example-30.toml --name 30
-python -m housing_sim_jp.report_cli --all                             # 4設定一括
-python -m housing_sim_jp.report_cli --no-mc                           # MC省略（高速）
+```bash
+# 全設定一括（MD + チャート + PDF）
+python -m housing_sim_jp.report_cli --all --pdf
 
-# テスト
-python -m pytest tests/ -v
+# 個別設定
+python -m housing_sim_jp.report_cli --config config.example-30-urawa.toml --name 30-urawa --pdf
+
+# MC省略（高速デバッグ用）
+python -m housing_sim_jp.report_cli --all --no-mc --pdf
+
+# PDFなし（Markdownのみ）
+python -m housing_sim_jp.report_cli --all
+
+# PDFだけ再生成（既存MDから）
+python -m housing_sim_jp.pdf_cli
+python -m housing_sim_jp.pdf_cli reports/35-nakano/report.md
 ```
 
 全オプションは各CLIの `--help` を参照。
@@ -50,21 +91,20 @@ python -m pytest tests/ -v
 `config.example-*.toml` をコピーして `config.toml` を作成すると、CLIフラグのデフォルト値を上書きできます。
 
 ```bash
-cp config.example-25.toml config.toml   # 25歳プリセット（250万/手取り57万/子2人/生活費P3万）
-cp config.example-30.toml config.toml   # 30歳プリセット（600万/手取り67万/子2人/生活費P3万/ペット1匹）
-cp config.example-35.toml config.toml   # 35歳プリセット（1200万/手取り74万/子1人/生活費P3万/中学〜私立理系/車）
+cp config.example-30-urawa.toml config.toml    # 30歳・浦和プリセット
+cp config.example-25-koiwa.toml config.toml    # 25歳・小岩プリセット
+cp config.example-35-nakano.toml config.toml   # 35歳・中野プリセット
 python -m housing_sim_jp.cli                              # config.toml を自動読み込み
 python -m housing_sim_jp.cli --config my_config.toml      # 任意のパスを指定
-python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラグで個別に上書き
 ```
 
 **優先順位**: CLIフラグ > config.toml > ハードコードデフォルト
 
 ## 前提条件
 
-- **世帯**: 一都三県勤務の共働きカップル（夫婦別年齢）、大手企業正社員。浦和駅エリア想定
+- **世帯**: 一都三県勤務の共働きカップル（夫婦別年齢）、大手企業正社員
 - **収入**: 夫婦各人の月額手取りに、5段階キャリアカーブ（55歳ピーク）× 名目賃金上昇率を重畳。60歳再雇用、70歳年金生活
-- **住宅**: 2026年浦和実勢価格。フルローン35年変動金利（5年ごとステップ式）、銀行審査基準（年収倍率≤7倍、返済比率≤35%）適用
+- **住宅**: 2026年実勢価格ベースの5エリアプリセット。フルローン35年変動金利（5年ごとステップ式）、銀行審査基準（年収倍率≤7倍、返済比率≤35%）適用
 - **教育**: 4トラック（国公立文系/理系・私立文系/理系）の年次コストスケジュール。学部計1,200万〜1,900万。大学院進学対応
 - **運用**: iDeCo → NISA（夫婦合計3,600万上限）→ こどもNISA（2027年〜、子1人600万上限、独立時に全額贈与）→ 特定口座の順で投資。年初に特定口座→NISA/こどもNISAへ逆算売却で一括振替。退職5年前からバケット戦略（現金2年分+債券3年分+ゴールド10%）で安全資産を積み増し、退職後の取り崩しは株式→債券→ゴールドの順（暴落時は現金ポジション→安全資産を先行消費し株式の安値売りを回避）
 - **出口**: 80歳で老人ホーム入居。金融資産と年金から施設グレード（S〜D）を判定
@@ -85,20 +125,3 @@ python -m housing_sim_jp.cli --config config.toml --husband-age 40  # CLIフラ�
 ## Monte Carlo
 
 確定論（固定リターン6.0%）では見えない**市場変動リスク**と**生活イベントリスク**を定量化する。投資リターンは対数正規分布（σ=15%）で年ごとに変動し、インフレ・金利・賃金は相関付き正規分布でラン単位に変動。生活イベント（失業・災害・介護・離婚・配偶者死亡・転勤等）を確率的に発生させ、P5〜P95のパーセンタイル分布・破綻確率・ストレステスト結果を出力する。
-
-## 分析レポート
-
-| レポート | 条件 |
-|---------|------|
-| [report-25.pdf](reports/25/report.pdf) | 夫25歳/妻24歳・金融資産250万・手取り57万（夫34+妻23）・子2人（妻27,30歳出産）・高校〜私立理系・生活費P3万 |
-| [report-30.pdf](reports/30/report.pdf) | 夫30歳/妻28歳・金融資産600万・手取り67万（夫40+妻27）・子2人（妻31,33歳出産）・高校〜私立理系・生活費P3万・ペット1匹 |
-| [report-35.pdf](reports/35/report.pdf) | 夫35歳/妻32歳・金融資産1200万・手取り74万（夫44+妻30）・子1人（妻35歳出産）・中学〜私立理系・生活費P3万・車 |
-
-```bash
-# PDF生成（要: pandoc + Google Chrome）
-brew install pandoc                                           # 初回のみ
-python -m housing_sim_jp.pdf_cli                              # 全レポート一括
-python -m housing_sim_jp.pdf_cli reports/35/report.md         # 個別指定
-```
-
-PDF生成には **[pandoc](https://pandoc.org/)** と **Google Chrome**（headlessモードで使用）が必要。

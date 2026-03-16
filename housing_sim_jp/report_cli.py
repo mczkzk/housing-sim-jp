@@ -9,9 +9,11 @@ from housing_sim_jp.report import build_report_context, render_report
 
 ALL_CONFIGS = [
     (Path("config.toml"), "personal"),
-    (Path("config.example-25.toml"), "25"),
-    (Path("config.example-30.toml"), "30"),
-    (Path("config.example-35.toml"), "35"),
+    (Path("config.example-25-koiwa.toml"), "25-koiwa"),
+    (Path("config.example-30-urawa.toml"), "30-urawa"),
+    (Path("config.example-30-misono.toml"), "30-misono"),
+    (Path("config.example-35-nakano.toml"), "35-nakano"),
+    (Path("config.example-35-bunkyo.toml"), "35-bunkyo"),
 ]
 
 
@@ -27,7 +29,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--all", action="store_true", dest="run_all",
-        help="4設定（config.toml, config.example-{25,30,35}.toml）を一括生成",
+        help="6設定（config.toml + 5 example）を一括生成",
     )
     parser.add_argument(
         "--no-mc", action="store_true",
@@ -45,6 +47,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", type=Path, default=Path("reports"),
         help="レポートベースディレクトリ (default: reports)",
     )
+    parser.add_argument(
+        "--pdf", action="store_true",
+        help="PDF も生成（pandoc + Chrome headless が必要）",
+    )
     return parser
 
 
@@ -56,6 +62,7 @@ def _generate_one(
     mc_runs: int,
     seed: int,
     output_dir: Path,
+    pdf: bool = False,
 ) -> Path:
     """Generate a single report and return the output path."""
     sub_dir = output_dir / name
@@ -78,6 +85,16 @@ def _generate_one(
     sub_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md, encoding="utf-8")
     print(f"  → {out_path}", file=sys.stderr)
+
+    if pdf:
+        from housing_sim_jp.pdf_cli import _find_chrome, convert
+        chrome = _find_chrome()
+        if chrome:
+            pdf_path = convert(out_path, chrome)
+            print(f"  → {pdf_path}", file=sys.stderr)
+        else:
+            print("  ⚠ PDF生成スキップ: Chrome が見つかりません", file=sys.stderr)
+
     return out_path
 
 
@@ -97,7 +114,7 @@ def main():
             p = _generate_one(
                 config_path, name,
                 no_mc=args.no_mc, mc_runs=args.mc_runs, seed=args.seed,
-                output_dir=args.output,
+                output_dir=args.output, pdf=args.pdf,
             )
             paths.append(p)
         print(f"\n完了: {len(paths)}件のレポートを生成", file=sys.stderr)
@@ -110,7 +127,7 @@ def main():
         _generate_one(
             config_path, args.name,
             no_mc=args.no_mc, mc_runs=args.mc_runs, seed=args.seed,
-            output_dir=args.output,
+            output_dir=args.output, pdf=args.pdf,
         )
         print("完了", file=sys.stderr)
 

@@ -1,8 +1,11 @@
 """Housing Asset Formation Simulation Package."""
 
 from housing_sim_jp.params import END_AGE, SimulationParams
+from housing_sim_jp.areas import AreaPreset, get_area, AREA_PRESETS
 from housing_sim_jp.strategies import (
     Strategy,
+    Mansion,
+    House,
     UrawaMansion,
     UrawaHouse,
     StrategicRental,
@@ -25,6 +28,7 @@ from housing_sim_jp.simulation import (
     MAX_REPAYMENT_RATIO,
     MAX_INCOME_MULTIPLIER,
     TAKEHOME_TO_GROSS,
+    takehome_to_gross,
     DEFAULT_CHILD_BIRTH_AGES,
     GRAD_SCHOOL_MAP,
     DEFAULT_INDEPENDENCE_AGE,
@@ -42,8 +46,13 @@ from housing_sim_jp.tax import (
 __all__ = [
     "SimulationParams",
     "Strategy",
+    "Mansion",
+    "House",
     "UrawaMansion",
     "UrawaHouse",
+    "AreaPreset",
+    "get_area",
+    "AREA_PRESETS",
     "StrategicRental",
     "NormalRental",
     "CHILD_ROOM_AGE_START",
@@ -62,6 +71,7 @@ __all__ = [
     "MAX_REPAYMENT_RATIO",
     "MAX_INCOME_MULTIPLIER",
     "TAKEHOME_TO_GROSS",
+    "takehome_to_gross",
     "DEFAULT_CHILD_BIRTH_AGES",
     "GRAD_SCHOOL_MAP",
     "DEFAULT_INDEPENDENCE_AGE",
