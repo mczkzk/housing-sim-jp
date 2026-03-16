@@ -505,7 +505,7 @@ _AGE_VERY_LATE = 43  # ローン完済70歳まで27年、複利効果が限定�
 
 def _notable_savings_for_age(age: int) -> float:
     for threshold, amount in _NOTABLE_SAVINGS:
-        if age < threshold:
+        if age <= threshold:
             return amount
     return 15000
 
