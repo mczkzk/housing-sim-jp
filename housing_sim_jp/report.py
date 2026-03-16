@@ -563,6 +563,13 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
             f"都内文教区・港区等の高額物件が射程に入り、"
             f"{ctx.area.name}エリア（{ctx.area.mansion_price:,.0f}万〜{ctx.area.house_price:,.0f}万）を前提とした本シミュレーションのターゲットから外れる。"
         )
+    elif total >= 90:
+        annual_total = total * 12
+        warnings.append(
+            f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は主要対象帯の上位。**"
+            f"高い投資余力により資産形成が加速し、戦略間の差は絶対額で拡大するが、"
+            f"どの戦略でも余裕のある結果になりやすい。"
+        )
     elif total < _HOUSEHOLD_TARGET_FLOOR:
         annual_total = total * 12
         if start_age <= 30:
@@ -602,7 +609,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         )
     else:
         notable = _notable_savings_for_age(start_age)
-        if savings > notable:
+        if savings >= notable:
             ratio = savings / notable
             if ratio >= 5:
                 warnings.append(
