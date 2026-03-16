@@ -446,11 +446,11 @@ def _age_diff(ctx: ReportContext) -> int:
 
 def _needs_pair_loan(ctx: ReportContext) -> bool:
     """片方の年収だけでローン審査を通過できない場合True（ペアローン必須）。"""
-    from housing_sim_jp.simulation import MAX_INCOME_MULTIPLIER, TAKEHOME_TO_GROSS, SCREENING_RATE, MAX_REPAYMENT_RATIO
+    from housing_sim_jp.simulation import MAX_INCOME_MULTIPLIER, SCREENING_RATE, MAX_REPAYMENT_RATIO, takehome_to_gross
     area = ctx.area
     max_price = max(area.mansion_price, area.house_price)
     for solo_income in [ctx.params.husband_income, ctx.params.wife_income]:
-        gross_annual = solo_income * 12 / TAKEHOME_TO_GROSS
+        gross_annual = takehome_to_gross(solo_income)
         if gross_annual <= 0:
             continue
         if max_price / gross_annual > MAX_INCOME_MULTIPLIER:

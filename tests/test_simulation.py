@@ -78,19 +78,19 @@ class TestSnapshotAge37:
 
     def test_mansion(self):
         r = simulate_strategy(Mansion(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(67873.472740, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(68690.983443, abs=0.01)
 
     def test_house(self):
         r = simulate_strategy(House(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(75080.939694, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(75898.292514, abs=0.01)
 
     def test_strategic_rental(self):
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(75332.137745, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(76152.464575, abs=0.01)
 
     def test_normal_rental(self):
         r = simulate_strategy(NormalRental(800), self.params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(62235.030973, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(63057.226448, abs=0.01)
 
 
 class TestSnapshotDetails:
@@ -101,7 +101,7 @@ class TestSnapshotDetails:
         self.r = simulate_strategy(Mansion(800), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
 
     def test_nisa_balance(self):
-        assert self.r["nisa_balance"] == pytest.approx(33842.945083, abs=0.01)
+        assert self.r["nisa_balance"] == pytest.approx(33852.747158, abs=0.01)
 
     def test_land_value(self):
         assert self.r["land_value_80"] == pytest.approx(2930.193437, abs=0.01)
@@ -128,7 +128,7 @@ class TestEdgeAges:
     def test_age_25(self):
         params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=25), params, husband_start_age=25, wife_start_age=25, child_birth_ages=[39])
-        assert r["after_tax_net_assets"] == pytest.approx(294951.043623, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(294751.025719, abs=0.01)
         assert r["bankrupt_age"] is None
 
     def test_age_45(self):
@@ -136,7 +136,7 @@ class TestEdgeAges:
         params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=45), params, husband_start_age=45, wife_start_age=45, child_birth_ages=[39])
         assert r["bankrupt_age"] is None
-        assert r["after_tax_net_assets"] == pytest.approx(27819.164593, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(28141.916771, abs=0.01)
 
 
 class TestBankruptcy:
@@ -175,7 +175,7 @@ class TestDisciplineFactor:
         r_full = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, discipline_factor=1.0, child_birth_ages=[39])
         r_reduced = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params, husband_start_age=37, wife_start_age=37, discipline_factor=0.8, child_birth_ages=[39])
         assert r_full["after_tax_net_assets"] > r_reduced["after_tax_net_assets"]
-        assert r_reduced["after_tax_net_assets"] == pytest.approx(61314.498252, abs=0.01)
+        assert r_reduced["after_tax_net_assets"] == pytest.approx(62018.125402, abs=0.01)
 
 
 class TestChildBirthAges:
@@ -183,7 +183,7 @@ class TestChildBirthAges:
         """child_birth_ages=[38] should produce known snapshot."""
         params = SimulationParams(husband_income=H_INCOME, wife_income=W_INCOME)
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[38], start_age=37), params, husband_start_age=37, wife_start_age=37, child_birth_ages=[38])
-        assert r["after_tax_net_assets"] == pytest.approx(74790.166144, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(75611.210510, abs=0.01)
 
     def test_no_child_increases_assets(self):
         """No education costs -> more investable -> higher assets."""
@@ -750,7 +750,7 @@ class TestParentalLeave:
         r = simulate_strategy(StrategicRental(800, child_birth_ages=[39], start_age=37), params,
                               husband_start_age=37, wife_start_age=37, child_birth_ages=[39])
         # Should match old snapshot (before parental leave was added)
-        assert r["after_tax_net_assets"] == pytest.approx(75984.928723, abs=0.01)
+        assert r["after_tax_net_assets"] == pytest.approx(76805.570982, abs=0.01)
 
     def test_peak_unaffected(self):
         """育休中もpeak追跡は正常（年金計算に影響しない）"""

@@ -37,7 +37,71 @@ ZAISHOKU_THRESHOLD = 65.0  # 支給停止調整額（万円/月）
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
 MAX_REPAYMENT_RATIO = 0.35  # 返済比率上限（年収400万以上）
 MAX_INCOME_MULTIPLIER = 7  # 年収倍率上限
-TAKEHOME_TO_GROSS = 0.75  # 手取り→額面 概算変換率
+TAKEHOME_TO_GROSS = 0.75  # 産休給付率の額面→手取り換算用（給付金は社保免除のため固定比率が適切）
+_SOCIAL_INSURANCE_RATE = 0.15  # 社会保険料率（健保+厚生年金+雇用保険）
+_BASIC_DEDUCTION = 48.0        # 基礎控除（万円）
+_RESIDENT_TAX_RATE = 0.10      # 住民税所得割
+_RECONSTRUCTION_TAX = 1.021    # 復興特別所得税
+
+
+def _gross_to_takehome(gross_annual: float) -> float:
+    """額面年収（万円）→ 手取り年収（万円）の概算変換。"""
+    if gross_annual <= 0:
+        return 0.0
+    # 給与所得控除
+    deduction = _EMPLOYMENT_DEDUCTION_CAP
+    for threshold, rate, offset in _EMPLOYMENT_DEDUCTION_TABLE:
+        if gross_annual <= threshold:
+            deduction = gross_annual * rate + offset if rate > 0 else offset
+            break
+    social_insurance = gross_annual * _SOCIAL_INSURANCE_RATE
+    taxable = max(0.0, gross_annual - deduction - social_insurance - _BASIC_DEDUCTION)
+    # 累進所得税
+    income_tax = 0.0
+    prev = 0.0
+    for bracket, rate in _INCOME_TAX_BRACKETS:
+        if taxable <= bracket:
+            income_tax += (taxable - prev) * rate
+            break
+        income_tax += (bracket - prev) * rate
+        prev = bracket
+    else:
+        income_tax += (taxable - prev) * _INCOME_TAX_TOP_RATE
+    income_tax *= _RECONSTRUCTION_TAX
+    resident_tax = taxable * _RESIDENT_TAX_RATE
+    return gross_annual - social_insurance - income_tax - resident_tax
+
+
+def _takehome_to_gross_bisect(takehome_monthly: float) -> float:
+    """手取り月額（万円）→ 額面年収（万円）。bisectionで逆算。"""
+    target = takehome_monthly * 12
+    lo, hi = target, target * 2.0
+    while _gross_to_takehome(hi) < target:
+        hi *= 1.5
+    for _ in range(20):
+        mid = (lo + hi) / 2
+        if _gross_to_takehome(mid) < target:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+# 同一手取り月額に対するbisectionを毎回やるのは重い（MC×月次で数百万回呼ばれる）
+from functools import lru_cache
+
+@lru_cache(maxsize=1024)
+def _cached_takehome_to_gross(takehome_monthly_x100: int) -> float:
+    """キャッシュ用: 手取り月額を0.01万刻みで丸めてキャッシュ。"""
+    return _takehome_to_gross_bisect(takehome_monthly_x100 / 100)
+
+
+def takehome_to_gross(takehome_monthly: float) -> float:
+    """手取り月額（万円）→ 額面年収（万円）。結果をキャッシュ。"""
+    if takehome_monthly <= 0:
+        return 0.0
+    key = round(takehome_monthly * 100)
+    return _cached_takehome_to_gross(key)
 
 # Pension adjustment rates (法定)
 PENSION_EARLY_REDUCTION_PER_MONTH = 0.004   # 繰上げ: -0.4%/月
@@ -134,7 +198,7 @@ def _calc_furusato_benefit_monthly(
     for monthly_net, working in ((h_monthly_net, h_working), (w_monthly_net, w_working)):
         if not working or monthly_net <= 0:
             continue
-        gross_annual = monthly_net * 12 / TAKEHOME_TO_GROSS
+        gross_annual = takehome_to_gross(monthly_net)
         limit = _calc_furusato_limit(gross_annual)
         benefit = limit * FURUSATO_RETURN_RATE - FURUSATO_SELF_PAYMENT
         if benefit > 0:
@@ -233,7 +297,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
     # Check 2: loan approval (purchase strategies only)
     if strategy.loan_amount > 0 and strategy.loan_months > 0:
         takehome_monthly = params.husband_income + params.wife_income
-        gross_annual = takehome_monthly * 12 / TAKEHOME_TO_GROSS
+        gross_annual = takehome_to_gross(takehome_monthly)
 
         if gross_annual <= 0:
             errors.append("収入がゼロのため住宅ローン審査不可")
@@ -243,7 +307,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
         income_multiplier = strategy.loan_amount / gross_annual
         if income_multiplier > MAX_INCOME_MULTIPLIER:
             min_gross = strategy.loan_amount / MAX_INCOME_MULTIPLIER
-            min_takehome = min_gross * TAKEHOME_TO_GROSS / 12
+            min_takehome = _gross_to_takehome(min_gross) / 12
             errors.append(
                 f"年収倍率{income_multiplier:.1f}倍 > 上限{MAX_INCOME_MULTIPLIER}倍"
                 f"（借入{strategy.loan_amount:.0f}万 / 額面年収{gross_annual:.0f}万）"
@@ -259,7 +323,7 @@ def validate_strategy(strategy: Strategy, params: SimulationParams) -> list[str]
         repayment_ratio = annual_payment / gross_annual
         if repayment_ratio > MAX_REPAYMENT_RATIO:
             min_gross = annual_payment / MAX_REPAYMENT_RATIO
-            min_takehome = min_gross * TAKEHOME_TO_GROSS / 12
+            min_takehome = _gross_to_takehome(min_gross) / 12
             errors.append(
                 f"返済比率{repayment_ratio:.0%} > 上限{MAX_REPAYMENT_RATIO:.0%}"
                 f"（審査金利{SCREENING_RATE:.1%}での年間返済{annual_payment:.0f}万 / 額面年収{gross_annual:.0f}万）"
@@ -417,7 +481,7 @@ def find_earliest_purchase_age(
                 (w_age, params.wife_ideco, params.wife_income),
             ]:
                 if person_age < params.ideco_contribution_end_age and contribution > 0:
-                    gross_annual = base_inc * 12 / TAKEHOME_TO_GROSS
+                    gross_annual = takehome_to_gross(base_inc)
                     taxable_income = estimate_taxable_income(gross_annual)
                     marginal_rate = calc_marginal_income_tax_rate(taxable_income)
                     tax_benefit = calc_ideco_tax_benefit_monthly(contribution, marginal_rate)
@@ -559,7 +623,7 @@ def _apply_zaishoku_reduction(
     params: SimulationParams,
 ) -> float:
     """在職老齢年金: 厚生年金部分のみ減額。基礎年金・企業年金は対象外。"""
-    work_gross = work_monthly_net / TAKEHOME_TO_GROSS
+    work_gross = takehome_to_gross(work_monthly_net) / 12
     threshold = ZAISHOKU_THRESHOLD * params.wage_inflation_factor(month / 12)
     combined = kosei_monthly + work_gross
     if combined <= threshold:
@@ -576,7 +640,7 @@ def _estimate_individual_pension(
     Returns (kosei_annual, kiso_annual) — 厚生年金(報酬比例)と基礎年金を分離。
     cap_adjustment: 標準報酬月額上限のインフレ調整係数。
     """
-    gross_peak = peak_monthly / TAKEHOME_TO_GROSS
+    gross_peak = takehome_to_gross(peak_monthly) / 12
     avg_gross = gross_peak * CAREER_AVG_RATIO
     adjusted_cap = STANDARD_MONTHLY_CAP * cap_adjustment
     avg_standard = min(avg_gross, adjusted_cap)
@@ -1948,9 +2012,9 @@ def simulate_strategy(
                 kodomo_nisa_annual_invested[ci] = swap_amount
 
     # Per-person marginal tax rates
-    h_gross_annual = params.husband_income * 12 / TAKEHOME_TO_GROSS
+    h_gross_annual = takehome_to_gross(params.husband_income)
     h_marginal_rate = calc_marginal_income_tax_rate(estimate_taxable_income(h_gross_annual))
-    w_gross_annual = params.wife_income * 12 / TAKEHOME_TO_GROSS
+    w_gross_annual = takehome_to_gross(params.wife_income)
     w_marginal_rate = calc_marginal_income_tax_rate(estimate_taxable_income(w_gross_annual))
 
     h_peak = 0.0
