@@ -560,8 +560,8 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         warnings.append(
             f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
             f"ローン年収倍率7倍で{loan_7x/10000:.1f}億円が借入可能。**"
-            f"都内文教区・港区等の高額物件が射程に入り、"
-            f"{ctx.area.name}エリア（{ctx.area.mansion_price:,.0f}万〜{ctx.area.house_price:,.0f}万）を前提とした本シミュレーションのターゲットから外れる。"
+            f"港区等の超高額物件（2〜3億）が射程に入る水準であり、"
+            f"本シミュレーションの主要対象帯（世帯年収1,000〜2,000万）を大きく超過する。"
         )
     elif total >= 90:
         annual_total = total * 12
