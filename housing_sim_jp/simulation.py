@@ -30,9 +30,6 @@ REEMPLOYMENT_AGE = 60  # 再雇用開始年齢（退職金支給年齢）
 STANDARD_PENSION_AGE = 65  # 年金の基準受給開始年齢
 MAX_EVENT_AGE = 70  # 離婚・死亡イベントの発生上限年齢
 
-# 在職老齢年金（2026年度見込み）
-ZAISHOKU_THRESHOLD = 65.0  # 支給停止調整額（万円/月）
-
 # Loan screening constants (銀行審査基準)
 SCREENING_RATE = 0.035  # 審査金利（実効金利ではなくストレステスト用）
 MAX_REPAYMENT_RATIO = 0.35  # 返済比率上限（年収400万以上）
@@ -609,27 +606,13 @@ STANDARD_MONTHLY_CAP = 65.0    # 標準報酬月額上限 万円
 
 
 def _pension_adjustment_factor(pension_start_age: int) -> float:
-    """繰上げ/繰下げによる年金調整係数。65歳基準。"""
+    """繰上げ/繰下げによる年金調整係数。65歳基準。pension_start_age = work_end_age。"""
     months_diff = (pension_start_age - STANDARD_PENSION_AGE) * 12
     if months_diff < 0:
         return 1 + months_diff * PENSION_EARLY_REDUCTION_PER_MONTH
     elif months_diff > 0:
         return 1 + months_diff * PENSION_DEFERRAL_INCREASE_PER_MONTH
     return 1.0
-
-
-def _apply_zaishoku_reduction(
-    kosei_monthly: float, work_monthly_net: float, month: int,
-    params: SimulationParams,
-) -> float:
-    """在職老齢年金: 厚生年金部分のみ減額。基礎年金・企業年金は対象外。"""
-    work_gross = takehome_to_gross(work_monthly_net) / 12
-    threshold = ZAISHOKU_THRESHOLD * params.wage_inflation_factor(month / 12)
-    combined = kosei_monthly + work_gross
-    if combined <= threshold:
-        return kosei_monthly
-    reduction = (combined - threshold) / 2
-    return max(0.0, kosei_monthly - reduction)
 
 
 def _estimate_individual_pension(
@@ -679,8 +662,8 @@ def estimate_pension_monthly(
     h_kosei, h_kiso = _estimate_individual_pension(h_peak)
     w_kosei, w_kiso = _estimate_individual_pension(w_peak)
 
-    h_adj = _pension_adjustment_factor(params.husband_pension_start_age)
-    w_adj = _pension_adjustment_factor(params.wife_pension_start_age)
+    h_adj = _pension_adjustment_factor(params.husband_work_end_age)
+    w_adj = _pension_adjustment_factor(params.wife_work_end_age)
     h_public = (h_kosei + h_kiso) * h_adj
     w_public = (w_kosei + w_kiso) * w_adj
 
@@ -724,13 +707,12 @@ def _project_working_income(
 def _calc_individual_income(
     month: int, person_start_age: int, base_income: float,
     peak: float, corp_pension_share: float, params: SimulationParams,
-    person_work_end_age: int, person_pension_start_age: int,
+    person_work_end_age: int,
 ) -> tuple[float, float]:
-    """Calculate one person's monthly income (2-stream model).
+    """Calculate one person's monthly income (simplified model).
 
     work_income: 現役(< 60) or 再雇用(60 ≤ age < person_work_end_age)
-    pension_income: age ≥ person_pension_start_age → 年金 × 調整係数
-    在職老齢年金: 就労中かつ年金受給中の場合、厚生年金部分を減額
+    pension_income: age ≥ person_work_end_age → 年金（退職=受給開始）
     Returns (income, updated_peak).
     """
     years_elapsed = month / 12
@@ -757,17 +739,17 @@ def _calc_individual_income(
             reemploy_factor *= (1 + rate) ** frac
         work_income = peak * params.retirement_reduction * reemploy_factor
 
-    # --- Stream 2: Pension income ---
+    # --- Stream 2: Pension income (starts at work_end_age) ---
     pension_income = 0.0
-    if person_age >= person_pension_start_age:
+    if person_age >= person_work_end_age:
         cap_adj = params.wage_inflation_factor(REEMPLOYMENT_AGE - person_start_age)
         kosei_annual, kiso_annual = _estimate_individual_pension(peak, cap_adj)
-        adj = _pension_adjustment_factor(person_pension_start_age)
+        adj = _pension_adjustment_factor(person_work_end_age)
         kosei_annual *= adj
         kiso_annual *= adj
 
-        years_since_pension = person_age - person_pension_start_age
-        pension_start_year = person_pension_start_age - person_start_age
+        years_since_pension = person_age - person_work_end_age
+        pension_start_year = person_work_end_age - person_start_age
         pension_factor = 1.0
         for y in range(years_since_pension):
             rate = params.get_inflation_rate(pension_start_year + y) - params.pension_real_reduction
@@ -776,12 +758,6 @@ def _calc_individual_income(
         kosei_monthly = kosei_annual * pension_factor / 12
         kiso_monthly = kiso_annual * pension_factor / 12
         corp_monthly = corp_pension_share * pension_factor / 12
-
-        # 在職老齢年金: 就労中の場合、厚生年金(報酬比例)のみ減額
-        if work_income > 0:
-            kosei_monthly = _apply_zaishoku_reduction(
-                kosei_monthly, work_income, month, params,
-            )
 
         pension_income = kosei_monthly + kiso_monthly + corp_monthly
 
@@ -803,11 +779,11 @@ def _calc_monthly_income(
 
     h_income, h_peak = _calc_individual_income(
         month, husband_start_age, params.husband_income, h_peak, h_corp_share, params,
-        params.husband_work_end_age, params.husband_pension_start_age,
+        params.husband_work_end_age,
     )
     w_income, w_peak = _calc_individual_income(
         month, wife_start_age, params.wife_income, w_peak, w_corp_share, params,
-        params.wife_work_end_age, params.wife_pension_start_age,
+        params.wife_work_end_age,
     )
     return h_income + w_income, h_income, w_income, h_peak, w_peak
 
@@ -2322,7 +2298,7 @@ def simulate_strategy(
                     housing_cost = forced_rental_cost + forced_rental_cost / PRE_PURCHASE_RENEWAL_DIVISOR
                     loan_deduction = 0
 
-            if is_spouse_dead and h_age >= params.husband_pension_start_age:
+            if is_spouse_dead and h_age >= params.husband_work_end_age:
                 monthly_income += event_timeline.survivor_pension_annual / 12
         else:
             event_extra_cost = 0

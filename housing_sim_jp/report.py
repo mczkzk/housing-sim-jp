@@ -275,8 +275,6 @@ def build_report_context(
         wife_ideco=r["wife_ideco"],
         emergency_fund_months=r["emergency_fund"],
         special_expenses=parse_special_expenses(r["special_expenses"]),
-        husband_pension_start_age=r["husband_pension_start_age"],
-        wife_pension_start_age=r["wife_pension_start_age"],
         husband_work_end_age=r["husband_work_end_age"],
         wife_work_end_age=r["wife_work_end_age"],
         bucket_safe_years=r["bucket_safe_years"],
@@ -835,53 +833,48 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
         parts = [f"夫{a}歳" for a in ctx.pet_ages]
         lines[-1] += f"ペット{len(ctx.pet_ages)}匹（{'、'.join(parts)}迎え入れ）。"
 
-    # Pension/work-end parameters
+    # Pension/work-end parameters (pension starts at work_end_age)
     from housing_sim_jp.simulation import STANDARD_PENSION_AGE, _pension_adjustment_factor
 
-    def _pension_label(psa: int) -> str:
-        """繰上げ/標準/繰下げのラベルと解説を生成。"""
-        adj = _pension_adjustment_factor(psa)
+    def _pension_label(wea: int) -> str:
+        """退職年齢に基づく年金繰上げ/標準/繰下げのラベルと解説を生成。"""
+        adj = _pension_adjustment_factor(wea)
         diff_pct = (adj - 1) * 100
-        if psa < STANDARD_PENSION_AGE:
-            gap = STANDARD_PENSION_AGE - psa
+        if wea < STANDARD_PENSION_AGE:
+            gap = STANDARD_PENSION_AGE - wea
             return (
-                f"年金受給開始{psa}歳（{gap}年繰上げ、"
+                f"年金受給開始{wea}歳（{gap}年繰上げ、"
                 f"受給額{diff_pct:+.1f}%・月0.4%×{gap*12}ヶ月）"
             )
-        elif psa > STANDARD_PENSION_AGE:
-            gap = psa - STANDARD_PENSION_AGE
+        elif wea > STANDARD_PENSION_AGE:
+            gap = wea - STANDARD_PENSION_AGE
             return (
-                f"年金受給開始{psa}歳（{gap}年繰下げ、"
+                f"年金受給開始{wea}歳（{gap}年繰下げ、"
                 f"受給額{diff_pct:+.1f}%・月0.7%×{gap*12}ヶ月）"
             )
-        return f"年金受給開始{psa}歳（標準）"
+        return f"年金受給開始{wea}歳（標準）"
 
-    def _work_pension_desc(label: str, wea: int, psa: int) -> str:
+    def _work_pension_desc(label: str, wea: int) -> str:
         prefix = f"{label}: " if label else ""
-        overlap = ""
-        if psa < wea:
-            overlap = f"。{psa}〜{wea}歳は就労と年金が併給（在職老齢年金の対象）"
-        return f"{prefix}再雇用終了{wea}歳・{_pension_label(psa)}{overlap}"
+        return f"{prefix}退職{wea}歳・{_pension_label(wea)}"
 
-    h_psa = ctx.params.husband_pension_start_age
-    w_psa = ctx.params.wife_pension_start_age
     h_wea = ctx.params.husband_work_end_age
     w_wea = ctx.params.wife_work_end_age
-    if h_psa == w_psa and h_wea == w_wea:
-        pension_desc = _work_pension_desc("", h_wea, h_psa)
+    if h_wea == w_wea:
+        pension_desc = _work_pension_desc("", h_wea)
     else:
         parts = [
-            _work_pension_desc("夫", h_wea, h_psa),
-            _work_pension_desc("妻", w_wea, w_psa),
+            _work_pension_desc("夫", h_wea),
+            _work_pension_desc("妻", w_wea),
         ]
         pension_desc = "／".join(parts)
     lines.append(f"\n**就労・年金：** {pension_desc}。")
 
     # Pension strategy rationale (early/standard/late)
-    representative_psa = h_psa  # use husband's as representative
+    representative_wea = h_wea  # use husband's as representative
     ret_pct = ctx.params.investment_return * 100
-    if representative_psa < STANDARD_PENSION_AGE:
-        adj = _pension_adjustment_factor(representative_psa)
+    if representative_wea < STANDARD_PENSION_AGE:
+        adj = _pension_adjustment_factor(representative_wea)
         lines.append(
             f"繰上げにより受給額は{(adj-1)*100:+.1f}%だが、"
             f"早期に受け取った年金を年{ret_pct:.0f}%で運用することで"
@@ -890,16 +883,16 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             f"繰下げ待機より有利になる"
             f"（ただし投資しない場合は繰下げの方が得）。"
         )
-        if representative_psa > 60:
-            gap_years = representative_psa - 60
+        if representative_wea > 60:
+            gap_years = representative_wea - 60
             lines.append(
                 f"なお、繰上げは早いほど複利運用期間が長くなり有利。"
                 f"60歳開始と比べて{gap_years}年分の運用機会を逃しており、"
                 f"60歳受給開始が最も資産最大化に寄与する。"
             )
     else:
-        if representative_psa > STANDARD_PENSION_AGE:
-            adj = _pension_adjustment_factor(representative_psa)
+        if representative_wea > STANDARD_PENSION_AGE:
+            adj = _pension_adjustment_factor(representative_wea)
             lines.append(
                 f"繰下げにより受給額が{(adj-1)*100:+.1f}%増加。"
                 f"年金を長寿リスクへの保険として重視する設計。"
@@ -954,15 +947,12 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
             total = entry["income"]
             note = ""
             h_offset = ctx.start_age - ctx.husband_age
-            pension_sim = ctx.params.husband_pension_start_age + h_offset
             work_end_sim = ctx.params.husband_work_end_age + h_offset
             reemploy_sim = 60 + h_offset
             if age == ctx.start_age:
                 note = "開始"
             elif age == 55 + h_offset:
                 note = "夫ピーク近辺"
-            elif age >= pension_sim and age < work_end_sim:
-                note = "年金+再雇用"
             elif age >= work_end_sim:
                 note = "年金期"
             elif age >= reemploy_sim:
@@ -1652,35 +1642,32 @@ def _render_ch3_2_transitions(ctx: ReportContext) -> str:
             min_payoff = min(payoff_ages.values())
             lines.append(f"- **ローン完済（{'・'.join(parts)}）：** 住居費が激減。残り{80 - min_payoff}〜{80 - max(payoff_ages.values())}年で序列確定。")
 
-    # [6] Pension
+    # [6] Pension (pension starts at work_end_age)
     from housing_sim_jp.simulation import _pension_adjustment_factor as _paf
-    h_psa = ctx.params.husband_pension_start_age
-    w_psa = ctx.params.wife_pension_start_age
     h_wea = ctx.params.husband_work_end_age
     w_wea = ctx.params.wife_work_end_age
 
-    def _pension_type_note(psa):
-        if psa < 65:
-            adj = _paf(psa)
-            return f"{65-psa}年繰上げ・受給額{(adj-1)*100:+.0f}%"
-        elif psa > 65:
-            adj = _paf(psa)
-            return f"{psa-65}年繰下げ・受給額{(adj-1)*100:+.0f}%"
+    def _pension_type_note(wea):
+        if wea < 65:
+            adj = _paf(wea)
+            return f"{65-wea}年繰上げ・受給額{(adj-1)*100:+.0f}%"
+        elif wea > 65:
+            adj = _paf(wea)
+            return f"{wea-65}年繰下げ・受給額{(adj-1)*100:+.0f}%"
         return "標準"
 
-    if h_psa == w_psa and h_wea == w_wea:
-        note = _pension_type_note(h_psa)
-        overlap = f"（{h_psa}〜{h_wea}歳は就労+年金併給）" if h_psa < h_wea else ""
+    if h_wea == w_wea:
+        note = _pension_type_note(h_wea)
         lines.append(
-            f"- **年金期（{h_psa}歳〜80歳、{note}）：** "
-            f"{h_wea}歳で就労終了{overlap}。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
+            f"- **年金期（{h_wea}歳〜80歳、{note}）：** "
+            f"{h_wea}歳で退職・年金受給開始。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
         )
     else:
-        h_note = _pension_type_note(h_psa)
-        w_note = _pension_type_note(w_psa)
+        h_note = _pension_type_note(h_wea)
+        w_note = _pension_type_note(w_wea)
         lines.append(
-            f"- **年金期（夫{h_psa}歳[{h_note}]/妻{w_psa}歳[{w_note}]〜80歳）：** "
-            f"夫{h_wea}歳・妻{w_wea}歳で就労終了。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
+            f"- **年金期（夫{h_wea}歳[{h_note}]/妻{w_wea}歳[{w_note}]〜80歳）：** "
+            f"夫{h_wea}歳・妻{w_wea}歳で退職・年金受給開始。75歳以降、賃貸に高齢者プレミアム月3万が加算。"
         )
 
     return "\n".join(lines)
