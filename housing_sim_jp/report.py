@@ -968,8 +968,10 @@ def _render_ch1_2_profile(ctx: ReportContext) -> str:
     if param_warnings:
         lines.append("")
         lines.append("> **⚠ パラメータに関する注記：**")
+        lines.append(">")
         for w in param_warnings:
             lines.append(f"> - {w}")
+            lines.append(">")
         lines.append("")
 
     # Income table from monthly_log
