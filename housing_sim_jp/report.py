@@ -652,10 +652,45 @@ _GRAD_LABEL = {
 # ---------------------------------------------------------------------------
 
 def _render_title(ctx: ReportContext) -> str:
-    return (
+    r = ctx.r
+    area = ctx.area
+    h_age, w_age = ctx.husband_age, ctx.wife_age
+    h_inc, w_inc = r["husband_income"], r["wife_income"]
+    savings = ctx.savings
+
+    lines = [
         f"## 住宅戦略シミュレーション — {ctx.start_age}歳から80歳"
-        f"（{ctx.sim_years}年間）\n\n---"
-    )
+        f"（{ctx.sim_years}年間）\n",
+    ]
+
+    profile = [
+        f"**エリア:** {area.name}",
+        f"**世帯:** 夫{h_age}歳・妻{w_age}歳",
+        f"**手取り:** 月{h_inc + w_inc:.0f}万円（夫{h_inc:.0f}万＋妻{w_inc:.0f}万）",
+        f"**金融資産:** {fmt_man(savings)}",
+    ]
+    if ctx.child_birth_ages:
+        kids = "・".join(f"妻{a}歳" for a in ctx.child_birth_ages)
+        pf = _EDUCATION_STAGE_MAP.get(r["education_private_from"], r["education_private_from"]) or "全国公立"
+        profile.append(f"**子供:** {len(ctx.child_birth_ages)}人（{kids}出産）→ {pf}・{r['education_field']}・{r['education_grad']}")
+    else:
+        profile.append("**子供:** なし")
+    extras = []
+    if r["living_premium"] > 0:
+        extras.append(f"生活費P+{r['living_premium']:g}万")
+    if r["car"]:
+        extras.append("車")
+    if ctx.pet_ages:
+        extras.append(f"ペット{len(ctx.pet_ages)}匹")
+    if ctx.special_labels:
+        for _, amount, label in ctx.special_labels:
+            extras.append(f"{label}({amount:,.0f}万)")
+    if extras:
+        profile.append(f"**その他:** {'・'.join(extras)}")
+
+    lines.append(" | ".join(profile))
+    lines.append("\n---")
+    return "\n".join(lines)
 
 
 def _render_overview(ctx: ReportContext) -> str:
