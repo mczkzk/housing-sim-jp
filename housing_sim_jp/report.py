@@ -475,13 +475,13 @@ def _savings_level(savings: float) -> str:
 
 # Simulation design target: エリア物件前提
 # - 個人年収2,000万以下（手取り≒110万/月）
-# - 世帯年収1,000〜2,000万が主要対象帯
+# - 世帯年収700〜2,000万が主要対象帯
 # - 世帯年収3,000万超→ローン7倍で2億超→高額エリアが射程、前提から逸脱
 # - 初期資産5億超→高額物件が現金購入可能、前提が希薄化
 # - 初期資産10億超→FIRE可能、就労前提のキャリアモデル自体が不適切
 
 _PERSON_INCOME_HARD_CAP = 110.0  # 手取り万円/月（≒年収2,000万）
-_HOUSEHOLD_TARGET_FLOOR = 60.0   # 手取り万円/月（≒世帯年収1,000万）
+_HOUSEHOLD_TARGET_FLOOR = 43.0   # 手取り万円/月（≒世帯年収700万）
 _HOUSEHOLD_TARGET_CEIL = 170.0   # 手取り万円/月（≒世帯年収3,000万）
 _SAVINGS_PREMISE_RATIO = 4.0     # 物件価格の4倍: 現金購入可能、物件前提が的外れ
 _SAVINGS_FIRE = 100000           # 10億: FIRE水準、就労不要
@@ -561,7 +561,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
             f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
             f"ローン年収倍率7倍で{loan_7x/10000:.1f}億円が借入可能。**"
             f"港区等の超高額物件（2〜3億）が射程に入る水準であり、"
-            f"本シミュレーションの主要対象帯（世帯年収1,000〜2,000万）を大きく超過する。"
+            f"本シミュレーションの主要対象帯（世帯年収700〜2,000万）を大きく超過する。"
         )
     elif total >= 90:
         annual_total = total * 12
@@ -576,7 +576,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
             # Young household: low income now but long compounding + career growth
             warnings.append(
                 f"**現時点の世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
-                f"主要対象帯（{ctx.area.name}エリア物件を前提とした世帯年収1,000〜2,000万）を下回るが、"
+                f"主要対象帯（{ctx.area.name}エリア物件を前提とした世帯年収700〜2,000万）を下回るが、"
                 f"キャリアカーブで中年期には大幅に上昇する。**"
                 f"一方で{remaining}年間の投資期間は最大の武器であり、"
                 f"初期の低収入を複利効果が長期で補う構造。"
@@ -585,7 +585,7 @@ def _check_parameter_plausibility(ctx: ReportContext) -> list[str]:
         else:
             warnings.append(
                 f"**世帯手取り月{total:.0f}万円（年{annual_total:,.0f}万）は"
-                f"主要対象帯（{ctx.area.name}エリア物件を前提とした世帯年収1,000〜2,000万）を下回る。**"
+                f"主要対象帯（{ctx.area.name}エリア物件を前提とした世帯年収700〜2,000万）を下回る。**"
                 f"ローン審査が厳しく、購入戦略で待機期間が長期化する可能性が高い。"
             )
 
